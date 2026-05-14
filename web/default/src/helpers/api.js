@@ -32,5 +32,8 @@ API.interceptors.response.use(
   },
   (error) => {
     showError(error);
+    // Keep promise rejected so callers enter catch branch instead of
+    // receiving undefined and crashing on "res.data".
+    return Promise.reject(error);
   }
 );

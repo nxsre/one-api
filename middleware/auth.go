@@ -102,11 +102,24 @@ func RootAuth() func(c *gin.Context) {
 func TokenAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		key := c.Request.Header.Get("Authorization")
-		key = strings.TrimPrefix(key, "Bearer ")
-		key = strings.TrimPrefix(key, "sk-")
-		parts := strings.Split(key, "-")
-		key = parts[0]
+		// OpenAI 生态多用 Authorization: Bearer；Anthropic Messages API 等使用 x-api-key。
+		raw := strings.TrimSpace(c.Request.Header.Get("Authorization"))
+		if strings.HasPrefix(strings.ToLower(raw), "bearer ") {
+			raw = strings.TrimSpace(raw[7:])
+		}
+		raw = strings.TrimPrefix(raw, "sk-")
+		if raw == "" {
+			ak := strings.TrimSpace(c.Request.Header.Get("x-api-key"))
+			raw = strings.TrimPrefix(ak, "sk-")
+		}
+		// Google Gemini 客户端常用查询参数 ?key=（与官方 generativelanguage 一致）。
+		if raw == "" {
+			if k := strings.TrimSpace(c.Query("key")); k != "" {
+				raw = strings.TrimPrefix(k, "sk-")
+			}
+		}
+		parts := strings.Split(raw, "-")
+		key := parts[0]
 		token, err := model.ValidateUserToken(key)
 		if err != nil {
 			abortWithMessage(c, http.StatusUnauthorized, err.Error())
@@ -183,6 +196,9 @@ func shouldCheckModel(c *gin.Context) bool {
 		return true
 	}
 	if strings.HasPrefix(p, "/v1beta/models/") {
+		return true
+	}
+	if strings.HasPrefix(p, "/models/") && strings.Contains(p, ":") {
 		return true
 	}
 	return false

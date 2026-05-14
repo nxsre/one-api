@@ -43,7 +43,7 @@ func GetByPath(path string) int {
 		relayMode = Proxy
 	} else if strings.HasPrefix(path, "/v1/messages") {
 		relayMode = AnthropicMessages
-	} else if strings.HasPrefix(path, "/v1beta/models/") {
+	} else if strings.HasPrefix(path, "/v1beta/models/") || (strings.HasPrefix(path, "/models/") && strings.Contains(path, ":")) {
 		relayMode = GeminiGenerate
 	}
 	return relayMode

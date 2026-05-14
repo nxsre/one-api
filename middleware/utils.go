@@ -36,6 +36,18 @@ func getRequestModel(c *gin.Context) (string, error) {
 		}
 		return "", fmt.Errorf("cannot parse model id from path /v1beta/models/…")
 	}
+	// /gemini/models/{model}:method → Normalize 后为 /models/…
+	if strings.HasPrefix(path, "/models/") {
+		rest := strings.TrimPrefix(path, "/models/")
+		rest = strings.TrimPrefix(rest, "/")
+		if i := strings.LastIndex(rest, ":"); i > 0 {
+			modelName := rest[:i]
+			if modelName != "" {
+				return modelName, nil
+			}
+		}
+		return "", fmt.Errorf("cannot parse model id from path /models/…")
+	}
 
 	var modelRequest ModelRequest
 	err := common.UnmarshalBodyReusable(c, &modelRequest)

@@ -7,22 +7,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/relay"
+	"github.com/songquanpeng/one-api/relay/billing"
 	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
 	"github.com/songquanpeng/one-api/relay/adaptor/gemini"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
-	"github.com/songquanpeng/one-api/relay/billing"
-	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
+	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 )
+
+// 客户端可能用 ?key= 传 one-api 令牌（仿 Google）；转发上游时必须去掉，由渠道 x-goog-api-key 鉴权。
+func sanitizeGeminiUpstreamQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	v, err := url.ParseQuery(raw)
+	if err != nil {
+		return ""
+	}
+	v.Del("key")
+	if len(v) == 0 {
+		return ""
+	}
+	return v.Encode()
+}
 
 func estimateAnthropicTokens(req *anthropic.Request) int {
 	var b strings.Builder
@@ -318,13 +335,18 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 	m := meta.GetByContext(c)
 	if m.ChannelType != channeltype.Gemini {
-		return openai.ErrorWrapper(fmt.Errorf("使用 Gemini 原生接口须选择 Google Gemini 渠道类型；路径示例 /gemini/v1beta/models/{model}:generateContent 或 /v1beta/models/…"), "channel_type_mismatch", http.StatusBadRequest)
+		return openai.ErrorWrapper(fmt.Errorf("使用 Gemini 原生接口须选择 Google Gemini 渠道类型；路径示例 /gemini/v1beta/models/{model}:generateContent、/gemini/models/{model}:generateContent 或 /v1beta/models/…"), "channel_type_mismatch", http.StatusBadRequest)
 	}
 
 	raw := strings.TrimPrefix(c.Param("geminiAction"), "/")
 	if raw == "" {
 		p := relaymode.NormalizeAPIPath(c.Request.URL.Path)
-		raw = strings.TrimPrefix(p, "/v1beta/models/")
+		for _, prefix := range []string{"/v1beta/models/", "/models/"} {
+			if strings.HasPrefix(p, prefix) {
+				raw = strings.TrimPrefix(p, prefix)
+				break
+			}
+		}
 		raw = strings.TrimPrefix(raw, "/")
 	}
 	idx := strings.LastIndex(raw, ":")
@@ -346,7 +368,7 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 
 	base := strings.TrimSuffix(m.BaseURL, "/")
 	m.OverrideRequestURL = fmt.Sprintf("%s/v1beta/models/%s:%s", base, mapped, action)
-	if q := c.Request.URL.RawQuery; q != "" {
+	if q := sanitizeGeminiUpstreamQuery(c.Request.URL.RawQuery); q != "" {
 		m.OverrideRequestURL += "?" + q
 	}
 

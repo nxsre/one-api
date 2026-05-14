@@ -102,4 +102,9 @@ func SetRelayRouter(router *gin.Engine) {
 	geminiPrefixed := router.Group("/gemini/v1beta/models")
 	stack(geminiPrefixed)
 	geminiPrefixed.POST("/*geminiAction", controller.RelayGeminiNative)
+
+	// 兼容将 base 配成 …/gemini 且路径为 /models/{model}:method（与 AI Studio / 部分 SDK 习惯一致，省略 v1beta）。
+	geminiModelsCompat := router.Group("/gemini/models")
+	stack(geminiModelsCompat)
+	geminiModelsCompat.POST("/*geminiAction", controller.RelayGeminiNative)
 }
