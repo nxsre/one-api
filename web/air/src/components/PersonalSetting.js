@@ -21,6 +21,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { getQuotaPerUnit, renderQuota, renderQuotaWithPrompt, stringToColor } from '../helpers/render';
 import TelegramLoginButton from 'react-telegram-login';
+import TwoFASetting from './TwoFASetting';
 
 const PersonalSetting = () => {
   const [userState, userDispatch] = useContext(UserContext);
@@ -396,6 +397,10 @@ const PersonalSetting = () => {
                 onClick={handleAffLinkClick}
                 readOnly
               />
+            </Card>
+            <Card>
+              <Typography.Title heading={6}>安全 · 两步验证（2FA）</Typography.Title>
+              <TwoFASetting />
             </Card>
             <Card>
               <Typography.Title heading={6}>个人信息</Typography.Title>

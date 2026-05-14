@@ -28,6 +28,7 @@ const SystemSetting = () => {
     PasswordLoginEnabled: '',
     PasswordRegisterEnabled: '',
     EmailVerificationEnabled: '',
+    Force2FAForAllUsers: '',
     GitHubOAuthEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
@@ -96,6 +97,7 @@ const SystemSetting = () => {
       case 'PasswordLoginEnabled':
       case 'PasswordRegisterEnabled':
       case 'EmailVerificationEnabled':
+      case 'Force2FAForAllUsers':
       case 'GitHubOAuthEnabled':
       case 'WeChatAuthEnabled':
       case 'TurnstileCheckEnabled':
@@ -333,6 +335,18 @@ const SystemSetting = () => {
                     checked={inputs.EmailVerificationEnabled === 'true'}
                     onChange={handleInputChange}
                     name="EmailVerificationEnabled"
+                  />
+                }
+              />
+            </Grid>
+            <Grid xs={12} md={3}>
+              <FormControlLabel
+                label="强制所有用户启用 MFA（两步验证）"
+                control={
+                  <Checkbox
+                    checked={inputs.Force2FAForAllUsers === 'true'}
+                    onChange={handleInputChange}
+                    name="Force2FAForAllUsers"
                   />
                 }
               />

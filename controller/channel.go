@@ -1,13 +1,16 @@
 package controller
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/helper"
-	"github.com/songquanpeng/one-api/model"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/helper"
+	"github.com/songquanpeng/one-api/model"
 )
 
 func GetAllChannels(c *gin.Context) {
@@ -72,6 +75,29 @@ func GetChannel(c *gin.Context) {
 		"data":    channel,
 	})
 	return
+}
+
+// GetChannelKey 返回渠道完整密钥；需先通过 POST /api/verify 完成二次验证（SecureVerificationRequired）。
+func GetChannelKey(c *gin.Context) {
+	userId := c.GetInt("id")
+	channelId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "渠道 ID 格式错误"})
+		return
+	}
+	channel, err := model.GetChannelById(channelId, true)
+	if err != nil || channel == nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "渠道不存在"})
+		return
+	}
+	model.RecordLog(c.Request.Context(), userId, model.LogTypeSystem, fmt.Sprintf("查看渠道密钥 (渠道ID: %d)", channelId))
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"key": channel.Key,
+		},
+	})
 }
 
 func AddChannel(c *gin.Context) {

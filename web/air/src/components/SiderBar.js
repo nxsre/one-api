@@ -124,8 +124,21 @@ const SiderBar = () => {
       localStorage.setItem('system_name', data.system_name);
       localStorage.setItem('logo', data.logo);
       localStorage.setItem('footer_html', data.footer_html);
-      localStorage.setItem('quota_per_unit', data.quota_per_unit);
-      localStorage.setItem('display_in_currency', data.display_in_currency);
+      const qpu = data.quota_per_unit;
+      const qpuStr =
+        qpu !== undefined &&
+        qpu !== null &&
+        Number.isFinite(Number(qpu)) &&
+        Number(qpu) > 0
+          ? String(qpu)
+          : String(500 * 1000);
+      localStorage.setItem('quota_per_unit', qpuStr);
+      localStorage.setItem(
+        'display_in_currency',
+        data.display_in_currency === true || data.display_in_currency === 'true'
+          ? 'true'
+          : 'false'
+      );
       localStorage.setItem('enable_drawing', data.enable_drawing);
       localStorage.setItem('enable_data_export', data.enable_data_export);
       localStorage.setItem('data_export_default_time', data.data_export_default_time);

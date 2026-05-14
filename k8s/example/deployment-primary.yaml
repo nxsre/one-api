@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: one-api-primary
+  namespace: one-api
+  labels:
+    app.kubernetes.io/name: one-api
+    app.kubernetes.io/component: primary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: one-api
+      app.kubernetes.io/component: primary
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: one-api
+        app.kubernetes.io/component: primary
+    spec:
+      containers:
+        - name: one-api
+          image: YOUR_REGISTRY/one-api:YOUR_TAG
+          args:
+            - "--config"
+            - "/etc/one-api/config.toml"
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            - name: TIKTOKEN_CACHE_DIR
+              value: /tiktoken-cache
+          volumeMounts:
+            - name: config
+              mountPath: /etc/one-api/config.toml
+              subPath: primary.toml
+              readOnly: true
+            - name: data-logs
+              mountPath: /data/logs
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+      volumes:
+        - name: config
+          secret:
+            secretName: one-api-config
+        - name: data-logs
+          emptyDir: {}

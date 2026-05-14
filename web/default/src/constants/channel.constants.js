@@ -86,6 +86,13 @@ export const CHANNEL_OPTIONS = [
   { key: 45, text: 'xAI', value: 45, color: 'blue' },
   { key: 46, text: 'Replicate', value: 46, color: 'blue' },
   {
+    key: 52,
+    text: 'AiPPT',
+    value: 52,
+    color: 'blue',
+    description: 'OpenAI 兼容：模型填 aippt-ppt，密钥支持 JSON 或 app_key|secret_key',
+  },
+  {
     key: 8,
     text: '自定义渠道',
     value: 8,

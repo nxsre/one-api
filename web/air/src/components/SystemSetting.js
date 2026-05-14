@@ -7,6 +7,7 @@ const SystemSetting = () => {
     PasswordLoginEnabled: '',
     PasswordRegisterEnabled: '',
     EmailVerificationEnabled: '',
+    Force2FAForAllUsers: '',
     GitHubOAuthEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
@@ -69,6 +70,7 @@ const SystemSetting = () => {
       case 'PasswordLoginEnabled':
       case 'PasswordRegisterEnabled':
       case 'EmailVerificationEnabled':
+      case 'Force2FAForAllUsers':
       case 'GitHubOAuthEnabled':
       case 'WeChatAuthEnabled':
       case 'TurnstileCheckEnabled':
@@ -302,6 +304,12 @@ const SystemSetting = () => {
               checked={inputs.EmailVerificationEnabled === 'true'}
               label='通过密码注册时需要进行邮箱验证'
               name='EmailVerificationEnabled'
+              onChange={handleInputChange}
+            />
+            <Form.Checkbox
+              checked={inputs.Force2FAForAllUsers === 'true'}
+              label='强制所有用户启用 MFA（两步验证）'
+              name='Force2FAForAllUsers'
               onChange={handleInputChange}
             />
             <Form.Checkbox

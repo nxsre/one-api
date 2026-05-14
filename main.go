@@ -3,15 +3,15 @@ package main
 import (
 	"embed"
 	"fmt"
-	"os"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/cfg"
 	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/i18n"
@@ -21,6 +21,7 @@ import (
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/router"
+	"github.com/songquanpeng/one-api/service"
 )
 
 //go:embed web/build/*
@@ -31,11 +32,16 @@ func main() {
 	logger.SetupLogger()
 	logger.SysLogf("One API %s started", common.Version)
 
-	if os.Getenv("GIN_MODE") != gin.DebugMode {
+	if strings.TrimSpace(cfg.V.GetString("gin_mode")) != gin.DebugMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	if config.DebugEnabled {
 		logger.SysLog("running in debug mode")
+	}
+
+	common.InitEmbeddedTLSFromEnv()
+	if err := common.InitLoginPasswordRSA(); err != nil {
+		logger.FatalLog("login RSA init error: " + err.Error())
 	}
 
 	// Initialize SQL Database
@@ -76,15 +82,10 @@ func main() {
 		go model.SyncOptions(config.SyncFrequency)
 		go model.SyncChannelCache(config.SyncFrequency)
 	}
-	if os.Getenv("CHANNEL_TEST_FREQUENCY") != "" {
-		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_TEST_FREQUENCY"))
-		if err != nil {
-			logger.FatalLog("failed to parse CHANNEL_TEST_FREQUENCY: " + err.Error())
-		}
-		go controller.AutomaticallyTestChannels(frequency)
+	if fq := cfg.V.GetInt("channel_test_frequency"); fq > 0 {
+		go controller.AutomaticallyTestChannels(fq)
 	}
-	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
-		config.BatchUpdateEnabled = true
+	if config.BatchUpdateEnabled {
 		logger.SysLog("batch update enabled with interval " + strconv.Itoa(config.BatchUpdateInterval) + "s")
 		model.InitBatchUpdater()
 	}
@@ -107,18 +108,50 @@ func main() {
 	server.Use(middleware.RequestId())
 	server.Use(middleware.Language())
 	middleware.SetUpLogger(server)
-	// Initialize session store
-	store := cookie.NewStore([]byte(config.SessionSecret))
+	store, err := common.NewGinSessionStore()
+	if err != nil {
+		logger.FatalLog("session store: " + err.Error())
+	}
+	sessionSecure := common.TLSCertFile != "" && common.HTTPSOnly
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 30,
+		HttpOnly: true,
+		Secure:   sessionSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
 	server.Use(sessions.Sessions("session", store))
 
 	router.SetRouter(server, buildFS)
-	var port = os.Getenv("PORT")
-	if port == "" {
-		port = strconv.Itoa(*common.Port)
-	}
-	logger.SysLogf("server started on http://localhost:%s", port)
-	err = server.Run(":" + port)
-	if err != nil {
-		logger.FatalLog("failed to start HTTP server: " + err.Error())
+	service.StartS3Cleaner()
+	port := strconv.Itoa(common.Port)
+	switch {
+	case common.TLSCertFile != "" && common.HTTPSOnly:
+		logger.SysLogf("server listening on https://0.0.0.0:%s", port)
+		err = server.RunTLS(":"+port, common.TLSCertFile, common.TLSKeyFile)
+		if err != nil {
+			logger.FatalLog("failed to start HTTPS server: " + err.Error())
+		}
+	case common.TLSCertFile != "" && !common.HTTPSOnly:
+		httpsPort := common.TLSDualHTTPSPort
+		if httpsPort == port {
+			logger.FatalLog("HTTP and HTTPS cannot share the same PORT; set HTTPS_PORT to a different port")
+		}
+		go func() {
+			if e := server.RunTLS(":"+httpsPort, common.TLSCertFile, common.TLSKeyFile); e != nil {
+				logger.FatalLog("failed to start HTTPS server: " + e.Error())
+			}
+		}()
+		logger.SysLogf("server listening on http://0.0.0.0:%s and https://0.0.0.0:%s", port, httpsPort)
+		err = server.Run(":" + port)
+		if err != nil {
+			logger.FatalLog("failed to start HTTP server: " + err.Error())
+		}
+	default:
+		logger.SysLogf("server started on http://localhost:%s", port)
+		err = server.Run(":" + port)
+		if err != nil {
+			logger.FatalLog("failed to start HTTP server: " + err.Error())
+		}
 	}
 }

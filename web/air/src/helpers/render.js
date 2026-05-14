@@ -31,14 +31,16 @@ export function renderGroup(group) {
 }
 
 export function renderNumber(num) {
-    if (num >= 1000000000) {
-        return (num / 1000000000).toFixed(1) + 'B';
-    } else if (num >= 1000000) {
-        return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 10000) {
-        return (num / 1000).toFixed(1) + 'k';
+    const n = Number(num);
+    const x = Number.isFinite(n) ? n : 0;
+    if (x >= 1000000000) {
+        return (x / 1000000000).toFixed(1) + 'B';
+    } else if (x >= 1000000) {
+        return (x / 1000000).toFixed(1) + 'M';
+    } else if (x >= 10000) {
+        return (x / 1000).toFixed(1) + 'k';
     } else {
-        return num;
+        return x;
     }
 }
 
@@ -80,32 +82,45 @@ export function renderNumberWithPoint(num) {
 }
 
 export function getQuotaPerUnit() {
-    let quotaPerUnit = localStorage.getItem('quota_per_unit');
-    quotaPerUnit = parseFloat(quotaPerUnit);
+    let quotaPerUnit = parseFloat(localStorage.getItem('quota_per_unit'));
+    if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+        return 500 * 1000;
+    }
     return quotaPerUnit;
 }
 
 export function getQuotaWithUnit(quota, digits = 6) {
-    let quotaPerUnit = localStorage.getItem('quota_per_unit');
-    quotaPerUnit = parseFloat(quotaPerUnit);
-    return (quota / quotaPerUnit).toFixed(digits);
+    let quotaPerUnit = parseFloat(localStorage.getItem('quota_per_unit'));
+    const safeQ = Number.isFinite(Number(quota)) ? Number(quota) : 0;
+    if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+        return safeQ.toFixed(digits);
+    }
+    return (safeQ / quotaPerUnit).toFixed(digits);
 }
 
 export function renderQuota(quota, digits = 2) {
-    let quotaPerUnit = localStorage.getItem('quota_per_unit');
+    let quotaPerUnit = parseFloat(localStorage.getItem('quota_per_unit'));
     let displayInCurrency = localStorage.getItem('display_in_currency');
-    quotaPerUnit = parseFloat(quotaPerUnit);
     displayInCurrency = displayInCurrency === 'true';
+    const safeQ = Number.isFinite(Number(quota)) ? Number(quota) : 0;
     if (displayInCurrency) {
-        return '$' + (quota / quotaPerUnit).toFixed(digits);
+        if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+            return renderNumber(safeQ);
+        }
+        return '$' + (safeQ / quotaPerUnit).toFixed(digits);
     }
-    return renderNumber(quota);
+    return renderNumber(safeQ);
 }
 
 export function renderQuotaWithPrompt(quota, digits) {
     let displayInCurrency = localStorage.getItem('display_in_currency');
     displayInCurrency = displayInCurrency === 'true';
+    let quotaPerUnit = parseFloat(localStorage.getItem('quota_per_unit'));
+    const safeQ = Number.isFinite(Number(quota)) ? Number(quota) : 0;
     if (displayInCurrency) {
+        if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+            return '';
+        }
         return `（等价金额：${renderQuota(quota, digits)}）`;
     }
     return '';

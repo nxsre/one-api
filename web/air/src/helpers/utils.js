@@ -79,7 +79,10 @@ export function showError(error) {
       switch (error.response.status) {
         case 401:
           // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
-          window.location.href = '/login?expired=true';
+          localStorage.removeItem('user');
+          if (window.location.pathname !== '/login') {
+            window.location.replace('/login?expired=true');
+          }
           break;
         case 429:
           Toast.error('错误：请求次数过多，请稍后再试！');
@@ -230,4 +233,15 @@ export function shouldShowPrompt(id) {
 
 export function setPromptShown(id) {
   localStorage.setItem(`prompt-${id}`, 'true');
+}
+
+/** 解析渠道「自定义模型」输入：逗号（中英文）、分号、换行分隔。 */
+export function splitModelNameList(raw) {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return [];
+  }
+  return raw
+    .split(/[\n\r\t,，;]+/u)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

@@ -16,6 +16,9 @@ import (
 )
 
 func GetStatus(c *gin.Context) {
+	config.OptionMapRWMutex.RLock()
+	outboundURLWhitelistEnabled := config.OptionMap["OutboundURLWhitelistEnabled"] == "true"
+	config.OptionMapRWMutex.RUnlock()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -42,8 +45,14 @@ func GetStatus(c *gin.Context) {
 			"oidc_client_id":              config.OidcClientId,
 			"oidc_well_known":             config.OidcWellKnown,
 			"oidc_authorization_endpoint": config.OidcAuthorizationEndpoint,
-			"oidc_token_endpoint":         config.OidcTokenEndpoint,
-			"oidc_userinfo_endpoint":      config.OidcUserinfoEndpoint,
+			"oidc_token_endpoint":           config.OidcTokenEndpoint,
+			"oidc_userinfo_endpoint":        config.OidcUserinfoEndpoint,
+			"login_password_rsa_public_key": common.LoginPasswordRSAPublicKeyPEM,
+			"force_2fa_for_all_users":       common.Force2FAForAllUsers,
+			"login_math_captcha":            common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled && config.PasswordLoginEnabled,
+			"secure_step_up_verify":         true,
+			"global_access_mode":             model.GetGlobalAccessMode(),
+			"outbound_url_whitelist_enabled": outboundURLWhitelistEnabled,
 		},
 	})
 	return

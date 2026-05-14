@@ -13,7 +13,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"os"
 	"strings"
 	"time"
 )
@@ -64,9 +63,7 @@ func CreateRootAccountIfNeed() error {
 	return nil
 }
 
-func chooseDB(envName string) (*gorm.DB, error) {
-	dsn := os.Getenv(envName)
-
+func chooseDB(dsn string) (*gorm.DB, error) {
 	switch {
 	case strings.HasPrefix(dsn, "postgres://"):
 		// Use PostgreSQL
@@ -94,9 +91,25 @@ func openPostgreSQL(dsn string) (*gorm.DB, error) {
 func openMySQL(dsn string) (*gorm.DB, error) {
 	logger.SysLog("using MySQL as database")
 	common.UsingMySQL = true
+	dsn = ensureMySQLTimeParams(dsn)
 	return gorm.Open(mysql.Open(dsn), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
 	})
+}
+
+func ensureMySQLTimeParams(dsn string) string {
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	if !strings.Contains(dsn, "parseTime=") {
+		dsn += sep + "parseTime=true"
+		sep = "&"
+	}
+	if !strings.Contains(dsn, "loc=") {
+		dsn += sep + "loc=Local"
+	}
+	return dsn
 }
 
 func openSQLite() (*gorm.DB, error) {
@@ -110,7 +123,7 @@ func openSQLite() (*gorm.DB, error) {
 
 func InitDB() {
 	var err error
-	DB, err = chooseDB("SQL_DSN")
+	DB, err = chooseDB(env.StringAlways("sql_dsn"))
 	if err != nil {
 		logger.FatalLog("failed to initialize database: " + err.Error())
 		return
@@ -139,7 +152,13 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Channel{}); err != nil {
 		return err
 	}
+	if err = migrateChannelModelMappingToText(); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&Token{}); err != nil {
+		return err
+	}
+	if err = migrateUserLegacyS3ColumnNames(); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&User{}); err != nil {
@@ -157,21 +176,99 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Log{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&Channel{}); err != nil {
+	if err = DB.AutoMigrate(&GlobalAccessWhitelist{}, &GlobalAccessBlacklist{}, &TwoFA{}, &TwoFABackupCode{}); err != nil {
 		return err
 	}
 	return nil
 }
 
+// migrateUserLegacyS3ColumnNames 将旧列 temp_s3_* 重命名为 s3_*（若存在）。
+func migrateUserLegacyS3ColumnNames() error {
+	var n int64
+	switch {
+	case common.UsingSQLite:
+		if err := DB.Raw(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'temp_s3_enabled'`).Scan(&n).Error; err != nil {
+			return err
+		}
+		if n == 0 {
+			return nil
+		}
+		sqlDB, err := DB.DB()
+		if err != nil {
+			return err
+		}
+		for _, stmt := range []string{
+			`ALTER TABLE users RENAME COLUMN temp_s3_enabled TO s3_enabled`,
+			`ALTER TABLE users RENAME COLUMN temp_s3_access_key TO s3_access_key`,
+			`ALTER TABLE users RENAME COLUMN temp_s3_secret_key TO s3_secret_key`,
+		} {
+			if _, err := sqlDB.Exec(stmt); err != nil {
+				return fmt.Errorf("sqlite migrate: %s: %w", stmt, err)
+			}
+		}
+		logger.SysLog("users: renamed legacy temp_s3_* columns to s3_*")
+		return nil
+	case common.UsingPostgreSQL:
+		if err := DB.Raw(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'temp_s3_enabled'`).Scan(&n).Error; err != nil {
+			return err
+		}
+	case common.UsingMySQL:
+		if err := DB.Raw(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'temp_s3_enabled'`).Scan(&n).Error; err != nil {
+			return err
+		}
+	default:
+		return nil
+	}
+	if n == 0 {
+		return nil
+	}
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return err
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE users RENAME COLUMN temp_s3_enabled TO s3_enabled`,
+		`ALTER TABLE users RENAME COLUMN temp_s3_access_key TO s3_access_key`,
+		`ALTER TABLE users RENAME COLUMN temp_s3_secret_key TO s3_secret_key`,
+	} {
+		if _, err := sqlDB.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate: %s: %w", stmt, err)
+		}
+	}
+	logger.SysLog("users: renamed legacy temp_s3_* columns to s3_*")
+	return nil
+}
+
+// migrateChannelModelMappingToText widens channels.model_mapping from legacy varchar(1024)
+// to TEXT so large JSON mappings do not fail (e.g. MySQL Error 1406 Data too long).
+func migrateChannelModelMappingToText() error {
+	if common.UsingSQLite {
+		return nil
+	}
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return err
+	}
+	switch {
+	case common.UsingMySQL:
+		_, err = sqlDB.Exec(`ALTER TABLE channels MODIFY COLUMN model_mapping TEXT`)
+	case common.UsingPostgreSQL:
+		_, err = sqlDB.Exec(`ALTER TABLE channels ALTER COLUMN model_mapping TYPE TEXT USING model_mapping::text`)
+	default:
+		return nil
+	}
+	return err
+}
+
 func InitLogDB() {
-	if os.Getenv("LOG_SQL_DSN") == "" {
+	if env.StringAlways("log_sql_dsn") == "" {
 		LOG_DB = DB
 		return
 	}
 
 	logger.SysLog("using secondary database for table logs")
 	var err error
-	LOG_DB, err = chooseDB("LOG_SQL_DSN")
+	LOG_DB, err = chooseDB(env.StringAlways("log_sql_dsn"))
 	if err != nil {
 		logger.FatalLog("failed to initialize secondary database: " + err.Error())
 		return
@@ -211,9 +308,9 @@ func setDBConns(db *gorm.DB) *sql.DB {
 		return nil
 	}
 
-	sqlDB.SetMaxIdleConns(env.Int("SQL_MAX_IDLE_CONNS", 100))
-	sqlDB.SetMaxOpenConns(env.Int("SQL_MAX_OPEN_CONNS", 1000))
-	sqlDB.SetConnMaxLifetime(time.Second * time.Duration(env.Int("SQL_MAX_LIFETIME", 60)))
+	sqlDB.SetMaxIdleConns(env.IntAlways("sql_max_idle_conns"))
+	sqlDB.SetMaxOpenConns(env.IntAlways("sql_max_open_conns"))
+	sqlDB.SetConnMaxLifetime(time.Second * time.Duration(env.IntAlways("sql_max_lifetime")))
 	return sqlDB
 }
 

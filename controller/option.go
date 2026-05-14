@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/i18n"
@@ -82,6 +83,14 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无法启用 Turnstile 校验，请先填入 Turnstile 校验相关配置信息！",
+			})
+			return
+		}
+	case "S3SiteEnabled":
+		if option.Value == "true" && !common.S3Enabled {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无法开启：S3 存储未就绪（可检查是否设置了 S3_DISABLED=true，或存储目录创建是否失败）。",
 			})
 			return
 		}

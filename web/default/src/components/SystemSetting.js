@@ -17,6 +17,7 @@ const SystemSetting = () => {
     PasswordLoginEnabled: '',
     PasswordRegisterEnabled: '',
     EmailVerificationEnabled: '',
+    Force2FAForAllUsers: '',
     GitHubOAuthEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
@@ -42,6 +43,7 @@ const SystemSetting = () => {
     RegisterEnabled: '',
     EmailDomainRestrictionEnabled: '',
     EmailDomainWhitelist: '',
+    S3SiteEnabled: '',
   });
   const [originInputs, setOriginInputs] = useState({});
   let [loading, setLoading] = useState(false);
@@ -84,11 +86,13 @@ const SystemSetting = () => {
       case 'PasswordLoginEnabled':
       case 'PasswordRegisterEnabled':
       case 'EmailVerificationEnabled':
+      case 'Force2FAForAllUsers':
       case 'GitHubOAuthEnabled':
       case 'WeChatAuthEnabled':
       case 'TurnstileCheckEnabled':
       case 'EmailDomainRestrictionEnabled':
       case 'RegisterEnabled':
+      case 'S3SiteEnabled':
         value = inputs[key] === 'true' ? 'false' : 'true';
         break;
       default:
@@ -349,6 +353,12 @@ const SystemSetting = () => {
               onChange={handleInputChange}
             />
             <Form.Checkbox
+              checked={inputs.Force2FAForAllUsers === 'true'}
+              label={t('setting.system.login.force_mfa')}
+              name='Force2FAForAllUsers'
+              onChange={handleInputChange}
+            />
+            <Form.Checkbox
               checked={inputs.GitHubOAuthEnabled === 'true'}
               label={t('setting.system.login.github_oauth')}
               name='GitHubOAuthEnabled'
@@ -372,6 +382,17 @@ const SystemSetting = () => {
               checked={inputs.TurnstileCheckEnabled === 'true'}
               label={t('setting.system.login.turnstile')}
               name='TurnstileCheckEnabled'
+              onChange={handleInputChange}
+            />
+          </Form.Group>
+          <Divider />
+          <Header as='h3'>{t('setting.system.s3.title')}</Header>
+          <Message>{t('setting.system.s3.subtitle')}</Message>
+          <Form.Group inline>
+            <Form.Checkbox
+              checked={inputs.S3SiteEnabled === 'true'}
+              label={t('setting.system.s3.enable_site')}
+              name='S3SiteEnabled'
               onChange={handleInputChange}
             />
           </Form.Group>

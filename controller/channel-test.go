@@ -26,9 +26,10 @@ import (
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/monitor"
 	"github.com/songquanpeng/one-api/relay"
+	"github.com/songquanpeng/one-api/relay/adaptor/aippt"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/channeltype"
-	"github.com/songquanpeng/one-api/relay/controller"
+	relayctl "github.com/songquanpeng/one-api/relay/controller"
 	"github.com/songquanpeng/one-api/relay/meta"
 	relaymodel "github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
@@ -66,6 +67,22 @@ func parseTestResponse(resp string) (*openai.TextResponse, string, error) {
 }
 
 func testChannel(ctx context.Context, channel *model.Channel, request *relaymodel.GeneralOpenAIRequest) (responseMessage string, err error, openaiErr *relaymodel.Error) {
+	if channel != nil && channel.Type == channeltype.AiPPT {
+		app, sec, uid, err := aippt.ParseChannelKey(channel.Key)
+		if err != nil {
+			return "", fmt.Errorf("AiPPT 密钥: %w", err), nil
+		}
+		cl := &aippt.Client{
+			BaseURL:   channel.GetBaseURL(),
+			AppKey:    app,
+			SecretKey: sec,
+			UID:       uid,
+		}
+		if err := cl.TestPresetList(); err != nil {
+			return "", err, nil
+		}
+		return "AiPPT 预置词接口检测通过", nil, nil
+	}
 	startTime := time.Now()
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -136,7 +153,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		return "", err, nil
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
-		err := controller.RelayErrorHandler(resp)
+		err := relayctl.RelayErrorHandler(resp)
 		errorMessage := err.Error.Message
 		if errorMessage != "" {
 			errorMessage = ", error message: " + errorMessage

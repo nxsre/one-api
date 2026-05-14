@@ -1,64 +1,62 @@
 package common
 
 import (
-	"flag"
 	"fmt"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
 	"log"
 	"os"
-	"path/filepath"
+	"strings"
+
+	"github.com/songquanpeng/one-api/common/cfg"
+	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/env"
+	"github.com/songquanpeng/one-api/common/logger"
 )
 
 var (
-	Port         = flag.Int("port", 3000, "the listening port")
-	PrintVersion = flag.Bool("version", false, "print version and exit")
-	PrintHelp    = flag.Bool("help", false, "print help and exit")
-	LogDir       = flag.String("log-dir", "./logs", "specify the log directory")
+	Port         int
+	PrintVersion bool
+	PrintHelp    bool
 )
 
 func printHelp() {
 	fmt.Println("One API " + Version + " - All in one API service for OpenAI API.")
 	fmt.Println("Copyright (C) 2023 JustSong. All rights reserved.")
 	fmt.Println("GitHub: https://github.com/songquanpeng/one-api")
-	fmt.Println("Usage: one-api [--port <port>] [--log-dir <log directory>] [--version] [--help]")
+	fmt.Println("Usage: one-api [--config path] [--port <port>] [--log-dir <dir>] [--version] [--help]")
 }
 
 func Init() {
-	flag.Parse()
-
-	if *PrintVersion {
-		fmt.Println(Version)
-		os.Exit(0)
+	if err := cfg.Init(); err != nil {
+		log.Fatal(err)
 	}
+	PrintVersion = cfg.PrintVersion
+	PrintHelp = cfg.PrintHelp
 
-	if *PrintHelp {
-		printHelp()
-		os.Exit(0)
-	}
+	cfg.MustExitForFlags(func() { fmt.Println(Version) }, func() { printHelp() }, os.Exit)
 
-	if os.Getenv("SESSION_SECRET") != "" {
-		if os.Getenv("SESSION_SECRET") == "random_string" {
-			logger.SysError("SESSION_SECRET is set to an example value, please change it to a random string.")
+	env.BindViper(cfg.V)
+	config.LoadRuntime()
+
+	Port = cfg.V.GetInt("port")
+
+	if secret := strings.TrimSpace(env.StringAlways("session_secret")); secret != "" {
+		if secret == "random_string" {
+			logger.SysError("session_secret is set to an example value, please change it to a random string.")
 		} else {
-			config.SessionSecret = os.Getenv("SESSION_SECRET")
+			config.SessionSecret = secret
 		}
 	}
-	if os.Getenv("SQLITE_PATH") != "" {
-		SQLitePath = os.Getenv("SQLITE_PATH")
+	if p := strings.TrimSpace(env.StringAlways("sqlite_path")); p != "" {
+		SQLitePath = p
 	}
-	if *LogDir != "" {
-		var err error
-		*LogDir, err = filepath.Abs(*LogDir)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if _, err := os.Stat(*LogDir); os.IsNotExist(err) {
-			err = os.Mkdir(*LogDir, 0777)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		logger.LogDir = *LogDir
+
+	SQLiteBusyTimeout = env.Int("SQLITE_BUSY_TIMEOUT", 3000)
+
+	if err := cfg.EnsureLogDir(); err != nil {
+		log.Fatal(err)
 	}
+	logger.LogDir = cfg.LogDir
+
+	InitSecurityEnv()
+	InitS3Config()
 }

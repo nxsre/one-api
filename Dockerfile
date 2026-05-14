@@ -1,4 +1,7 @@
-FROM --platform=$BUILDPLATFORM node:16 AS builder
+FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/library/node:24 AS builder
+
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry ${NPM_REGISTRY}
 
 WORKDIR /web
 COPY ./VERSION .
@@ -34,6 +37,9 @@ RUN go mod download
 COPY . .
 COPY --from=builder /web/build ./web/build
 
+ENV TIKTOKEN_CACHE_DIR=/build/tiktoken-cache
+RUN mkdir -p /build/tiktoken-cache && go run ./cmd/prefetch-tiktoken
+
 RUN go build -trimpath -ldflags "-s -w -X 'github.com/songquanpeng/one-api/common.Version=$(cat VERSION)' -linkmode external -extldflags '-static'" -o one-api
 
 FROM alpine:latest
@@ -41,6 +47,9 @@ FROM alpine:latest
 RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder2 /build/one-api /
+COPY --from=builder2 /build/tiktoken-cache /tiktoken-cache
+
+ENV TIKTOKEN_CACHE_DIR=/tiktoken-cache
 
 EXPOSE 3000
 WORKDIR /data

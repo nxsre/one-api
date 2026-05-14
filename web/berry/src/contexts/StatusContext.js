@@ -19,8 +19,21 @@ const StatusProvider = ({ children }) => {
         delete data.chat_link;
       }
       localStorage.setItem("siteInfo", JSON.stringify(data));
-      localStorage.setItem("quota_per_unit", data.quota_per_unit);
-      localStorage.setItem("display_in_currency", data.display_in_currency);
+      const qpu = data.quota_per_unit;
+      const qpuStr =
+        qpu !== undefined &&
+        qpu !== null &&
+        Number.isFinite(Number(qpu)) &&
+        Number(qpu) > 0
+          ? String(qpu)
+          : String(500 * 1000);
+      localStorage.setItem("quota_per_unit", qpuStr);
+      localStorage.setItem(
+        "display_in_currency",
+        data.display_in_currency === true || data.display_in_currency === "true"
+          ? "true"
+          : "false"
+      );
       dispatch({ type: SET_SITE_INFO, payload: data });
       if (
         data.version !== process.env.REACT_APP_VERSION &&

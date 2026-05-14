@@ -16,7 +16,7 @@ import (
 	"github.com/songquanpeng/one-api/middleware"
 	dbmodel "github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/monitor"
-	"github.com/songquanpeng/one-api/relay/controller"
+	relayctl "github.com/songquanpeng/one-api/relay/controller"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
 )
@@ -27,31 +27,40 @@ func relayHelper(c *gin.Context, relayMode int) *model.ErrorWithStatusCode {
 	var err *model.ErrorWithStatusCode
 	switch relayMode {
 	case relaymode.ImagesGenerations:
-		err = controller.RelayImageHelper(c, relayMode)
+		err = relayctl.RelayImageHelper(c, relayMode)
 	case relaymode.AudioSpeech:
 		fallthrough
 	case relaymode.AudioTranslation:
 		fallthrough
 	case relaymode.AudioTranscription:
-		err = controller.RelayAudioHelper(c, relayMode)
+		err = relayctl.RelayAudioHelper(c, relayMode)
 	case relaymode.Proxy:
-		err = controller.RelayProxyHelper(c, relayMode)
+		err = relayctl.RelayProxyHelper(c, relayMode)
 	default:
-		err = controller.RelayTextHelper(c)
+		err = relayctl.RelayTextHelper(c)
 	}
 	return err
 }
 
 func Relay(c *gin.Context) {
-	ctx := c.Request.Context()
 	relayMode := relaymode.GetByPath(c.Request.URL.Path)
+	relayWithRetry(c, func(c *gin.Context) *model.ErrorWithStatusCode {
+		return relayHelper(c, relayMode)
+	})
+}
+
+func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStatusCode) {
+	ctx := c.Request.Context()
 	if config.DebugEnabled {
 		requestBody, _ := common.GetRequestBody(c)
 		logger.Debugf(ctx, "request body: %s", string(requestBody))
 	}
 	channelId := c.GetInt(ctxkey.ChannelId)
 	userId := c.GetInt(ctxkey.Id)
-	bizErr := relayHelper(c, relayMode)
+	bizErr := exec(c)
+	if bizErr != nil && bizErr.StatusCode == -1 {
+		return
+	}
 	if bizErr == nil {
 		monitor.Emit(channelId, true)
 		return
@@ -80,8 +89,12 @@ func Relay(c *gin.Context) {
 		middleware.SetupContextForSelectedChannel(c, channel, originalModel)
 		requestBody, err := common.GetRequestBody(c)
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-		bizErr = relayHelper(c, relayMode)
+		bizErr = exec(c)
+		if bizErr != nil && bizErr.StatusCode == -1 {
+			return
+		}
 		if bizErr == nil {
+			monitor.Emit(channelId, true)
 			return
 		}
 		channelId := c.GetInt(ctxkey.ChannelId)

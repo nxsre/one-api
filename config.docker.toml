@@ -1,0 +1,29 @@
+# Docker Compose 配套配置：由 docker-compose 挂载为容器内 /app/config.toml。
+# 本地可复制为 config.toml 并自行修改；键名与 config.example.toml 一致（snake_case）。
+
+port = 3000
+log_dir = "/app/logs"
+gin_mode = ""
+
+# 与 compose 中 MySQL 服务一致（修改密码时请同步改 db 服务与这里）
+sql_dsn = "oneapi:123456@tcp(db:3306)/one-api"
+
+redis_conn_string = "redis://redis:6379/0"
+
+# 生产环境请改为足够长的随机串
+session_secret = "99999999999999999"
+
+# 多机部署时：node_type = "slave"
+# node_type = ""
+
+# 可选：从节点外置前端
+# frontend_base_url = "https://openai.justsong.cn"
+
+# 需要更频繁同步 option/channel 缓存时：
+# sync_frequency = 60
+
+sqlite_path = ""
+redis_disabled = false
+s3_disabled = false
+s3_region = "us-east-1" # 与前端开启 S3 时返回的 region、以及 s5cmd/AWS SDK 的 region 一致
+s3_clock_skew_seconds = 1800 # 30 分钟；与 config.example.toml 一致

@@ -51,6 +51,9 @@ type User struct {
 	Group            string `json:"group" gorm:"type:varchar(32);default:'default'"`
 	AffCode          string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	InviterId        int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	S3Enabled    bool    `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
+	S3AccessKey  *string `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
+	S3SecretKey  *string `json:"-" gorm:"size:128;column:s3_secret_key"`
 }
 
 func GetMaxUserId() int {
@@ -60,7 +63,7 @@ func GetMaxUserId() int {
 }
 
 func GetAllUsers(startIdx int, num int, order string) (users []*User, err error) {
-	query := DB.Limit(num).Offset(startIdx).Omit("password").Where("status != ?", UserStatusDeleted)
+	query := DB.Limit(num).Offset(startIdx).Omit("password", "S3SecretKey").Where("status != ?", UserStatusDeleted)
 
 	switch order {
 	case "quota":
@@ -79,9 +82,9 @@ func GetAllUsers(startIdx int, num int, order string) (users []*User, err error)
 
 func SearchUsers(keyword string) (users []*User, err error) {
 	if !common.UsingPostgreSQL {
-		err = DB.Omit("password").Where("id = ? or username LIKE ? or email LIKE ? or display_name LIKE ?", keyword, keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
+		err = DB.Omit("password", "S3SecretKey").Where("id = ? or username LIKE ? or email LIKE ? or display_name LIKE ?", keyword, keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
 	} else {
-		err = DB.Omit("password").Where("username LIKE ? or email LIKE ? or display_name LIKE ?", keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
+		err = DB.Omit("password", "S3SecretKey").Where("username LIKE ? or email LIKE ? or display_name LIKE ?", keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
 	}
 	return users, err
 }
@@ -95,7 +98,7 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 	if selectAll {
 		err = DB.First(&user, "id = ?", id).Error
 	} else {
-		err = DB.Omit("password", "access_token").First(&user, "id = ?", id).Error
+		err = DB.Omit("password", "access_token", "S3SecretKey").First(&user, "id = ?", id).Error
 	}
 	return &user, err
 }

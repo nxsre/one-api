@@ -146,17 +146,24 @@ export function timestamp2string(timestamp) {
 }
 
 export function calculateQuota(quota, digits = 2) {
-    let quotaPerUnit = localStorage.getItem('quota_per_unit');
-    quotaPerUnit = parseFloat(quotaPerUnit);
-
-    return (quota / quotaPerUnit).toFixed(digits);
+    const safeQ = Number.isFinite(Number(quota)) ? Number(quota) : 0;
+    let quotaPerUnit = parseFloat(localStorage.getItem('quota_per_unit'));
+    if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+        quotaPerUnit = 500 * 1000;
+    }
+    return (safeQ / quotaPerUnit).toFixed(digits);
 }
 
 export function renderQuota(quota, digits = 2) {
     let displayInCurrency = localStorage.getItem('display_in_currency');
     displayInCurrency = displayInCurrency === 'true';
+    const safeQ = Number.isFinite(Number(quota)) ? Number(quota) : 0;
+    let quotaPerUnit = parseFloat(localStorage.getItem('quota_per_unit'));
     if (displayInCurrency) {
-        return '$' + calculateQuota(quota, digits);
+        if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+            return renderNumber(safeQ);
+        }
+        return '$' + (safeQ / quotaPerUnit).toFixed(digits);
     }
     return renderNumber(quota);
 }
@@ -171,14 +178,16 @@ export const verifyJSON = (str) => {
 };
 
 export function renderNumber(num) {
-    if (num >= 1000000000) {
-        return (num / 1000000000).toFixed(1) + 'B';
-    } else if (num >= 1000000) {
-        return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 10000) {
-        return (num / 1000).toFixed(1) + 'k';
+    const n = Number(num);
+    const x = Number.isFinite(n) ? n : 0;
+    if (x >= 1000000000) {
+        return (x / 1000000000).toFixed(1) + 'B';
+    } else if (x >= 1000000) {
+        return (x / 1000000).toFixed(1) + 'M';
+    } else if (x >= 10000) {
+        return (x / 1000).toFixed(1) + 'k';
     } else {
-        return num;
+        return x;
     }
 }
 

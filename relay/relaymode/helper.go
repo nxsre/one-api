@@ -2,7 +2,22 @@ package relaymode
 
 import "strings"
 
+// NormalizeAPIPath strips service prefix /openai, /anthropic, or /gemini so routing logic matches legacy /v1… paths.
+func NormalizeAPIPath(path string) string {
+	if strings.HasPrefix(path, "/openai/") {
+		return strings.TrimPrefix(path, "/openai")
+	}
+	if strings.HasPrefix(path, "/anthropic/") {
+		return strings.TrimPrefix(path, "/anthropic")
+	}
+	if strings.HasPrefix(path, "/gemini/") {
+		return strings.TrimPrefix(path, "/gemini")
+	}
+	return path
+}
+
 func GetByPath(path string) int {
+	path = NormalizeAPIPath(path)
 	relayMode := Unknown
 	if strings.HasPrefix(path, "/v1/chat/completions") {
 		relayMode = ChatCompletions
@@ -26,6 +41,10 @@ func GetByPath(path string) int {
 		relayMode = AudioTranslation
 	} else if strings.HasPrefix(path, "/v1/oneapi/proxy") {
 		relayMode = Proxy
+	} else if strings.HasPrefix(path, "/v1/messages") {
+		relayMode = AnthropicMessages
+	} else if strings.HasPrefix(path, "/v1beta/models/") {
+		relayMode = GeminiGenerate
 	}
 	return relayMode
 }

@@ -2,16 +2,38 @@ package client
 
 import (
 	"fmt"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/logger"
 )
 
 var HTTPClient *http.Client
 var ImpatientHTTPClient *http.Client
 var UserContentRequestHTTPClient *http.Client
+
+type outboundCheckTransport struct {
+	*http.Transport
+}
+
+func (o *outboundCheckTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req != nil && req.URL != nil {
+		if err := common.RunGlobalOutboundURLCheck(req.URL.String()); err != nil {
+			return nil, err
+		}
+	}
+	return o.Transport.RoundTrip(req)
+}
+
+func wrapRelayTransport(t *http.Transport) http.RoundTripper {
+	if t == nil {
+		return nil
+	}
+	return &outboundCheckTransport{Transport: t}
+}
 
 func Init() {
 	if config.UserContentRequestProxy != "" {
@@ -30,31 +52,29 @@ func Init() {
 	} else {
 		UserContentRequestHTTPClient = &http.Client{}
 	}
-	var transport http.RoundTripper
+
+	base := http.DefaultTransport.(*http.Transport).Clone()
 	if config.RelayProxy != "" {
 		logger.SysLog(fmt.Sprintf("using %s as api relay proxy", config.RelayProxy))
 		proxyURL, err := url.Parse(config.RelayProxy)
 		if err != nil {
-			logger.FatalLog(fmt.Sprintf("USER_CONTENT_REQUEST_PROXY set but invalid: %s", config.UserContentRequestProxy))
+			logger.FatalLog(fmt.Sprintf("RELAY_PROXY set but invalid: %s", config.RelayProxy))
 		}
-		transport = &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
-		}
+		base.Proxy = http.ProxyURL(proxyURL)
 	}
+	relayTransport := wrapRelayTransport(base)
 
 	if config.RelayTimeout == 0 {
-		HTTPClient = &http.Client{
-			Transport: transport,
-		}
+		HTTPClient = &http.Client{Transport: relayTransport}
 	} else {
 		HTTPClient = &http.Client{
 			Timeout:   time.Duration(config.RelayTimeout) * time.Second,
-			Transport: transport,
+			Transport: relayTransport,
 		}
 	}
 
 	ImpatientHTTPClient = &http.Client{
 		Timeout:   5 * time.Second,
-		Transport: transport,
+		Transport: relayTransport,
 	}
 }

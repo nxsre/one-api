@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -7,6 +7,10 @@ import { useTheme } from '@mui/material/styles';
 import {
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   FormHelperText,
@@ -16,6 +20,7 @@ import {
   InputLabel,
   OutlinedInput,
   Stack,
+  TextField,
   Typography,
   useMediaQuery
 } from '@mui/material';
@@ -37,18 +42,89 @@ import Github from 'assets/images/icons/github.svg';
 import Wechat from 'assets/images/icons/wechat.svg';
 import Lark from 'assets/images/icons/lark.svg';
 import OIDC from 'assets/images/icons/oidc.svg';
-import { onGitHubOAuthClicked, onLarkOAuthClicked, onOidcClicked } from 'utils/common';
+import { onGitHubOAuthClicked, onLarkOAuthClicked, onOidcClicked, showInfo, showWarning } from 'utils/common';
+import { API } from 'utils/api';
 
 // ============================|| FIREBASE - LOGIN ||============================ //
 
 const LoginForm = ({ ...others }) => {
   const theme = useTheme();
-  const { login, wechatLogin } = useLogin();
+  const { login, wechatLogin, verify2FALogin } = useLogin();
   const [openWechat, setOpenWechat] = useState(false);
   const matchDownSM = useMediaQuery(theme.breakpoints.down('md'));
   const customization = useSelector((state) => state.customization);
   const siteInfo = useSelector((state) => state.siteInfo);
-  // const [checked, setChecked] = useState(true);
+
+  const [captchaMasterSrc, setCaptchaMasterSrc] = useState('');
+  const [captchaThumbSrc, setCaptchaThumbSrc] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [captchaLoadError, setCaptchaLoadError] = useState('');
+  const [captchaDotNum, setCaptchaDotNum] = useState(0);
+  const [captchaChallengeId, setCaptchaChallengeId] = useState('');
+  const [captchaClicks, setCaptchaClicks] = useState([]);
+  const [captchaMasterNaturalSize, setCaptchaMasterNaturalSize] = useState({ w: 0, h: 0 });
+  const loginRequestProofRef = useRef(null);
+  const [showTwoFA, setShowTwoFA] = useState(false);
+  const [twoFACode, setTwoFACode] = useState('');
+
+  const turnstileOn = !!siteInfo.turnstile_check;
+
+  const loadLoginCaptcha = useCallback(async () => {
+    if (!siteInfo.login_math_captcha || turnstileOn) return;
+    setCaptchaLoadError('');
+    setCaptchaLoading(true);
+    try {
+      const res = await API.get('/api/user/login/captcha');
+      const d = res.data?.data;
+      if (res.data?.success && d?.master_image && d?.thumb_image) {
+        setCaptchaMasterNaturalSize({ w: 0, h: 0 });
+        setCaptchaMasterSrc(d.master_image);
+        setCaptchaThumbSrc(d.thumb_image);
+        setCaptchaDotNum(Number(d.dot_num) || 0);
+        setCaptchaChallengeId(d.captcha_id || '');
+        setCaptchaClicks([]);
+        setCaptchaLoadError('');
+        if (d.login_request_id && d.login_request_sig != null && d.login_request_ts != null) {
+          loginRequestProofRef.current = {
+            id: d.login_request_id,
+            ts: Number(d.login_request_ts),
+            sig: d.login_request_sig
+          };
+        } else {
+          loginRequestProofRef.current = null;
+        }
+      } else {
+        setCaptchaMasterSrc('');
+        setCaptchaThumbSrc('');
+        setCaptchaDotNum(0);
+        setCaptchaChallengeId('');
+        setCaptchaClicks([]);
+        loginRequestProofRef.current = null;
+        setCaptchaLoadError(
+          (res.data?.message && String(res.data.message).trim()) || '验证码加载失败，请稍后重试'
+        );
+      }
+    } catch {
+      setCaptchaLoadError('验证码加载失败，请稍后重试');
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, [siteInfo.login_math_captcha, turnstileOn]);
+
+  useEffect(() => {
+    if (siteInfo.login_math_captcha && !turnstileOn) {
+      void loadLoginCaptcha();
+    }
+  }, [siteInfo.login_math_captcha, turnstileOn, loadLoginCaptcha]);
+
+  const onMasterCaptchaClick = (e) => {
+    if (!siteInfo.login_math_captcha || turnstileOn) return;
+    if (!captchaDotNum || captchaClicks.length >= captchaDotNum) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setCaptchaClicks((prev) => [...prev, { x, y }]);
+  };
 
   let tripartiteLogin = false;
   if (siteInfo.github_oauth || siteInfo.wechat_login || siteInfo.lark_client_id || siteInfo.oidc) {
@@ -213,13 +289,47 @@ const LoginForm = ({ ...others }) => {
           password: Yup.string().max(255).required('Password is required')
         })}
         onSubmit={async (values, { setErrors, setStatus, setSubmitting }) => {
-          const { success, message } = await login(values.username, values.password);
+          if (siteInfo.login_math_captcha && !turnstileOn) {
+            if (!captchaMasterSrc) {
+              showInfo(captchaLoading ? '加载验证码中…' : captchaLoadError || '请先加载验证码');
+              setSubmitting(false);
+              return;
+            }
+            if (!captchaDotNum || captchaClicks.length !== captchaDotNum) {
+              showInfo('请按顺序完成图形验证码');
+              setSubmitting(false);
+              return;
+            }
+          }
+          let proof = loginRequestProofRef.current;
+          if (!(siteInfo.login_math_captcha && !turnstileOn)) {
+            proof = null;
+          }
+          const captcha =
+            siteInfo.login_math_captcha && !turnstileOn && captchaMasterSrc
+              ? { captcha_id: captchaChallengeId, captcha_clicks: captchaClicks }
+              : undefined;
+          const { success, message, require2FA } = await login(
+            values.username,
+            values.password,
+            captcha,
+            proof
+          );
+          if (require2FA) {
+            setShowTwoFA(true);
+            setTwoFACode('');
+            setSubmitting(false);
+            return;
+          }
           if (success) {
             setStatus({ success: true });
           } else {
             setStatus({ success: false });
             if (message) {
               setErrors({ submit: message });
+            }
+            if (siteInfo.login_math_captcha && !turnstileOn) {
+              void loadLoginCaptcha();
             }
           }
           setSubmitting(false);
@@ -276,6 +386,78 @@ const LoginForm = ({ ...others }) => {
                 </FormHelperText>
               )}
             </FormControl>
+
+            {siteInfo.login_math_captcha && !turnstileOn && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  图形验证：按缩略图顺序点击主图
+                </Typography>
+                {captchaThumbSrc ? (
+                  <Box sx={{ mb: 1 }}>
+                    <img src={captchaThumbSrc} alt="" style={{ maxHeight: 56 }} />
+                  </Box>
+                ) : null}
+                {captchaMasterSrc ? (
+                  <Box sx={{ position: 'relative', display: 'inline-block' }}>
+                    <img
+                      src={captchaMasterSrc}
+                      alt=""
+                      style={{ maxWidth: '100%', cursor: 'crosshair' }}
+                      onLoad={(ev) => {
+                        setCaptchaMasterNaturalSize({
+                          w: ev.target.naturalWidth,
+                          h: ev.target.naturalHeight
+                        });
+                      }}
+                      onClick={onMasterCaptchaClick}
+                    />
+                    {captchaMasterNaturalSize.w > 0 &&
+                      captchaMasterNaturalSize.h > 0 &&
+                      captchaClicks.map((p, i) => (
+                        <Box
+                          key={i}
+                          sx={{
+                            position: 'absolute',
+                            left: `${(p.x / captchaMasterNaturalSize.w) * 100}%`,
+                            top: `${(p.y / captchaMasterNaturalSize.h) * 100}%`,
+                            transform: 'translate(-50%, -50%)',
+                            width: 22,
+                            height: 22,
+                            borderRadius: '50%',
+                            border: '2px solid',
+                            borderColor: 'primary.main',
+                            bgcolor: 'rgba(25,118,210,0.2)',
+                            color: 'common.white',
+                            fontSize: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700
+                          }}
+                        >
+                          {i + 1}
+                        </Box>
+                      ))}
+                  </Box>
+                ) : (
+                  <Typography variant="caption" color="textSecondary">
+                    {captchaLoading ? '加载验证码中…' : captchaLoadError || '点击刷新加载验证码'}
+                  </Typography>
+                )}
+                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                  已点击 {captchaClicks.length}/{captchaDotNum || '—'}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                  <Button size="small" variant="outlined" onClick={() => setCaptchaClicks([])}>
+                    清除点击
+                  </Button>
+                  <Button size="small" variant="contained" onClick={() => void loadLoginCaptcha()}>
+                    刷新题目
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
               {/* <FormControlLabel
                 control={
@@ -309,6 +491,42 @@ const LoginForm = ({ ...others }) => {
           </form>
         )}
       </Formik>
+      <Dialog open={showTwoFA} onClose={() => setShowTwoFA(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>两步验证</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            请输入认证器 6 位验证码或 8 位备用码
+          </Typography>
+          <TextField
+            fullWidth
+            autoFocus
+            value={twoFACode}
+            onChange={(e) => setTwoFACode(e.target.value)}
+            placeholder="验证码 / 备用码"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowTwoFA(false)}>取消</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!twoFACode.trim()) {
+                showWarning('请输入验证码或备用码');
+                return;
+              }
+              const { success, message } = await verify2FALogin(twoFACode);
+              if (!success && message) {
+                showInfo(message);
+              }
+              if (success) {
+                setShowTwoFA(false);
+              }
+            }}
+          >
+            确认登录
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

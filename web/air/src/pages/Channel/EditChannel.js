@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {API, isMobile, showError, showInfo, showSuccess, verifyJSON} from '../../helpers';
+import {API, isMobile, showError, showInfo, showSuccess, verifyJSON, splitModelNameList} from '../../helpers';
 import {CHANNEL_OPTIONS} from '../../constants';
 import Title from "@douyinfe/semi-ui/lib/es/typography/title";
 import {SideSheet, Space, Spin, Button, Input, Typography, Select, TextArea, Checkbox, Banner} from "@douyinfe/semi-ui";
@@ -59,8 +59,7 @@ const EditChannel = (props) => {
     const [fullModels, setFullModels] = useState([]);
     const [customModel, setCustomModel] = useState('');
     const handleInputChange = (name, value) => {
-        setInputs((inputs) => ({...inputs, [name]: value}));
-        if (name === 'type' && inputs.models.length === 0) {
+        if (name === 'type') {
             let localModels = [];
             switch (value) {
                 case 14:
@@ -119,9 +118,15 @@ const EditChannel = (props) => {
                     ];
                     break;
             }
-            setInputs((inputs) => ({...inputs, models: localModels}));
+            setInputs((prev) => {
+                const typeChanged = prev.type !== value;
+                const nextModels =
+                  typeChanged && prev.models.length === 0 ? localModels : prev.models;
+                return {...prev, type: value, models: nextModels};
+            });
+            return;
         }
-        //setAutoBan
+        setInputs((inputs) => ({...inputs, [name]: value}));
     };
 
 
@@ -133,7 +138,14 @@ const EditChannel = (props) => {
             if (data.models === '') {
                 data.models = [];
             } else {
-                data.models = data.models.split(',');
+                data.models = [
+                  ...new Set(
+                    data.models
+                      .split(',')
+                      .map((id) => id.trim())
+                      .filter(Boolean)
+                  ),
+                ];
             }
             if (data.group === '') {
                 data.groups = [];
@@ -188,7 +200,7 @@ const EditChannel = (props) => {
     useEffect(() => {
         let localModelOptions = [...originModelOptions];
         inputs.models.forEach((model) => {
-            if (!localModelOptions.find((option) => option.key === model)) {
+            if (!localModelOptions.find((option) => option.value === model)) {
                 localModelOptions.push({
                     label: model,
                     value: model
@@ -266,19 +278,23 @@ const EditChannel = (props) => {
     };
 
     const addCustomModel = () => {
-        if (customModel.trim() === '') return;
-        if (inputs.models.includes(customModel)) return showError("该模型已存在！");
-        let localModels = [...inputs.models];
-        localModels.push(customModel);
-        let localModelOptions = [];
-        localModelOptions.push({
-            key: customModel,
-            text: customModel,
-            value: customModel
-        });
-        setModelOptions(modelOptions => {
-            return [...modelOptions, ...localModelOptions];
-        });
+        const names = splitModelNameList(customModel);
+        if (names.length === 0) return;
+        const localModels = [...inputs.models];
+        const newOptions = [];
+        for (const name of names) {
+            if (localModels.includes(name)) continue;
+            localModels.push(name);
+            newOptions.push({
+                key: name,
+                text: name,
+                value: name,
+            });
+        }
+        if (newOptions.length === 0) {
+            return showError('输入的模型均已存在于列表中');
+        }
+        setModelOptions(modelOptions => [...modelOptions, ...newOptions]);
         setCustomModel('');
         handleInputChange('models', localModels);
     };
@@ -473,16 +489,17 @@ const EditChannel = (props) => {
                                 handleInputChange('models', []);
                             }}>清除所有模型</Button>
                         </Space>
-                        <Input
-                          addonAfter={
-                              <Button type='primary' onClick={addCustomModel}>填入</Button>
-                          }
-                          placeholder='输入自定义模型名称'
+                        <TextArea
+                          placeholder="多条用英文逗号、中文逗号、分号或换行分隔，例如：model-a,model-b"
                           value={customModel}
-                          onChange={(value) => {
-                              setCustomModel(value.trim());
+                          onChange={(value) => setCustomModel(value)}
+                          autosize={{ minRows: 2, maxRows: 12 }}
+                          style={{
+                            width: '100%',
+                            marginTop: 8,
                           }}
                         />
+                        <Button type='primary' style={{ marginTop: 8 }} onClick={addCustomModel}>填入</Button>
                     </div>
                     <div style={{ marginTop: 10 }}>
                         <Typography.Text strong>模型重定向：</Typography.Text>

@@ -8,6 +8,7 @@ import (
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/network"
 	"github.com/songquanpeng/one-api/model"
+	"github.com/songquanpeng/one-api/relay/relaymode"
 	"net/http"
 	"strings"
 )
@@ -62,6 +63,16 @@ func authHelper(c *gin.Context, minRole int) {
 			"message": "无权进行此操作，权限不足",
 		})
 		c.Abort()
+		return
+	}
+	uid, uok := sessionInt(id)
+	rid, rok := sessionInt(role)
+	if !uok || !rok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "会话数据异常"})
+		c.Abort()
+		return
+	}
+	if !CheckForce2FAWebSession(c, uid, rid) {
 		return
 	}
 	c.Set("username", username)
@@ -146,21 +157,32 @@ func TokenAuth() func(c *gin.Context) {
 			c.Set(ctxkey.SpecificChannelId, channelId)
 		}
 
+		if !CheckForce2FATokenAuth(c, token.UserId) {
+			return
+		}
+
 		c.Next()
 	}
 }
 
 func shouldCheckModel(c *gin.Context) bool {
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/completions") {
+	p := relaymode.NormalizeAPIPath(c.Request.URL.Path)
+	if strings.HasPrefix(p, "/v1/completions") {
 		return true
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/chat/completions") {
+	if strings.HasPrefix(p, "/v1/chat/completions") {
 		return true
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/images") {
+	if strings.HasPrefix(p, "/v1/images") {
 		return true
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/audio") {
+	if strings.HasPrefix(p, "/v1/audio") {
+		return true
+	}
+	if strings.HasPrefix(p, "/v1/messages") {
+		return true
+	}
+	if strings.HasPrefix(p, "/v1beta/models/") {
 		return true
 	}
 	return false

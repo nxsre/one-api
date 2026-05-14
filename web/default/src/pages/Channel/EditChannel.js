@@ -1,8 +1,19 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Button, Card, Form, Input, Message} from 'semantic-ui-react';
+import {Button, Card, Form, Message, Modal} from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {API, copy, getChannelModels, showError, showInfo, showSuccess, verifyJSON,} from '../../helpers';
+import {
+  API,
+  copy,
+  getChannelModels,
+  splitModelNameList,
+  showError,
+  showInfo,
+  showSuccess,
+  verifyJSON,
+  verifyStepUp2FA,
+  fetchChannelKeyAfterVerify,
+} from '../../helpers';
 import {CHANNEL_OPTIONS} from '../../constants';
 import {renderChannelTip} from '../../helpers/render';
 
@@ -22,6 +33,8 @@ function type2secretPrompt(type, t) {
       return t('channel.edit.key_prompts.fastgpt');
     case 23:
       return t('channel.edit.key_prompts.tencent');
+    case 52:
+      return t('channel.edit.key_prompts.aippt');
     default:
       return t('channel.edit.key_prompts.default');
   }
@@ -38,6 +51,40 @@ const EditChannel = () => {
     navigate('/channel');
   };
 
+  const openLoadKeyModal = async () => {
+    try {
+      const res = await API.get('/api/user/2fa/status');
+      if (!res.data?.success || !res.data?.data?.enabled) {
+        showInfo(t('channel.edit.load_key_need_2fa'));
+        return;
+      }
+      setLoadKeyCode('');
+      setLoadKeyOpen(true);
+    } catch (e) {
+      showError(e.message || '无法检查两步验证状态');
+    }
+  };
+
+  const submitLoadKey = async () => {
+    if (!loadKeyCode.trim()) {
+      showInfo(t('channel.edit.load_key_code_required'));
+      return;
+    }
+    setLoadKeyBusy(true);
+    try {
+      await verifyStepUp2FA(loadKeyCode);
+      const key = await fetchChannelKeyAfterVerify(channelId);
+      setInputs((prev) => ({ ...prev, key }));
+      setLoadKeyOpen(false);
+      setLoadKeyCode('');
+      showSuccess(t('channel.edit.load_key_success'));
+    } catch (e) {
+      showError(e.message || '加载失败');
+    } finally {
+      setLoadKeyBusy(false);
+    }
+  };
+
   const originInputs = {
     name: '',
     type: 1,
@@ -50,6 +97,9 @@ const EditChannel = () => {
     groups: ['default'],
   };
   const [batch, setBatch] = useState(false);
+  const [loadKeyOpen, setLoadKeyOpen] = useState(false);
+  const [loadKeyCode, setLoadKeyCode] = useState('');
+  const [loadKeyBusy, setLoadKeyBusy] = useState(false);
   const [inputs, setInputs] = useState(originInputs);
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
@@ -66,14 +116,18 @@ const EditChannel = () => {
     vertex_ai_adc: '',
   });
   const handleInputChange = (e, { name, value }) => {
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
     if (name === 'type') {
-      let localModels = getChannelModels(value);
-      if (inputs.models.length === 0) {
-        setInputs((inputs) => ({ ...inputs, models: localModels }));
-      }
+      const localModels = getChannelModels(value);
       setBasicModels(localModels);
+      setInputs((prev) => {
+        const typeChanged = prev.type !== value;
+        const models =
+          typeChanged && prev.models.length === 0 ? localModels : prev.models;
+        return { ...prev, type: value, models };
+      });
+      return;
     }
+    setInputs((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleConfigChange = (e, { name, value }) => {
@@ -87,7 +141,14 @@ const EditChannel = () => {
       if (data.models === '') {
         data.models = [];
       } else {
-        data.models = data.models.split(',');
+        data.models = [
+          ...new Set(
+            data.models
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean)
+          ),
+        ];
       }
       if (data.group === '') {
         data.groups = [];
@@ -230,19 +291,20 @@ const EditChannel = () => {
   };
 
   const addCustomModel = () => {
-    if (customModel.trim() === '') return;
-    if (inputs.models.includes(customModel)) return;
-    let localModels = [...inputs.models];
-    localModels.push(customModel);
-    let localModelOptions = [];
-    localModelOptions.push({
-      key: customModel,
-      text: customModel,
-      value: customModel,
-    });
-    setModelOptions((modelOptions) => {
-      return [...modelOptions, ...localModelOptions];
-    });
+    const names = splitModelNameList(customModel);
+    if (names.length === 0) return;
+    const localModels = [...inputs.models];
+    const newOptions = [];
+    for (const name of names) {
+      if (localModels.includes(name)) continue;
+      localModels.push(name);
+      newOptions.push({ key: name, text: name, value: name });
+    }
+    if (newOptions.length === 0) {
+      showInfo(t('channel.edit.messages.custom_models_all_exist'));
+      return;
+    }
+    setModelOptions((modelOptions) => [...modelOptions, ...newOptions]);
     setCustomModel('');
     handleInputChange(null, { name: 'models', value: localModels });
   };
@@ -467,24 +529,20 @@ const EditChannel = () => {
                 >
                   {t('channel.edit.buttons.clear')}
                 </Button>
-                <Input
-                  action={
-                    <Button type={'button'} onClick={addCustomModel}>
-                      {t('channel.edit.buttons.add_custom')}
-                    </Button>
-                  }
+                <Form.TextArea
                   placeholder={t('channel.edit.buttons.custom_placeholder')}
                   value={customModel}
-                  onChange={(e, { value }) => {
-                    setCustomModel(value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addCustomModel();
-                      e.preventDefault();
-                    }
+                  onChange={(e, { value }) => setCustomModel(value)}
+                  rows={3}
+                  style={{
+                    marginTop: 8,
+                    fontFamily:
+                      'JetBrains Mono, Consolas, monospace',
                   }}
                 />
+                <Button type={'button'} onClick={addCustomModel} style={{ marginTop: 8 }}>
+                  {t('channel.edit.buttons.add_custom')}
+                </Button>
               </div>
             )}
             {inputs.type !== 43 && (
@@ -594,6 +652,21 @@ const EditChannel = () => {
                 autoComplete=''
               />
             )}
+            {isEdit &&
+              !batch &&
+              inputs.type !== 33 &&
+              inputs.type !== 42 && (
+                <Message info>
+                  <p>{t('channel.edit.load_key_hint')}</p>
+                  <Button
+                    type='button'
+                    size='small'
+                    onClick={() => void openLoadKeyModal()}
+                  >
+                    {t('channel.edit.load_key_button')}
+                  </Button>
+                </Message>
+              )}
             {inputs.type !== 33 &&
               inputs.type !== 42 &&
               (batch ? (
@@ -691,6 +764,33 @@ const EditChannel = () => {
           </Form>
         </Card.Content>
       </Card>
+      <Modal
+        open={loadKeyOpen}
+        onClose={() => !loadKeyBusy && setLoadKeyOpen(false)}
+        size='small'
+      >
+        <Modal.Header>{t('channel.edit.load_key_modal_title')}</Modal.Header>
+        <Modal.Content>
+          <Form.Input
+            label={t('channel.edit.load_key_modal_code')}
+            value={loadKeyCode}
+            onChange={(e, { value }) => setLoadKeyCode(value)}
+            autoComplete='one-time-code'
+          />
+        </Modal.Content>
+        <Modal.Actions>
+          <Button onClick={() => setLoadKeyOpen(false)} disabled={loadKeyBusy}>
+            {t('channel.edit.buttons.cancel')}
+          </Button>
+          <Button
+            positive
+            loading={loadKeyBusy}
+            onClick={() => void submitLoadKey()}
+          >
+            {t('channel.edit.load_key_modal_submit')}
+          </Button>
+        </Modal.Actions>
+      </Modal>
     </div>
   );
 };

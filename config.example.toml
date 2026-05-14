@@ -1,0 +1,97 @@
+# One API — 示例配置（TOML）。可放到 ./config.toml 或通过 -c/--config 指定。
+# 键名均为 snake_case，与代码中旧环境变量名对应（大写转小写）。
+
+port = 3000
+log_dir = "./logs"
+gin_mode = ""            # 设为 "debug" 时等价于原 GIN_MODE=debug
+channel_test_frequency = 0
+batch_update_enabled = false
+
+session_secret = ""
+sqlite_path = ""
+sql_dsn = ""
+log_sql_dsn = ""
+sqlite_busy_timeout = 3000
+
+sql_max_idle_conns = 100
+sql_max_open_conns = 1000
+sql_max_lifetime = 60
+
+debug = false
+debug_sql = false
+memory_cache_enabled = false
+node_type = ""           # "slave" 表示从节点
+polling_interval = 0
+
+initial_root_token = ""
+initial_root_access_token = ""
+
+sync_frequency = 600
+batch_update_interval = 5
+relay_timeout = 0
+gemini_safety_setting = "BLOCK_NONE"
+theme = "default"
+
+global_api_rate_limit = 480
+global_web_rate_limit = 240
+
+enable_metric = false
+metric_queue_size = 10
+metric_success_rate_threshold = 0.8
+metric_success_chan_size = 1024
+metric_fail_chan_size = 128
+
+gemini_version = "v1"
+only_one_log_file = false
+relay_proxy = ""
+user_content_request_proxy = ""
+user_content_request_timeout = 30
+enforce_include_usage = false
+test_prompt = "Output only your specific model name with no additional text."
+
+# S3
+s3_disabled = false
+s3_region = "us-east-1"
+s3_max_object_bytes = 33554432
+s3_default_ttl_seconds = 86400
+s3_max_ttl_seconds = 604800
+s3_storage_dir = ""
+s3_remote_bucket = ""
+s3_remote_endpoint = ""
+s3_remote_region = ""
+s3_remote_access_key_id = ""
+s3_remote_secret_access_key = ""
+s3_remote_use_path_style = false
+s3_remote_key_prefix = ""
+s3_cleaner_interval_seconds = 60
+s3_clock_skew_seconds = 1800 # 30 分钟；SigV4 X-Amz-Date 与服务器允许偏差（秒）
+s3_cors_allow_origin = ""
+s3_addressing = ""
+
+# Redis
+redis_disabled = false
+redis_conn_string = ""
+redis_master_name = ""
+redis_password = ""
+
+# 嵌入式 TLS（与 tls_cert_file / tls_key_file 配合；不配证书时不要设置 https_only = true）
+tls_cert_file = ""
+tls_key_file = ""
+https_only = false
+https_port = "3443"
+
+force_2fa_for_all_users = false
+login_math_captcha_enabled = true
+login_brute_trust_x_forwarded_for = false
+login_brute_ip_fail_max = 0
+login_brute_pair_fail_max = 0
+login_brute_fail_window_sec = 0
+login_brute_lock_duration_sec = 0
+
+login_password_rsa_private_key = ""
+login_password_rsa_key_file = ""
+
+frontend_base_url = ""
+global_access_scope = "relay"
+
+tiktoken_cache_dir = ""

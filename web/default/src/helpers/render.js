@@ -38,41 +38,51 @@ export function renderGroup(group) {
 }
 
 export function renderNumber(num) {
-  if (num >= 1000000000) {
-    return (num / 1000000000).toFixed(1) + 'B';
-  } else if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  } else if (num >= 10000) {
-    return (num / 1000).toFixed(1) + 'k';
+  const n = Number(num);
+  const x = Number.isFinite(n) ? n : 0;
+  if (x >= 1000000000) {
+    return (x / 1000000000).toFixed(1) + 'B';
+  } else if (x >= 1000000) {
+    return (x / 1000000).toFixed(1) + 'M';
+  } else if (x >= 10000) {
+    return (x / 1000).toFixed(1) + 'k';
   } else {
-    return num;
+    return x;
   }
+}
+
+/** 本地缓存的「每单位货币对应额度」无效时（未加载、0、非数字）返回 null，避免 $NaN */
+function quotaPerUnitFromStorage() {
+  const raw = localStorage.getItem('quota_per_unit');
+  const n = parseFloat(raw === null || raw === '' ? 'NaN' : raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    return null;
+  }
+  return n;
 }
 
 export function renderQuota(quota, t, precision = 2) {
   const displayInCurrency =
     localStorage.getItem('display_in_currency') === 'true';
-  const quotaPerUnit = parseFloat(
-    localStorage.getItem('quota_per_unit') || '1'
-  );
+  const safeQuota = Number.isFinite(Number(quota)) ? Number(quota) : 0;
+  const quotaPerUnit = quotaPerUnitFromStorage();
 
-  if (displayInCurrency) {
-    const amount = (quota / quotaPerUnit).toFixed(precision);
+  if (displayInCurrency && quotaPerUnit != null) {
+    const amount = (safeQuota / quotaPerUnit).toFixed(precision);
     return t('common.quota.display_short', { amount });
   }
 
-  return renderNumber(quota);
+  return renderNumber(safeQuota);
 }
 
 export function renderQuotaWithPrompt(quota, t) {
   const displayInCurrency =
     localStorage.getItem('display_in_currency') === 'true';
-  const quotaPerUnit = parseFloat(
-    localStorage.getItem('quota_per_unit') || '1'
-  );
+  const safeQuota = Number.isFinite(Number(quota)) ? Number(quota) : 0;
+  const quotaPerUnit = quotaPerUnitFromStorage();
 
-  if (displayInCurrency) {
-    const amount = (quota / quotaPerUnit).toFixed(2);
+  if (displayInCurrency && quotaPerUnit != null) {
+    const amount = (safeQuota / quotaPerUnit).toFixed(2);
     return ` (${t('common.quota.display', { amount })})`;
   }
 

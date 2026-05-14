@@ -28,6 +28,9 @@ const config = {
     oidc_authorization_endpoint: '',
     oidc_token_endpoint: '',
     oidc_userinfo_endpoint: '',
+    login_password_rsa_public_key: '',
+    login_math_captcha: false,
+    force_2fa_for_all_users: false,
   }
 };
 

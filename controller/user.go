@@ -16,11 +16,17 @@ import (
 	"github.com/songquanpeng/one-api/common/i18n"
 	"github.com/songquanpeng/one-api/common/random"
 	"github.com/songquanpeng/one-api/model"
+	"github.com/songquanpeng/one-api/service"
 )
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username         string `json:"username"`
+	Password         string `json:"password"`
+	CaptchaID        string `json:"captcha_id"`
+	CaptchaDotsEnc   string `json:"captcha_dots_enc"`
+	LoginRequestID   string `json:"login_request_id"`
+	LoginRequestTs   int64  `json:"login_request_ts"`
+	LoginRequestSig  string `json:"login_request_sig"`
 }
 
 func Login(c *gin.Context) {
@@ -49,28 +55,122 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+	if !consumeLoginRequestProof(c, loginRequest.LoginRequestID, loginRequest.LoginRequestTs, loginRequest.LoginRequestSig) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "登录凭证无效或已过期，请刷新页面后重试",
+			"success": false,
+		})
+		return
+	}
+	plain, err := common.DecryptLoginPasswordRSA(password)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"message": i18n.Translate(c, "invalid_parameter"),
+			"success": false,
+		})
+		return
+	}
+	password = plain
+
+	var loginCaptchaRedisCleaned bool
+	if common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled {
+		if loginRequest.CaptchaDotsEnc == "" {
+			c.JSON(http.StatusOK, gin.H{"message": i18n.Translate(c, "invalid_parameter"), "success": false})
+			return
+		}
+		dotsPlain, decErr := common.DecryptLoginPasswordRSA(loginRequest.CaptchaDotsEnc)
+		if decErr != nil {
+			c.JSON(http.StatusOK, gin.H{"message": i18n.Translate(c, "invalid_parameter"), "success": false})
+			return
+		}
+		captchaDots, decErr := parseLoginCaptchaPointsJSON([]byte(dotsPlain))
+		if decErr != nil {
+			c.JSON(http.StatusOK, gin.H{"message": i18n.Translate(c, "invalid_parameter"), "success": false})
+			return
+		}
+		sess := sessions.Default(c)
+		if common.RedisEnabled && common.RDB != nil {
+			pendingRaw := sess.Get("pending_login_captcha_id")
+			if !service.ConsumeLoginClickCaptchaRedis(loginRequest.CaptchaID, asStringSession(pendingRaw), captchaDots) {
+				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
+				return
+			}
+			sess.Delete("pending_login_captcha_id")
+			loginCaptchaRedisCleaned = true
+		} else {
+			rawVal := sess.Get("login_click_captcha_dots")
+			sess.Delete("login_click_captcha_dots")
+			_ = sess.Save()
+			jsonStr, ok := rawVal.(string)
+			if !ok || jsonStr == "" {
+				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
+				return
+			}
+			if !service.ValidateLoginClickCaptcha([]byte(jsonStr), captchaDots) {
+				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
+				return
+			}
+		}
+	}
+
+	clientIP := common.ResolveClientIPForLoginBrute(c.GetHeader("X-Forwarded-For"), c.ClientIP())
+	if common.IsLoginBruteLocked(clientIP, username) {
+		if loginCaptchaRedisCleaned {
+			_ = sessions.Default(c).Save()
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "登录尝试过于频繁，请稍后再试", "success": false})
+		return
+	}
+
 	user := model.User{
 		Username: username,
 		Password: password,
 	}
 	err = user.ValidateAndFill()
 	if err != nil {
+		if loginCaptchaRedisCleaned {
+			_ = sessions.Default(c).Save()
+		}
+		common.RecordLoginBruteFailure(clientIP, username)
 		c.JSON(http.StatusOK, gin.H{
 			"message": err.Error(),
 			"success": false,
 		})
 		return
 	}
+	common.ClearLoginBruteState(clientIP, username)
+
+	if model.IsTwoFAEnabled(user.Id) {
+		session := sessions.Default(c)
+		session.Clear()
+		session.Set("pending_username", user.Username)
+		session.Set("pending_user_id", user.Id)
+		if err := session.Save(); err != nil {
+			c.JSON(http.StatusOK, gin.H{"message": "无法保存会话信息，请重试", "success": false})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"message": "",
+			"success": true,
+			"data": gin.H{
+				"require_2fa": true,
+			},
+		})
+		return
+	}
+
 	SetupLogin(&user, c)
 }
 
 // setup session & cookies and then return user info
 func SetupLogin(user *model.User, c *gin.Context) {
 	session := sessions.Default(c)
+	session.Clear()
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
+	session.Set("group", user.Group)
 	err := session.Save()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -79,17 +179,21 @@ func SetupLogin(user *model.User, c *gin.Context) {
 		})
 		return
 	}
-	cleanUser := model.User{
-		Id:          user.Id,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Role:        user.Role,
-		Status:      user.Status,
+	data := gin.H{
+		"id":           user.Id,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"role":         user.Role,
+		"status":       user.Status,
+		"group":        user.Group,
+	}
+	if common.Force2FAForAllUsers && !model.UserHasSecondFactor(user.Id) {
+		data["require_force_2fa_setup"] = true
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "",
 		"success": true,
-		"data":    cleanUser,
+		"data":    data,
 	})
 }
 
@@ -356,10 +460,27 @@ func GetSelf(c *gin.Context) {
 		})
 		return
 	}
+	data := gin.H{
+		"id":                   user.Id,
+		"username":             user.Username,
+		"display_name":         user.DisplayName,
+		"role":                 user.Role,
+		"status":               user.Status,
+		"group":                user.Group,
+		"s3_site_enabled": common.S3SiteOpen(),
+		"s3_region":       common.S3Region,
+		"s3_enabled":      user.S3Enabled,
+	}
+	if user.S3AccessKey != nil && *user.S3AccessKey != "" {
+		data["s3_access_key"] = *user.S3AccessKey
+	}
+	if common.Force2FAForAllUsers && !model.UserHasSecondFactor(user.Id) {
+		data["require_force_2fa_setup"] = true
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data":    data,
 	})
 	return
 }

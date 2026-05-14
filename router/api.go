@@ -19,6 +19,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/about", controller.GetAbout)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
+		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
 		apiRouter.GET("/verification", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
@@ -34,7 +35,10 @@ func SetApiRouter(router *gin.Engine) {
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)
-			userRoute.POST("/login", middleware.CriticalRateLimit(), controller.Login)
+			userRoute.GET("/login/request-proof", middleware.CriticalRateLimit(), controller.LoginRequestProofIssue)
+			userRoute.GET("/login/captcha", middleware.CriticalRateLimit(), controller.LoginCaptchaChallenge)
+			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Login)
+			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), controller.Verify2FALogin)
 			userRoute.GET("/logout", controller.Logout)
 
 			selfRoute := userRoute.Group("/")
@@ -48,17 +52,28 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.POST("/topup", controller.TopUp)
 				selfRoute.GET("/available_models", controller.GetUserAvailableModels)
+				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
+				selfRoute.POST("/2fa/setup", controller.Setup2FA)
+				selfRoute.POST("/2fa/enable", controller.Enable2FA)
+				selfRoute.POST("/2fa/disable", controller.Disable2FA)
+				selfRoute.POST("/2fa/backup_codes", controller.RegenerateBackupCodes)
+				selfRoute.POST("/s3/enable", controller.UserS3Enable)
+				selfRoute.POST("/s3/disable", controller.UserS3Disable)
+				selfRoute.POST("/s3/regenerate_secret", controller.UserS3RegenerateSecret)
+				selfRoute.POST("/s3/rotate_keys", controller.UserS3RotateKeys)
 			}
 
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
 			{
+				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.PUT("/", controller.UpdateUser)
+				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 			}
 		}
@@ -75,6 +90,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.GET("/search", controller.SearchChannels)
 			channelRoute.GET("/models", controller.ListAllModels)
 			channelRoute.GET("/:id", controller.GetChannel)
+			channelRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.SecureVerificationRequired(), controller.GetChannelKey)
 			channelRoute.GET("/test", controller.TestChannels)
 			channelRoute.GET("/test/:id", controller.TestChannel)
 			channelRoute.GET("/update_balance", controller.UpdateAllChannelsBalance)
@@ -116,6 +132,18 @@ func SetApiRouter(router *gin.Engine) {
 		groupRoute.Use(middleware.AdminAuth())
 		{
 			groupRoute.GET("/", controller.GetGroups)
+		}
+		globalAccessRoute := apiRouter.Group("/global_access")
+		globalAccessRoute.Use(middleware.AdminAuth())
+		{
+			globalAccessRoute.GET("/mode", controller.GetGlobalAccessMode)
+			globalAccessRoute.PUT("/mode", controller.UpdateGlobalAccessMode)
+			globalAccessRoute.GET("/whitelist", controller.GetGlobalWhitelist)
+			globalAccessRoute.POST("/whitelist", controller.CreateGlobalWhitelist)
+			globalAccessRoute.DELETE("/whitelist/:id", controller.DeleteGlobalWhitelist)
+			globalAccessRoute.GET("/blacklist", controller.GetGlobalBlacklist)
+			globalAccessRoute.POST("/blacklist", controller.CreateGlobalBlacklist)
+			globalAccessRoute.DELETE("/blacklist/:id", controller.DeleteGlobalBlacklist)
 		}
 	}
 }

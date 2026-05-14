@@ -3,22 +3,25 @@ package router
 import (
 	"embed"
 	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/env"
 	"github.com/songquanpeng/one-api/common/logger"
-	"net/http"
-	"os"
-	"strings"
 )
 
 func SetRouter(router *gin.Engine, buildFS embed.FS) {
+	SetS3CompatRouter(router)
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
-	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
+	SetS3PathStyleRootRouter(router)
+	frontendBaseUrl := strings.TrimSpace(env.StringAlways("frontend_base_url"))
 	if config.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""
-		logger.SysLog("FRONTEND_BASE_URL is ignored on master node")
+		logger.SysLog("frontend_base_url is ignored on master node")
 	}
 	if frontendBaseUrl == "" {
 		SetWebRouter(router, buildFS)

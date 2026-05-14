@@ -1,5 +1,6 @@
-import React, { lazy, Suspense, useContext, useEffect } from 'react';
+import React, { lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { Message, Modal } from 'semantic-ui-react';
 import Loading from './components/Loading';
 import User from './pages/User';
 import { PrivateRoute } from './components/PrivateRoute';
@@ -26,19 +27,51 @@ import Log from './pages/Log';
 import Chat from './pages/Chat';
 import LarkOAuth from './components/LarkOAuth';
 import Dashboard from './pages/Dashboard';
+import TwoFASetting from './components/TwoFASetting';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
 
+function isPublicAuthPath() {
+  const path = window.location.pathname;
+  return (
+    path === '/login' ||
+    path === '/register' ||
+    path === '/reset' ||
+    path === '/user/reset' ||
+    path.startsWith('/oauth/')
+  );
+}
+
 function App() {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
+  const [force2FASetupOpen, setForce2FASetupOpen] = useState(false);
+
+  const updateLocalForce2FAUser = (required) => {
+    const user = localStorage.getItem('user');
+    if (!user) {
+      setForce2FASetupOpen(false);
+      return;
+    }
+    const data = JSON.parse(user);
+    const next = {
+      ...data,
+      require_force_2fa_setup: required,
+    };
+    localStorage.setItem('user', JSON.stringify(next));
+    userDispatch({ type: 'login', payload: next });
+    setForce2FASetupOpen(!!required);
+  };
 
   const loadUser = () => {
     let user = localStorage.getItem('user');
     if (user) {
       let data = JSON.parse(user);
       userDispatch({ type: 'login', payload: data });
+      setForce2FASetupOpen(
+        !!data.require_force_2fa_setup && !isPublicAuthPath()
+      );
     }
   };
   const loadStatus = async () => {
@@ -52,8 +85,21 @@ function App() {
         localStorage.setItem('system_name', data.system_name);
         localStorage.setItem('logo', data.logo);
         localStorage.setItem('footer_html', data.footer_html);
-        localStorage.setItem('quota_per_unit', data.quota_per_unit);
-        localStorage.setItem('display_in_currency', data.display_in_currency);
+        const qpu = data.quota_per_unit;
+        const qpuStr =
+          qpu !== undefined &&
+          qpu !== null &&
+          Number.isFinite(Number(qpu)) &&
+          Number(qpu) > 0
+            ? String(qpu)
+            : String(500 * 1000);
+        localStorage.setItem('quota_per_unit', qpuStr);
+        localStorage.setItem(
+          'display_in_currency',
+          data.display_in_currency === true || data.display_in_currency === 'true'
+            ? 'true'
+            : 'false'
+        );
         if (data.chat_link) {
           localStorage.setItem('chat_link', data.chat_link);
         } else {
@@ -92,8 +138,15 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    setForce2FASetupOpen(
+      !!userState.user?.require_force_2fa_setup && !isPublicAuthPath()
+    );
+  }, [userState.user?.require_force_2fa_setup]);
+
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route
         path='/'
         element={
@@ -306,8 +359,26 @@ function App() {
           </PrivateRoute>
         }
       />
-      <Route path='*' element={<NotFound />} />
-    </Routes>
+        <Route path='*' element={<NotFound />} />
+      </Routes>
+      <Modal
+        open={force2FASetupOpen}
+        closeOnDimmerClick={false}
+        closeOnEscape={false}
+        size='small'
+      >
+        <Modal.Header>需要配置两步验证</Modal.Header>
+        <Modal.Content>
+          <Message warning>
+            管理员已开启全员 MFA。请先完成两步验证配置，完成前无法进行其他操作。
+          </Message>
+          <TwoFASetting
+            forceMode
+            onEnabled={() => updateLocalForce2FAUser(false)}
+          />
+        </Modal.Content>
+      </Modal>
+    </>
   );
 }
 

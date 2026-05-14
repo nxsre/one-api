@@ -21,6 +21,7 @@ import {
 import Turnstile from 'react-turnstile';
 import { UserContext } from '../context/User';
 import { onGitHubOAuthClicked, onLarkOAuthClicked } from './utils';
+import TwoFASetting from './TwoFASetting';
 
 const PersonalSetting = () => {
   const { t } = useTranslation();
@@ -45,6 +46,13 @@ const PersonalSetting = () => {
   const [countdown, setCountdown] = useState(30);
   const [affLink, setAffLink] = useState('');
   const [systemToken, setSystemToken] = useState('');
+  const [s3Info, setS3Info] = useState(null);
+  const [s3SecretModal, setS3SecretModal] = useState({
+    open: false,
+    accessKey: '',
+    secretKey: '',
+    subtitle: '',
+  });
 
   useEffect(() => {
     let status = localStorage.getItem('status');
@@ -70,6 +78,97 @@ const PersonalSetting = () => {
     }
     return () => clearInterval(countdownInterval); // Clean up on unmount
   }, [disableButton, countdown]);
+
+  const loadS3Self = async () => {
+    try {
+      const res = await API.get('/api/user/self');
+      const { success, message, data } = res.data;
+      if (success) {
+        setS3Info({
+          site: data.s3_site_enabled,
+          enabled: data.s3_enabled,
+          region: data.s3_region,
+          accessKey: data.s3_access_key || '',
+        });
+      } else {
+        showError(message);
+      }
+    } catch {
+      /* interceptor may have shown error */
+    }
+  };
+
+  useEffect(() => {
+    loadS3Self().then();
+  }, []);
+
+  const openS3SecretModal = (accessKey, secretKey, subtitle) => {
+    setS3SecretModal({ open: true, accessKey, secretKey, subtitle });
+  };
+
+  const s3Enable = async () => {
+    const res = await API.post('/api/user/s3/enable');
+    const { success, message, data } = res.data;
+    if (success) {
+      openS3SecretModal(
+        data.access_key,
+        data.secret_key,
+        t('setting.personal.s3.enable')
+      );
+      await loadS3Self();
+      showSuccess('临时 S3 已启用');
+    } else {
+      showError(message);
+    }
+  };
+
+  const s3Disable = async () => {
+    if (!window.confirm('确定关闭并作废当前 S3 密钥？已存储的对象不会自动删除。')) {
+      return;
+    }
+    const res = await API.post('/api/user/s3/disable');
+    const { success, message } = res.data;
+    if (success) {
+      await loadS3Self();
+      showSuccess('已关闭');
+    } else {
+      showError(message);
+    }
+  };
+
+  const s3RegenerateSecret = async () => {
+    const res = await API.post('/api/user/s3/regenerate_secret');
+    const { success, message, data } = res.data;
+    if (success) {
+      openS3SecretModal(
+        s3Info?.accessKey || '',
+        data.secret_key,
+        t('setting.personal.s3.regenerate_secret')
+      );
+      showSuccess('Secret 已更新');
+    } else {
+      showError(message);
+    }
+  };
+
+  const s3RotateKeys = async () => {
+    if (!window.confirm('将生成新的 Access Key 与 Secret，旧密钥立即失效。继续？')) {
+      return;
+    }
+    const res = await API.post('/api/user/s3/rotate_keys');
+    const { success, message, data } = res.data;
+    if (success) {
+      openS3SecretModal(
+        data.access_key,
+        data.secret_key,
+        t('setting.personal.s3.rotate_keys')
+      );
+      await loadS3Self();
+      showSuccess('密钥已轮换');
+    } else {
+      showError(message);
+    }
+  };
 
   const handleInputChange = (e, { name, value }) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
@@ -223,6 +322,112 @@ const PersonalSetting = () => {
           style={{ marginTop: '10px' }}
         />
       )}
+      <Divider />
+      <Header as='h3'>安全 · 两步验证（2FA）</Header>
+      <TwoFASetting />
+      <Divider />
+      <Header as='h3'>{t('setting.personal.s3.title')}</Header>
+      <Message>{t('setting.personal.s3.notice')}</Message>
+      {s3Info && !s3Info.site && (
+        <Message warning>{t('setting.personal.s3.site_disabled')}</Message>
+      )}
+      {s3Info && s3Info.site && (
+        <>
+          <div>
+            {t('setting.personal.s3.region')}:{' '}
+            <code>{s3Info.region}</code>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            {s3Info.enabled
+              ? t('setting.personal.s3.status_enabled')
+              : t('setting.personal.s3.status_disabled')}
+            {s3Info.accessKey
+              ? ` — ${t('setting.personal.s3.access_key')}: ${s3Info.accessKey}`
+              : ''}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            {!s3Info.enabled ? (
+              <Button primary onClick={s3Enable}>
+                {t('setting.personal.s3.enable')}
+              </Button>
+            ) : (
+              <Button.Group>
+                <Button onClick={s3RegenerateSecret}>
+                  {t('setting.personal.s3.regenerate_secret')}
+                </Button>
+                <Button onClick={s3RotateKeys}>
+                  {t('setting.personal.s3.rotate_keys')}
+                </Button>
+                <Button negative onClick={s3Disable}>
+                  {t('setting.personal.s3.disable')}
+                </Button>
+              </Button.Group>
+            )}
+          </div>
+        </>
+      )}
+      <Modal
+        open={s3SecretModal.open}
+        onClose={() =>
+          setS3SecretModal((m) => ({
+            ...m,
+            open: false,
+            secretKey: '',
+          }))
+        }
+        size='small'
+      >
+        <Modal.Header>{t('setting.personal.s3.secret_once')}</Modal.Header>
+        <Modal.Content>
+          <p>{s3SecretModal.subtitle}</p>
+          {s3SecretModal.accessKey ? (
+            <Form.Input
+              label={t('setting.personal.s3.access_key')}
+              fluid
+              readOnly
+              value={s3SecretModal.accessKey}
+              onClick={(e) => e.target.select()}
+            />
+          ) : null}
+          <Form.Input
+            label={t('setting.personal.s3.secret_once')}
+            fluid
+            readOnly
+            value={s3SecretModal.secretKey}
+            onClick={(e) => e.target.select()}
+          />
+        </Modal.Content>
+        <Modal.Actions>
+          <Button
+            primary
+            onClick={async () => {
+              const text = [
+                s3SecretModal.accessKey
+                  ? `AK=${s3SecretModal.accessKey}`
+                  : '',
+                `SK=${s3SecretModal.secretKey}`,
+              ]
+                .filter(Boolean)
+                .join('\n');
+              await copy(text);
+              showSuccess('已复制');
+            }}
+          >
+            复制到剪贴板
+          </Button>
+          <Button
+            onClick={() =>
+              setS3SecretModal((m) => ({
+                ...m,
+                open: false,
+                secretKey: '',
+              }))
+            }
+          >
+            关闭
+          </Button>
+        </Modal.Actions>
+      </Modal>
       <Divider />
       <Header as='h3'>{t('setting.personal.binding.title')}</Header>
       {status.wechat_login && (

@@ -119,14 +119,15 @@
         "fill_all": "填入所有模型",
         "clear": "清除所有模型",
         "add_custom": "填入",
-        "custom_placeholder": "输入自定义模型名称"
+        "custom_placeholder": "多条用英文逗号、中文逗号、分号或换行分隔，例如：claude-haiku-4-5-20251001,claude-opus-4-7"
       },
       "messages": {
         "name_required": "请填写渠道名称和渠道密钥！",
         "models_required": "请至少选择一个模型！",
         "model_mapping_invalid": "模型映射必须是合法的 JSON 格式！",
         "update_success": "渠道更新成功！",
-        "create_success": "渠道创建成功！"
+        "create_success": "渠道创建成功！",
+        "custom_models_all_exist": "输入的模型均已存在于列表中"
       },
       "spark_version": "模型版本",
       "spark_version_placeholder": "请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1",
@@ -153,8 +154,17 @@
         "zhipu": "按照如下格式输入：APIKey|SecretKey",
         "spark": "按照如下格式输入：APPID|APISecret|APIKey",
         "fastgpt": "按照如下格式输入：APIKey-AppId，例如：fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
-        "tencent": "按照如下格式输入：AppId|SecretId|SecretKey"
-      }
+        "tencent": "按照如下格式输入：AppId|SecretId|SecretKey",
+        "aippt": "JSON：{\"api_key\":\"...\",\"api_secret\":\"...\"}；或 app_key|secret_key；或两行分别为 App Key 与 Secret。可选 uid 字段。"
+      },
+      "load_key_hint": "编辑时接口不返回完整密钥。若已启用两步验证（TOTP），可先验证再加载。",
+      "load_key_button": "通过两步验证加载密钥",
+      "load_key_need_2fa": "请先在「个人设置」中启用两步验证（TOTP）。",
+      "load_key_code_required": "请输入认证器验证码或备用码。",
+      "load_key_success": "密钥已加载到上方输入框，请注意保管。",
+      "load_key_modal_title": "安全验证",
+      "load_key_modal_code": "认证器 6 位码或备用码",
+      "load_key_modal_submit": "验证并加载"
     }
   },
   "token": {
@@ -453,6 +463,20 @@
           "delete_account": "删除个人账户"
         }
       },
+      "s3": {
+        "title": "S3 兼容存储",
+        "notice": "使用与 Amazon S3 兼容的 SigV4 接口访问；对象在服务端按你的用户 ID 隔离。Secret 仅在生成或轮换时显示一次，请妥善保存。",
+        "region": "Region（与客户端配置一致）",
+        "access_key": "Access Key ID",
+        "secret_once": "Secret Access Key（仅本次显示）",
+        "site_disabled": "管理员未在「系统设置」中开启 S3，或存储未就绪（例如设置了 S3_DISABLED=true 或存储目录创建失败）。",
+        "status_enabled": "已启用",
+        "status_disabled": "未启用",
+        "enable": "启用并生成密钥",
+        "disable": "关闭并作废密钥",
+        "regenerate_secret": "仅轮换 Secret",
+        "rotate_keys": "同时更换 AK / SK"
+      },
       "binding": {
         "title": "账号绑定",
         "buttons": {
@@ -501,10 +525,16 @@
         "password_login": "允许通过密码进行登录",
         "password_register": "允许通过密码进行注册",
         "email_verification": "通过密码注册时需要进行邮箱验证",
+        "force_mfa": "强制所有用户启用 MFA（两步验证）",
         "github_oauth": "允许通过 GitHub 账户登录 & 注册",
         "wechat_login": "允许通过微信登录 & 注册",
         "registration": "允许新用户注册（此项为否时，新用户将无法以任何方式进行注册）",
         "turnstile": "启用 Turnstile 用户校验"
+      },
+      "s3": {
+        "title": "S3 兼容存储",
+        "subtitle": "开放后，用户可在「个人设置」中生成访问密钥并使用 SigV4 访问本站 S3 兼容接口。未设置 S3_REMOTE_BUCKET 时使用本地目录（默认与 SQLite 同级的 s3，可用 S3_STORAGE_DIR）；设置 S3_REMOTE_BUCKET 等变量则对象落在真实 S3/MinIO。无需 S3_ENABLED。若禁用整块能力可设 S3_DISABLED=true。",
+        "enable_site": "允许用户使用 S3 兼容存储"
       },
       "email_restriction": {
         "title": "配置邮箱域名白名单",
@@ -769,14 +799,35 @@
       "username": "用户名 / 邮箱地址",
       "password": "密码",
       "button": "登录",
+      "force_2fa_hint": "根据安全策略，请先完成两步验证（MFA）配置",
+      "captcha_title": "请按顺序点击下方大图中的字符",
+      "captcha_loading": "验证码加载中...",
+      "captcha_need_load": "请先加载验证码后再登录",
+      "captcha_load_failed": "验证码加载失败，请稍后重试",
+      "captcha_refresh_hint": "点击刷新以获取新的验证码",
+      "captcha_incomplete": "请按要求完成验证码点击",
+      "captcha_progress": "已点击 {{n}} / {{m}}",
+      "captcha_clear": "清除",
+      "captcha_refresh": "刷新",
+      "captcha_open": "打开验证码弹窗并点选",
+      "captcha_done": "验证码已完成，点击可重新检查",
+      "captcha_modal_title": "请完成验证码点选",
+      "captcha_close": "完成",
       "forgot_password": "忘记密码？",
       "reset_password": "点击重置",
       "no_account": "没有账户？",
       "register": "点击注册",
       "other_methods": "使用其他方式登录",
       "wechat": {
+        "entry": "微信登录",
+        "title": "微信扫码登录",
+        "subtitle": "关注公众号后获取验证码完成登录",
         "scan_tip": "微信扫码关注公众号，输入「验证码」获取验证码（三分钟内有效）",
-        "code_placeholder": "验证码"
+        "qrcode_alt": "微信公众号二维码",
+        "qrcode_missing": "管理员尚未配置微信公众号二维码",
+        "code_label": "验证码",
+        "code_placeholder": "请输入验证码",
+        "submit": "验证码登录"
       }
     },
     "register": {

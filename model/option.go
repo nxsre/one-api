@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
@@ -27,6 +28,7 @@ func InitOptionMap() {
 	config.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(config.PasswordLoginEnabled)
 	config.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(config.PasswordRegisterEnabled)
 	config.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(config.EmailVerificationEnabled)
+	config.OptionMap["Force2FAForAllUsers"] = strconv.FormatBool(common.Force2FAForAllUsers)
 	config.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(config.GitHubOAuthEnabled)
 	config.OptionMap["OidcEnabled"] = strconv.FormatBool(config.OidcEnabled)
 	config.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(config.WeChatAuthEnabled)
@@ -75,6 +77,11 @@ func InitOptionMap() {
 	config.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(config.QuotaPerUnit, 'f', -1, 64)
 	config.OptionMap["RetryTimes"] = strconv.Itoa(config.RetryTimes)
 	config.OptionMap["Theme"] = config.Theme
+	config.OptionMap["GlobalAccessListMode"] = "none"
+	config.OptionMap["OutboundURLWhitelistEnabled"] = "false"
+	config.OptionMap["OutboundURLWhitelistDomains"] = ""
+	config.OptionMap["OutboundURLWhitelistIPs"] = ""
+	config.OptionMap["S3SiteEnabled"] = strconv.FormatBool(common.S3Enabled)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -90,6 +97,7 @@ func loadOptionsFromDatabase() {
 			logger.SysError("failed to update option map: " + err.Error())
 		}
 	}
+	common.RefreshOutboundWhitelistFromOptions()
 }
 
 func SyncOptions(frequency int) {
@@ -112,8 +120,14 @@ func UpdateOption(key string, value string) error {
 	// If save value does not contain primary key, it will execute Create,
 	// otherwise it will execute Update (with all fields).
 	DB.Save(&option)
-	// Update OptionMap
-	return updateOptionMap(key, value)
+	err := updateOptionMap(key, value)
+	if key == "GlobalAccessListMode" {
+		InvalidateGlobalAccessListCache()
+	}
+	if strings.HasPrefix(key, "OutboundURLWhitelist") {
+		common.RefreshOutboundWhitelistFromOptions()
+	}
+	return err
 }
 
 func updateOptionMap(key string, value string) (err error) {
@@ -156,6 +170,8 @@ func updateOptionMap(key string, value string) (err error) {
 		}
 	}
 	switch key {
+	case "Force2FAForAllUsers":
+		common.Force2FAForAllUsers = value == "true"
 	case "EmailDomainWhitelist":
 		config.EmailDomainWhitelist = strings.Split(value, ",")
 	case "SMTPServer":

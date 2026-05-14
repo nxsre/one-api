@@ -119,14 +119,15 @@
         "fill_all": "Fill All Models",
         "clear": "Clear All Models",
         "add_custom": "Add",
-        "custom_placeholder": "Enter custom model name"
+        "custom_placeholder": "Separate models with commas, semicolons, or newlines, e.g. claude-haiku-4-5-20251001,claude-opus-4-7"
       },
       "messages": {
         "name_required": "Please enter channel name and key!",
         "models_required": "Please select at least one model!",
         "model_mapping_invalid": "Model mapping must be valid JSON format!",
         "update_success": "Channel updated successfully!",
-        "create_success": "Channel created successfully!"
+        "create_success": "Channel created successfully!",
+        "custom_models_all_exist": "All entered models are already in the list"
       },
       "spark_version": "Model Version",
       "spark_version_placeholder": "Please enter Spark model version from API URL, e.g.: v2.1",
@@ -153,8 +154,17 @@
         "zhipu": "Enter in format: APIKey|SecretKey",
         "spark": "Enter in format: APPID|APISecret|APIKey",
         "fastgpt": "Enter in format: APIKey-AppId, e.g.: fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
-        "tencent": "Enter in format: AppId|SecretId|SecretKey"
-      }
+        "tencent": "Enter in format: AppId|SecretId|SecretKey",
+        "aippt": "JSON: {\"api_key\":\"...\",\"api_secret\":\"...\"}; or app_key|secret_key; or two lines (App Key, then Secret). Optional uid in JSON."
+      },
+      "load_key_hint": "The channel API omits the secret when editing. If TOTP is enabled, verify first to load it.",
+      "load_key_button": "Load key after 2FA",
+      "load_key_need_2fa": "Enable TOTP in Personal Settings first.",
+      "load_key_code_required": "Enter your authenticator code or a backup code.",
+      "load_key_success": "Key loaded into the field above. Handle it carefully.",
+      "load_key_modal_title": "Security verification",
+      "load_key_modal_code": "6-digit TOTP or backup code",
+      "load_key_modal_submit": "Verify and load"
     }
   },
   "token": {
@@ -453,6 +463,20 @@
           "delete_account": "Delete Account"
         }
       },
+      "s3": {
+        "title": "S3-compatible storage",
+        "notice": "Use AWS SigV4 against this site like S3. Objects are stored under your user ID on the server. The secret is shown only once when generated or rotated—save it.",
+        "region": "Region (must match client config)",
+        "access_key": "Access Key ID",
+        "secret_once": "Secret Access Key (shown only this time)",
+        "site_disabled": "S3 is disabled in System Settings, or storage is not ready (e.g. S3_DISABLED=true or storage directory creation failed).",
+        "status_enabled": "Enabled",
+        "status_disabled": "Disabled",
+        "enable": "Enable & generate keys",
+        "disable": "Disable & revoke keys",
+        "regenerate_secret": "Rotate secret only",
+        "rotate_keys": "Rotate access key & secret"
+      },
       "binding": {
         "title": "Account Binding",
         "buttons": {
@@ -501,10 +525,16 @@
         "password_login": "Allow Password Login",
         "password_register": "Allow Password Registration",
         "email_verification": "Require Email Verification for Password Registration",
+        "force_mfa": "Force MFA (2FA) for all users",
         "github_oauth": "Allow GitHub OAuth Login & Registration",
         "wechat_login": "Allow WeChat Login & Registration",
         "registration": "Allow New User Registration (When disabled, new users cannot register by any means)",
         "turnstile": "Enable Turnstile User Verification"
+      },
+      "s3": {
+        "title": "S3-compatible storage",
+        "subtitle": "When enabled, users can create access keys in Personal Settings and use this site's S3-compatible API (SigV4). Without S3_REMOTE_BUCKET, objects are stored on local disk (default s3 next to SQLite; S3_STORAGE_DIR). With S3_REMOTE_BUCKET (+ endpoint/credentials), objects go to real S3/MinIO. No S3_ENABLED. Use S3_DISABLED=true to disable.",
+        "enable_site": "Allow users to use S3-compatible storage"
       },
       "email_restriction": {
         "title": "Email Domain Whitelist",
@@ -767,14 +797,35 @@
       "username": "Username / Email",
       "password": "Password",
       "button": "Login",
+      "force_2fa_hint": "Security policy requires you to configure MFA first",
+      "captcha_title": "Click the characters in order on the image below",
+      "captcha_loading": "Loading captcha...",
+      "captcha_need_load": "Please load captcha before login",
+      "captcha_load_failed": "Failed to load captcha, please try again later",
+      "captcha_refresh_hint": "Click refresh to get a new captcha",
+      "captcha_incomplete": "Please complete all required captcha clicks",
+      "captcha_progress": "Progress: {{n}} / {{m}}",
+      "captcha_clear": "Clear",
+      "captcha_refresh": "Refresh",
+      "captcha_open": "Open captcha modal and click",
+      "captcha_done": "Captcha completed, click to review",
+      "captcha_modal_title": "Complete captcha clicks",
+      "captcha_close": "Done",
       "forgot_password": "Forgot password?",
       "reset_password": "Reset",
       "no_account": "No account?",
       "register": "Register",
       "other_methods": "Other login methods",
       "wechat": {
+        "entry": "Log in with WeChat",
+        "title": "WeChat QR Login",
+        "subtitle": "Follow the official account and get a verification code",
         "scan_tip": "Scan QR code to follow WeChat Official Account, enter 'code' to get verification code (valid for 3 minutes)",
-        "code_placeholder": "Verification code"
+        "qrcode_alt": "WeChat official account QR code",
+        "qrcode_missing": "WeChat QR code has not been configured by the administrator",
+        "code_label": "Verification code",
+        "code_placeholder": "Enter verification code",
+        "submit": "Log in with code"
       }
     },
     "register": {

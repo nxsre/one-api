@@ -30,8 +30,10 @@ type Meta struct {
 	// OriginModelName is the model name from the raw user request
 	OriginModelName string
 	// ActualModelName is the model name after mapping
-	ActualModelName    string
-	RequestURLPath     string
+	ActualModelName string
+	RequestURLPath  string
+	// OverrideRequestURL if non-empty, adaptor DoRequestHelper uses this instead of GetRequestURL (native protocol relay).
+	OverrideRequestURL string
 	PromptTokens       int // only for DoResponse
 	ForcedSystemPrompt string
 	StartTime          time.Time

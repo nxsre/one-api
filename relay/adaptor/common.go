@@ -19,9 +19,15 @@ func SetupCommonRequestHeader(c *gin.Context, req *http.Request, meta *meta.Meta
 }
 
 func DoRequestHelper(a Adaptor, c *gin.Context, meta *meta.Meta, requestBody io.Reader) (*http.Response, error) {
-	fullRequestURL, err := a.GetRequestURL(meta)
-	if err != nil {
-		return nil, fmt.Errorf("get request url failed: %w", err)
+	var fullRequestURL string
+	var err error
+	if meta.OverrideRequestURL != "" {
+		fullRequestURL = meta.OverrideRequestURL
+	} else {
+		fullRequestURL, err = a.GetRequestURL(meta)
+		if err != nil {
+			return nil, fmt.Errorf("get request url failed: %w", err)
+		}
 	}
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
