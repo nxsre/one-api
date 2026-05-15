@@ -1,0 +1,64 @@
+/* 设置页 / 表单中的 Monaco 字段：标签区与编辑区层次更清晰 */
+.setting-monaco-field.field {
+  margin-bottom: 1.35rem !important;
+}
+
+.setting-monaco-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.setting-monaco-field__label-block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.setting-monaco-field__label-block > label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--app-chrome-text, #030d12);
+  line-height: 1.35;
+}
+
+.setting-monaco-field__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--app-chrome-text-muted, #5c6b76);
+  margin-top: 4px;
+  font-weight: normal;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.setting-monaco-field__actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.setting-monaco-field__surface {
+  border-radius: 10px;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.setting-monaco-field__surface:focus-within {
+  box-shadow:
+    0 0 0 1px var(--app-accent, #0079ce),
+    0 0 0 4px color-mix(in srgb, var(--app-accent, #0079ce) 22%, transparent);
+}
+
+html.dark .setting-monaco-field__surface:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-accent, #3d9fdf) 85%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--app-accent, #3d9fdf) 28%, transparent);
+}

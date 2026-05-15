@@ -1,42 +1,65 @@
 import { API } from './api';
-import { encryptLoginPasswordRSA } from './loginPasswordRsa';
+import { encryptLoginPayloadAES } from './loginPasswordAes';
 
-/**
- * @param {{ captcha_id?: string, captcha_clicks?: { x: number, y: number }[] }} [captcha]
- * @param {{ id: string, ts: number, sig: string } | null} [loginProof] 与 GET /api/user/login/captcha 同会话的凭证
- */
-export async function buildLoginPayload(username, passwordPlain, captcha, loginProof) {
-  const st = await API.get('/api/status');
-  const pem = st.data?.data?.login_password_rsa_public_key;
-  if (!pem) {
-    const base = { username, password: passwordPlain };
-    if (captcha?.captcha_id) base.captcha_id = captcha.captcha_id;
-    return base;
+function isSecurePasswordLoginEnabled() {
+  try {
+    const raw = localStorage.getItem('status');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (Object.prototype.hasOwnProperty.call(data, 'secure_password_login')) {
+      return (
+        data.secure_password_login === true ||
+        data.secure_password_login === 'true'
+      );
+    }
+  } catch {
+    /* ignore */
   }
+  return false;
+}
+
+export async function buildLoginPayload(username, passwordPlain, captcha, loginProof) {
+  if (!isSecurePasswordLoginEnabled()) {
+    const out = { username, password: passwordPlain };
+    if (
+      captcha?.captcha_clicks &&
+      captcha.captcha_clicks.length > 0 &&
+      captcha?.captcha_id
+    ) {
+      out.captcha_id = captcha.captcha_id;
+      out.captcha_dots_enc = JSON.stringify(captcha.captcha_clicks);
+    }
+    return out;
+  }
+
   let d;
   if (
     loginProof &&
     loginProof.id &&
     loginProof.sig != null &&
-    loginProof.ts != null
+    loginProof.ts != null &&
+    loginProof.encKey
   ) {
     d = {
       login_request_id: loginProof.id,
       login_request_ts: loginProof.ts,
       login_request_sig: loginProof.sig,
+      login_enc_key: loginProof.encKey,
     };
   } else {
     const pr = await API.get('/api/user/login/request-proof');
-    d = pr.data?.data;
-    if (!pr.data?.success || !d?.login_request_id) {
+    const body = pr.data?.data;
+    if (!pr.data?.success || !body?.login_request_id || !body?.login_enc_key) {
       const msg =
         typeof pr.data?.message === 'string' && pr.data.message.trim()
           ? pr.data.message.trim()
           : '无法获取登录凭证，请刷新后重试';
       throw new Error(msg);
     }
+    d = body;
   }
-  const enc = encryptLoginPasswordRSA(pem, passwordPlain);
+
+  const enc = await encryptLoginPayloadAES(d.login_enc_key, passwordPlain);
   const out = {
     username,
     password: enc,
@@ -50,9 +73,9 @@ export async function buildLoginPayload(username, passwordPlain, captcha, loginP
     captcha?.captcha_id
   ) {
     out.captcha_id = captcha.captcha_id;
-    out.captcha_dots_enc = encryptLoginPasswordRSA(
-      pem,
-      JSON.stringify(captcha.captcha_clicks)
+    out.captcha_dots_enc = await encryptLoginPayloadAES(
+      d.login_enc_key,
+      JSON.stringify(captcha.captcha_clicks),
     );
   }
   return out;

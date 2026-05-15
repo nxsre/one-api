@@ -28,10 +28,17 @@ func LoginCaptchaChallenge(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "验证码生成失败"})
 		return
 	}
-	proofID, proofTs, proofSig, err := prepareLoginRequestProof(c)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "凭证生成失败"})
-		return
+	var proofID string
+	var proofTs int64
+	var proofSig string
+	var encKeyB64 string
+	if config.SecurePasswordLoginEnabled {
+		var err error
+		proofID, proofTs, proofSig, encKeyB64, err = prepareLoginRequestProof(c)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "凭证生成失败"})
+			return
+		}
 	}
 	session := sessions.Default(c)
 	session.Delete("login_click_captcha_dots")
@@ -46,12 +53,15 @@ func LoginCaptchaChallenge(c *gin.Context) {
 		return
 	}
 	resp := gin.H{
-		"master_image":      "data:image/jpeg;base64," + masterB64,
-		"thumb_image":       "data:image/png;base64," + thumbB64,
-		"dot_num":           dotNum,
-		"login_request_id":  proofID,
-		"login_request_ts":  proofTs,
-		"login_request_sig": proofSig,
+		"master_image": "data:image/jpeg;base64," + masterB64,
+		"thumb_image":  "data:image/png;base64," + thumbB64,
+		"dot_num":      dotNum,
+	}
+	if config.SecurePasswordLoginEnabled {
+		resp["login_request_id"] = proofID
+		resp["login_request_ts"] = proofTs
+		resp["login_request_sig"] = proofSig
+		resp["login_enc_key"] = encKeyB64
 	}
 	if captchaID != "" {
 		resp["captcha_id"] = captchaID

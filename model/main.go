@@ -41,6 +41,7 @@ func CreateRootAccountIfNeed() error {
 			DisplayName: "Root User",
 			AccessToken: accessToken,
 			Quota:       500000000000000,
+			Uid:         NewUserPublicID(),
 		}
 		DB.Create(&rootUser)
 		if config.InitialRootToken != "" {
@@ -164,6 +165,9 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&User{}); err != nil {
 		return err
 	}
+	if err = migrateUserPublicUID(); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&Option{}); err != nil {
 		return err
 	}
@@ -177,6 +181,32 @@ func migrateDB() error {
 		return err
 	}
 	if err = DB.AutoMigrate(&GlobalAccessWhitelist{}, &GlobalAccessBlacklist{}, &TwoFA{}, &TwoFABackupCode{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&NacosAIArtifact{}, &NacosAIArtifactVersion{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&NacosCsConfig{}, &NacosCsConfigHistory{}, &NacosUserACL{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&NacosRegistryNamespace{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&NacosAIMcpServer{}, &NacosAIA2AAgent{}, &NacosAIPrompt{}, &NacosAIPromptVersion{}, &NacosAIPipelineRun{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(
+		&NacosConsoleDiscoveryService{},
+		&NacosConsoleDiscoveryInstance{},
+		&NacosConsoleSubscriber{},
+		&NacosCsConfigBeta{},
+		&NacosCsConfigListener{},
+		&NacosConsolePlugin{},
+		&NacosConsoleClusterNode{},
+	); err != nil {
+		return err
+	}
+	if err = SeedNacosConsoleFacilityDefaults(DB); err != nil {
 		return err
 	}
 	return nil

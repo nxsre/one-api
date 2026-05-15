@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
@@ -10,9 +10,11 @@ import {
   Message,
 } from 'semantic-ui-react';
 import { API, removeTrailingSlash, showError } from '../helpers';
+import { StatusContext } from '../context/Status';
 
 const SystemSetting = () => {
   const { t } = useTranslation();
+  const [, statusDispatch] = useContext(StatusContext);
   let [inputs, setInputs] = useState({
     PasswordLoginEnabled: '',
     PasswordRegisterEnabled: '',
@@ -44,6 +46,11 @@ const SystemSetting = () => {
     EmailDomainRestrictionEnabled: '',
     EmailDomainWhitelist: '',
     S3SiteEnabled: '',
+    NacosEnabled: '',
+    SecurePasswordLoginEnabled: '',
+    OutboundURLWhitelistEnabled: 'false',
+    OutboundURLWhitelistDomains: '',
+    OutboundURLWhitelistIPs: '',
   });
   const [originInputs, setOriginInputs] = useState({});
   let [loading, setLoading] = useState(false);
@@ -60,14 +67,20 @@ const SystemSetting = () => {
       data.forEach((item) => {
         newInputs[item.key] = item.value;
       });
-      setInputs({
+      const merged = {
+        OutboundURLWhitelistEnabled: 'false',
+        OutboundURLWhitelistDomains: '',
+        OutboundURLWhitelistIPs: '',
         ...newInputs,
-        EmailDomainWhitelist: newInputs.EmailDomainWhitelist.split(','),
+      };
+      setOriginInputs(merged);
+      setInputs({
+        ...merged,
+        EmailDomainWhitelist: (merged.EmailDomainWhitelist || '').split(','),
       });
-      setOriginInputs(newInputs);
 
       setEmailDomainWhitelist(
-        newInputs.EmailDomainWhitelist.split(',').map((item) => {
+        (merged.EmailDomainWhitelist || '').split(',').map((item) => {
           return { key: item, text: item, value: item };
         })
       );
@@ -93,6 +106,9 @@ const SystemSetting = () => {
       case 'EmailDomainRestrictionEnabled':
       case 'RegisterEnabled':
       case 'S3SiteEnabled':
+      case 'NacosEnabled':
+      case 'SecurePasswordLoginEnabled':
+      case 'OutboundURLWhitelistEnabled':
         value = inputs[key] === 'true' ? 'false' : 'true';
         break;
       default:
@@ -106,6 +122,21 @@ const SystemSetting = () => {
     if (success) {
       if (key === 'EmailDomainWhitelist') {
         value = value.split(',');
+      }
+      if (key === 'NacosEnabled' || key === 'SecurePasswordLoginEnabled') {
+        try {
+          const st = JSON.parse(localStorage.getItem('status') || '{}');
+          if (key === 'NacosEnabled') {
+            st.nacos_enabled = value === 'true';
+          }
+          if (key === 'SecurePasswordLoginEnabled') {
+            st.secure_password_login = value === 'true';
+          }
+          localStorage.setItem('status', JSON.stringify(st));
+          statusDispatch({ type: 'set', payload: st });
+        } catch {
+          /* ignore */
+        }
       }
       setInputs((inputs) => ({
         ...inputs,
@@ -134,9 +165,13 @@ const SystemSetting = () => {
       name === 'WeChatServerAddress' ||
       name === 'WeChatServerToken' ||
       name === 'WeChatAccountQRCodeImageURL' ||
+      name === 'MessagePusherAddress' ||
+      name === 'MessagePusherToken' ||
       name === 'TurnstileSiteKey' ||
       name === 'TurnstileSecretKey' ||
-      name === 'EmailDomainWhitelist'
+      name === 'EmailDomainWhitelist' ||
+      name === 'OutboundURLWhitelistDomains' ||
+      name === 'OutboundURLWhitelistIPs'
     ) {
       setInputs((inputs) => ({ ...inputs, [name]: value }));
     } else {
@@ -147,6 +182,31 @@ const SystemSetting = () => {
   const submitServerAddress = async () => {
     let ServerAddress = removeTrailingSlash(inputs.ServerAddress);
     await updateOption('ServerAddress', ServerAddress);
+  };
+
+  const submitOutboundWhitelist = async () => {
+    const domainsChanged =
+      (originInputs.OutboundURLWhitelistDomains || '') !==
+      (inputs.OutboundURLWhitelistDomains || '');
+    const ipsChanged =
+      (originInputs.OutboundURLWhitelistIPs || '') !==
+      (inputs.OutboundURLWhitelistIPs || '');
+    if (!domainsChanged && !ipsChanged) {
+      return;
+    }
+    if (domainsChanged) {
+      await updateOption(
+        'OutboundURLWhitelistDomains',
+        inputs.OutboundURLWhitelistDomains || ''
+      );
+    }
+    if (ipsChanged) {
+      await updateOption(
+        'OutboundURLWhitelistIPs',
+        inputs.OutboundURLWhitelistIPs || ''
+      );
+    }
+    await getOptions();
   };
 
   const submitSMTP = async () => {
@@ -288,19 +348,50 @@ const SystemSetting = () => {
       <Grid.Column>
         <Form loading={loading}>
           <Header as='h3'>{t('setting.system.general.title')}</Header>
-          <Form.Group widths='equal'>
-            <Form.Input
-              label={t('setting.system.general.server_address')}
-              placeholder={t(
-                'setting.system.general.server_address_placeholder'
-              )}
-              value={inputs.ServerAddress}
-              name='ServerAddress'
+          <Form.Input
+            label={t('setting.system.general.server_address')}
+            name='ServerAddress'
+            placeholder={t('setting.system.general.server_address_placeholder')}
+            value={inputs.ServerAddress}
+            onChange={handleInputChange}
+            autoComplete='off'
+          />
+          <Form.Button onClick={submitServerAddress}>
+            {t('setting.system.general.buttons.update')}
+          </Form.Button>
+          <Divider />
+          <Header as='h3'>{t('setting.system.outbound_whitelist.title')}</Header>
+          <Message warning>
+            {t('setting.system.outbound_whitelist.subtitle')}
+          </Message>
+          <Form.Group inline>
+            <Form.Checkbox
+              checked={inputs.OutboundURLWhitelistEnabled === 'true'}
+              label={t('setting.system.outbound_whitelist.enable')}
+              name='OutboundURLWhitelistEnabled'
               onChange={handleInputChange}
             />
           </Form.Group>
-          <Form.Button onClick={submitServerAddress}>
-            {t('setting.system.general.buttons.update')}
+          <Form.TextArea
+            label={t('setting.system.outbound_whitelist.domains')}
+            name='OutboundURLWhitelistDomains'
+            placeholder={t(
+              'setting.system.outbound_whitelist.domains_placeholder'
+            )}
+            value={inputs.OutboundURLWhitelistDomains || ''}
+            onChange={handleInputChange}
+            rows={4}
+          />
+          <Form.TextArea
+            label={t('setting.system.outbound_whitelist.ips')}
+            name='OutboundURLWhitelistIPs'
+            placeholder={t('setting.system.outbound_whitelist.ips_placeholder')}
+            value={inputs.OutboundURLWhitelistIPs || ''}
+            onChange={handleInputChange}
+            rows={4}
+          />
+          <Form.Button onClick={() => submitOutboundWhitelist().then()}>
+            {t('setting.system.outbound_whitelist.buttons.save')}
           </Form.Button>
           <Divider />
           <Header as='h3'>{t('setting.system.login.title')}</Header>
@@ -309,6 +400,12 @@ const SystemSetting = () => {
               checked={inputs.PasswordLoginEnabled === 'true'}
               label={t('setting.system.login.password_login')}
               name='PasswordLoginEnabled'
+              onChange={handleInputChange}
+            />
+            <Form.Checkbox
+              checked={inputs.SecurePasswordLoginEnabled === 'true'}
+              label={t('setting.system.login.secure_password_login')}
+              name='SecurePasswordLoginEnabled'
               onChange={handleInputChange}
             />
             {showPasswordWarningModal && (
@@ -371,6 +468,9 @@ const SystemSetting = () => {
               onChange={handleInputChange}
             />
           </Form.Group>
+          <Message info size='small'>
+            {t('setting.system.login.secure_password_login_hint')}
+          </Message>
           <Form.Group inline>
             <Form.Checkbox
               checked={inputs.RegisterEnabled === 'true'}
@@ -382,6 +482,17 @@ const SystemSetting = () => {
               checked={inputs.TurnstileCheckEnabled === 'true'}
               label={t('setting.system.login.turnstile')}
               name='TurnstileCheckEnabled'
+              onChange={handleInputChange}
+            />
+          </Form.Group>
+          <Divider />
+          <Header as='h3'>{t('setting.system.nacos.title')}</Header>
+          <Message>{t('setting.system.nacos.subtitle')}</Message>
+          <Form.Group inline>
+            <Form.Checkbox
+              checked={inputs.NacosEnabled === 'true'}
+              label={t('setting.system.nacos.enable')}
+              name='NacosEnabled'
               onChange={handleInputChange}
             />
           </Form.Group>
@@ -479,33 +590,37 @@ const SystemSetting = () => {
           <Form.Group widths={3}>
             <Form.Input
               label={t('setting.system.smtp.server')}
-              placeholder={t('setting.system.smtp.server_placeholder')}
               name='SMTPServer'
-              onChange={handleInputChange}
+              placeholder={t('setting.system.smtp.server_placeholder')}
               value={inputs.SMTPServer}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.smtp.port')}
-              placeholder={t('setting.system.smtp.port_placeholder')}
               name='SMTPPort'
-              onChange={handleInputChange}
+              placeholder={t('setting.system.smtp.port_placeholder')}
               value={inputs.SMTPPort}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.smtp.account')}
-              placeholder={t('setting.system.smtp.account_placeholder')}
               name='SMTPAccount'
-              onChange={handleInputChange}
+              placeholder={t('setting.system.smtp.account_placeholder')}
               value={inputs.SMTPAccount}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
           </Form.Group>
           <Form.Group widths={3}>
             <Form.Input
               label={t('setting.system.smtp.from')}
-              placeholder={t('setting.system.smtp.from_placeholder')}
               name='SMTPFrom'
-              onChange={handleInputChange}
+              placeholder={t('setting.system.smtp.from_placeholder')}
               value={inputs.SMTPFrom}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.smtp.token')}
@@ -538,10 +653,11 @@ const SystemSetting = () => {
           <Form.Group widths={3}>
             <Form.Input
               label={t('setting.system.github.client_id')}
-              placeholder={t('setting.system.github.client_id_placeholder')}
               name='GitHubClientId'
-              onChange={handleInputChange}
+              placeholder={t('setting.system.github.client_id_placeholder')}
               value={inputs.GitHubClientId}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.github.client_secret')}
@@ -577,10 +693,10 @@ const SystemSetting = () => {
             <Form.Input
               label={t('setting.system.lark.client_id')}
               name='LarkClientId'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.LarkClientId}
               placeholder={t('setting.system.lark.client_id_placeholder')}
+              value={inputs.LarkClientId}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.lark.client_secret')}
@@ -613,12 +729,10 @@ const SystemSetting = () => {
             <Form.Input
               label={t('setting.system.wechat.server_address')}
               name='WeChatServerAddress'
-              onChange={handleInputChange}
-              autoComplete='new-password'
+              placeholder={t('setting.system.wechat.server_address_placeholder')}
               value={inputs.WeChatServerAddress}
-              placeholder={t(
-                'setting.system.wechat.server_address_placeholder'
-              )}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.wechat.token')}
@@ -632,10 +746,10 @@ const SystemSetting = () => {
             <Form.Input
               label={t('setting.system.wechat.qrcode')}
               name='WeChatAccountQRCodeImageURL'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.WeChatAccountQRCodeImageURL}
               placeholder={t('setting.system.wechat.qrcode_placeholder')}
+              value={inputs.WeChatAccountQRCodeImageURL}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
           </Form.Group>
           <Form.Button onClick={submitWeChat}>
@@ -657,10 +771,10 @@ const SystemSetting = () => {
             <Form.Input
               label={t('setting.system.turnstile.site_key')}
               name='TurnstileSiteKey'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.TurnstileSiteKey}
               placeholder={t('setting.system.turnstile.site_key_placeholder')}
+              value={inputs.TurnstileSiteKey}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.system.turnstile.secret_key')}

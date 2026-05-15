@@ -2,10 +2,13 @@ package model
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm"
 
 	"github.com/songquanpeng/one-api/common"
@@ -32,28 +35,54 @@ const (
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int    `json:"id"`
-	Username         string `json:"username" gorm:"unique;index" validate:"max=12"`
-	Password         string `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	DisplayName      string `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int    `json:"role" gorm:"type:int;default:1"`   // admin, util
-	Status           int    `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string `json:"github_id" gorm:"column:github_id;index"`
-	WeChatId         string `json:"wechat_id" gorm:"column:wechat_id;index"`
-	LarkId           string `json:"lark_id" gorm:"column:lark_id;index"`
-	OidcId           string `json:"oidc_id" gorm:"column:oidc_id;index"`
-	VerificationCode string `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	AccessToken      string `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int64  `json:"quota" gorm:"bigint;default:0"`
-	UsedQuota        int64  `json:"used_quota" gorm:"bigint;default:0;column:used_quota"` // used quota
-	RequestCount     int    `json:"request_count" gorm:"type:int;default:0;"`             // request number
-	Group            string `json:"group" gorm:"type:varchar(32);default:'default'"`
-	AffCode          string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	InviterId        int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	S3Enabled    bool    `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
-	S3AccessKey  *string `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
-	S3SecretKey  *string `json:"-" gorm:"size:128;column:s3_secret_key"`
+	Id               int     `json:"-" gorm:"primaryKey;autoIncrement"`
+	Uid              string  `json:"user_id" gorm:"column:uid;size:26" validate:"omitempty,len=26"`
+	Username         string  `json:"username" gorm:"unique;index" validate:"max=12"`
+	Password         string  `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	DisplayName      string  `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int     `json:"role" gorm:"type:int;default:1"`   // admin, util
+	Status           int     `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string  `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId         string  `json:"github_id" gorm:"column:github_id;index"`
+	WeChatId         string  `json:"wechat_id" gorm:"column:wechat_id;index"`
+	LarkId           string  `json:"lark_id" gorm:"column:lark_id;index"`
+	OidcId           string  `json:"oidc_id" gorm:"column:oidc_id;index"`
+	VerificationCode string  `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
+	AccessToken      string  `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota            int64   `json:"quota" gorm:"bigint;default:0"`
+	UsedQuota        int64   `json:"used_quota" gorm:"bigint;default:0;column:used_quota"` // used quota
+	RequestCount     int     `json:"request_count" gorm:"type:int;default:0;"`             // request number
+	Group            string  `json:"group" gorm:"type:varchar(32);default:'default'"`
+	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	InviterId        int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	S3Enabled        bool    `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
+	S3AccessKey      *string `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
+	S3SecretKey      *string `json:"-" gorm:"size:128;column:s3_secret_key"`
+}
+
+// UserListItem 管理端用户列表/搜索 API 返回字段（不含 access_token、OAuth ID、S3 密钥等）。
+type UserListItem struct {
+	Uid          string `json:"user_id" gorm:"column:uid"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"display_name"`
+	Role         int    `json:"role"`
+	Status       int    `json:"status"`
+	Email        string `json:"email"`
+	Quota        int64  `json:"quota"`
+	UsedQuota    int64  `json:"used_quota" gorm:"column:used_quota"`
+	RequestCount int    `json:"request_count" gorm:"column:request_count"`
+	Group        string `json:"group"`
+}
+
+// UserManageResult 用户管理操作（启用/禁用/升降级等）后的最小返回。
+type UserManageResult struct {
+	Role   int `json:"role"`
+	Status int `json:"status"`
+}
+
+var userListSelectColumns = []string{
+	"uid", "username", "display_name", "role", "status", "email",
+	"quota", "used_quota", "request_count", "group",
 }
 
 func GetMaxUserId() int {
@@ -62,8 +91,12 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(startIdx int, num int, order string) (users []*User, err error) {
-	query := DB.Limit(num).Offset(startIdx).Omit("password", "S3SecretKey").Where("status != ?", UserStatusDeleted)
+func GetAllUsers(startIdx int, num int, order string) (users []UserListItem, err error) {
+	query := DB.Model(&User{}).
+		Select(userListSelectColumns).
+		Limit(num).
+		Offset(startIdx).
+		Where("status != ?", UserStatusDeleted)
 
 	switch order {
 	case "quota":
@@ -80,12 +113,19 @@ func GetAllUsers(startIdx int, num int, order string) (users []*User, err error)
 	return users, err
 }
 
-func SearchUsers(keyword string) (users []*User, err error) {
-	if !common.UsingPostgreSQL {
-		err = DB.Omit("password", "S3SecretKey").Where("id = ? or username LIKE ? or email LIKE ? or display_name LIKE ?", keyword, keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
-	} else {
-		err = DB.Omit("password", "S3SecretKey").Where("username LIKE ? or email LIKE ? or display_name LIKE ?", keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
+func SearchUsers(keyword string) (users []UserListItem, err error) {
+	kw := strings.TrimSpace(keyword)
+	pattern := kw + "%"
+	q := DB.Model(&User{}).Select(userListSelectColumns).Where("status != ?", UserStatusDeleted)
+	if kw != "" {
+		if _, perr := ulid.Parse(kw); perr == nil {
+			err = q.Where("uid = ? OR username LIKE ? OR email LIKE ? OR display_name LIKE ?",
+				kw, pattern, pattern, pattern).Find(&users).Error
+			return users, err
+		}
 	}
+	err = q.Where("username LIKE ? OR email LIKE ? OR display_name LIKE ?",
+		pattern, pattern, pattern).Find(&users).Error
 	return users, err
 }
 
@@ -122,6 +162,9 @@ func DeleteUserById(id int) (err error) {
 
 func (user *User) Insert(ctx context.Context, inviterId int) error {
 	var err error
+	if user.Uid == "" {
+		user.Uid = NewUserPublicID()
+	}
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
 		if err != nil {
@@ -453,4 +496,40 @@ func updateUserRequestCount(id int, count int) {
 func GetUsernameById(id int) (username string) {
 	DB.Model(&User{}).Where("id = ?", id).Select("username").Find(&username)
 	return username
+}
+
+// NewUserPublicID 生成 26 字符 ULID，作为对外用户标识（users.uid）。
+func NewUserPublicID() string {
+	entropy := ulid.Monotonic(rand.Reader, 0)
+	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
+}
+
+// GetUserByPublicID 按对外用户 ID（uid / ULID）查询。
+func GetUserByPublicID(uid string) (*User, error) {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return nil, errors.New("用户ID 为空")
+	}
+	user := User{}
+	err := DB.Omit("password", "access_token", "S3SecretKey").Where("uid = ?", uid).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// ParseUserRouteParam 将路由/API 中的对外用户 ID（ULID）解析为内部主键。
+func ParseUserRouteParam(idStr string) (int, error) {
+	idStr = strings.TrimSpace(idStr)
+	if idStr == "" {
+		return 0, errors.New("用户ID 为空")
+	}
+	if _, err := ulid.Parse(idStr); err != nil {
+		return 0, errors.New("无效用户 ID")
+	}
+	u, err := GetUserByPublicID(idStr)
+	if err != nil {
+		return 0, err
+	}
+	return u.Id, nil
 }

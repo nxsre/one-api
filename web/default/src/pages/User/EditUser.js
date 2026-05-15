@@ -1,13 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Form, Card } from 'semantic-ui-react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { API, showError, showSuccess } from '../../helpers';
-import { renderQuota, renderQuotaWithPrompt } from '../../helpers/render';
+import { renderQuotaWithPrompt } from '../../helpers/render';
+
+function consumeSafeInternalRedirect(searchParams) {
+  const raw = searchParams.get('redirect');
+  if (!raw) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(String(raw).trim());
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith('/') || decoded.startsWith('//')) return null;
+  return decoded;
+}
 
 const EditUser = () => {
   const { t } = useTranslation();
   const params = useParams();
+  const [searchParams] = useSearchParams();
   const userId = params.id;
   const [loading, setLoading] = useState(true);
   const [inputs, setInputs] = useState({
@@ -29,11 +43,21 @@ const EditUser = () => {
     wechat_id,
     email,
     quota,
-    group,
   } = inputs;
+
   const handleInputChange = (e, { name, value }) => {
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
+    if (name === 'quota') {
+      const trimmed = String(value).trim();
+      const n = trimmed === '' ? 0 : parseInt(trimmed, 10);
+      setInputs((prev) => ({
+        ...prev,
+        quota: Number.isNaN(n) ? prev.quota : n,
+      }));
+      return;
+    }
+    setInputs((prev) => ({ ...prev, [name]: value }));
   };
+
   const fetchGroups = async () => {
     try {
       let res = await API.get(`/api/group/`);
@@ -78,7 +102,7 @@ const EditUser = () => {
   const submit = async () => {
     let res = undefined;
     if (userId) {
-      let data = { ...inputs, id: parseInt(userId) };
+      let data = { ...inputs, user_id: userId };
       if (typeof data.quota === 'string') {
         data.quota = parseInt(data.quota);
       }
@@ -89,6 +113,12 @@ const EditUser = () => {
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('user.messages.update_success'));
+      if (!userId) {
+        const back = consumeSafeInternalRedirect(searchParams);
+        if (back) {
+          window.location.assign(back);
+        }
+      }
     } else {
       showError(message);
     }
@@ -107,7 +137,7 @@ const EditUser = () => {
                 placeholder={t('user.edit.username_placeholder')}
                 onChange={handleInputChange}
                 value={username}
-                autoComplete='new-password'
+                autoComplete='username'
               />
             </Form.Field>
             <Form.Field>
@@ -128,7 +158,7 @@ const EditUser = () => {
                 placeholder={t('user.edit.display_name_placeholder')}
                 onChange={handleInputChange}
                 value={display_name}
-                autoComplete='new-password'
+                autoComplete='off'
               />
             </Form.Field>
             {userId && (
@@ -156,11 +186,16 @@ const EditUser = () => {
                       t
                     )}`}
                     name='quota'
+                    type='text'
+                    inputMode='numeric'
                     placeholder={t('user.edit.quota_placeholder')}
                     onChange={handleInputChange}
-                    value={quota}
-                    type={'number'}
-                    autoComplete='new-password'
+                    value={
+                      inputs.quota === undefined || inputs.quota === null
+                        ? ''
+                        : String(inputs.quota)
+                    }
+                    autoComplete='off'
                   />
                 </Form.Field>
               </>
@@ -169,9 +204,8 @@ const EditUser = () => {
               <Form.Input
                 label={t('user.edit.github_id')}
                 name='github_id'
-                value={github_id}
-                autoComplete='new-password'
                 placeholder={t('user.edit.github_id_placeholder')}
+                value={github_id}
                 readOnly
               />
             </Form.Field>
@@ -179,9 +213,8 @@ const EditUser = () => {
               <Form.Input
                 label={t('user.edit.wechat_id')}
                 name='wechat_id'
-                value={wechat_id}
-                autoComplete='new-password'
                 placeholder={t('user.edit.wechat_id_placeholder')}
+                value={wechat_id}
                 readOnly
               />
             </Form.Field>
@@ -189,9 +222,8 @@ const EditUser = () => {
               <Form.Input
                 label={t('user.edit.email')}
                 name='email'
-                value={email}
-                autoComplete='new-password'
                 placeholder={t('user.edit.email_placeholder')}
+                value={email}
                 readOnly
               />
             </Form.Field>

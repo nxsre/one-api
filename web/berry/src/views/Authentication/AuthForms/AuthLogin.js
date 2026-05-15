@@ -84,12 +84,25 @@ const LoginForm = ({ ...others }) => {
         setCaptchaChallengeId(d.captcha_id || '');
         setCaptchaClicks([]);
         setCaptchaLoadError('');
-        if (d.login_request_id && d.login_request_sig != null && d.login_request_ts != null) {
-          loginRequestProofRef.current = {
-            id: d.login_request_id,
-            ts: Number(d.login_request_ts),
-            sig: d.login_request_sig
-          };
+        const secureLogin =
+          siteInfo?.secure_password_login === true ||
+          siteInfo?.secure_password_login === 'true';
+        if (secureLogin) {
+          if (
+            d.login_request_id &&
+            d.login_request_sig != null &&
+            d.login_request_ts != null &&
+            d.login_enc_key
+          ) {
+            loginRequestProofRef.current = {
+              id: d.login_request_id,
+              ts: Number(d.login_request_ts),
+              sig: d.login_request_sig,
+              encKey: d.login_enc_key,
+            };
+          } else {
+            loginRequestProofRef.current = null;
+          }
         } else {
           loginRequestProofRef.current = null;
         }

@@ -45,7 +45,7 @@
 
 ### 3.2 敏感信息
 
-- **`sql_dsn`、`session_secret`、Redis 密码、`login_password_rsa_private_key`** 等须走 **Secret**（或 SealedSecrets / External Secrets / SOPS），**不要**写进 ConfigMap 明文。
+- **`sql_dsn`、`session_secret`、Redis 密码** 等须走 **Secret**（或 SealedSecrets / External Secrets / SOPS），**不要**写进 ConfigMap 明文。
 - 示例清单采用 **一个 Secret 内两个键**：`primary.toml`、`worker.toml`，由 Deployment 以 `subPath` 挂成同一路径 `/etc/one-api/config.toml`。你也可以拆成两个 Secret，由 CI 注入。
 
 ### 3.3 时区

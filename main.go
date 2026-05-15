@@ -16,6 +16,7 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/i18n"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/nacosdist"
 	"github.com/songquanpeng/one-api/controller"
 	"github.com/songquanpeng/one-api/middleware"
 	"github.com/songquanpeng/one-api/model"
@@ -26,6 +27,9 @@ import (
 
 //go:embed web/build/*
 var buildFS embed.FS
+
+//go:embed web/nacos-console/dist
+var nacosConsoleFS embed.FS
 
 func main() {
 	common.Init()
@@ -40,9 +44,6 @@ func main() {
 	}
 
 	common.InitEmbeddedTLSFromEnv()
-	if err := common.InitLoginPasswordRSA(); err != nil {
-		logger.FatalLog("login RSA init error: " + err.Error())
-	}
 
 	// Initialize SQL Database
 	model.InitDB()
@@ -122,7 +123,8 @@ func main() {
 	})
 	server.Use(sessions.Sessions("session", store))
 
-	router.SetRouter(server, buildFS)
+	nacosdist.Bind(nacosConsoleFS)
+	router.SetRouter(server, buildFS, nacosConsoleFS)
 	service.StartS3Cleaner()
 	port := strconv.Itoa(common.Port)
 	switch {

@@ -27,10 +27,26 @@ var SessionSecret = uuid.New().String()
 var OptionMap map[string]string
 var OptionMapRWMutex sync.RWMutex
 
+// IsNacosEnabled 是否启用 Nacos 注册表与管理端集成。
+func IsNacosEnabled() bool {
+	OptionMapRWMutex.RLock()
+	defer OptionMapRWMutex.RUnlock()
+	if OptionMap == nil {
+		return NacosEnabled
+	}
+	v, ok := OptionMap["NacosEnabled"]
+	if !ok {
+		return NacosEnabled
+	}
+	return v == "true"
+}
+
 var ItemsPerPage = 10
 var MaxRecentItems = 100
 
 var PasswordLoginEnabled = true
+// SecurePasswordLoginEnabled 为 true 时登录须先取 proof 并用一次性 AES 密钥加密密码；默认 false 为明文（依赖 HTTPS）。
+var SecurePasswordLoginEnabled = false
 var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
 var GitHubOAuthEnabled = false
@@ -38,6 +54,9 @@ var OidcEnabled = false
 var WeChatAuthEnabled = false
 var TurnstileCheckEnabled = false
 var RegisterEnabled = true
+
+// NacosEnabled 系统设置开关：关闭后 Nacos API 返回 404，管理端隐藏 Nacos 菜单。
+var NacosEnabled = false
 
 var EmailDomainRestrictionEnabled = false
 var EmailDomainWhitelist = []string{
@@ -158,6 +177,21 @@ var UserContentRequestTimeout int
 var EnforceIncludeUsage bool
 var TestPrompt string
 
+var NacosRegistryAnonymousRead bool
+var NacosRegistryMaxUploadBytes int64
+var NacosRegistryZipStorage string
+var NacosRegistryZipLocalDir string
+var NacosRegistryS3KeyPrefix string
+
+// NacosCsEncryptionKey 配置中心 cipher-aes-* dataId 的 AES-256-GCM 主密钥材料（任意长度，内部 SHA256 派生 32 字节）。空则禁止创建/读取加密配置。
+var NacosCsEncryptionKey string
+
+// NacosCsEncryptionKeyPrevious 轮换用历史密钥：仅参与解密（多行则每行一条，依次尝试）；发布仍只用主密钥。
+var NacosCsEncryptionKeyPrevious string
+
+// NacosCsClientGetReturnCiphertext 为 true 时，GET /nacos/v3/client/cs/config 对已加密落库的配置返回密文 content + encryptedDataKey（与 SDK 拉取形态一致）；控制台/管理端仍返回明文。
+var NacosCsClientGetReturnCiphertext bool
+
 // LoadRuntime 须在 cfg.Init 与 env.BindViper 之后调用，从 TOML / 命令行填充运行时项。
 func LoadRuntime() {
 	DebugEnabled = env.Bool("DEBUG", false)
@@ -195,4 +229,16 @@ func LoadRuntime() {
 	UserContentRequestTimeout = env.Int("USER_CONTENT_REQUEST_TIMEOUT", 30)
 	EnforceIncludeUsage = env.Bool("ENFORCE_INCLUDE_USAGE", false)
 	TestPrompt = env.String("TEST_PROMPT", "Output only your specific model name with no additional text.")
+
+	NacosRegistryAnonymousRead = env.Bool("NACOS_REGISTRY_ANONYMOUS_READ", true)
+	NacosRegistryMaxUploadBytes = env.Int64Always("nacos_registry_max_upload_bytes")
+	if NacosRegistryMaxUploadBytes <= 0 {
+		NacosRegistryMaxUploadBytes = 10 << 20
+	}
+	NacosRegistryZipStorage = env.StringAlways("nacos_registry_zip_storage")
+	NacosRegistryZipLocalDir = env.StringAlways("nacos_registry_zip_local_dir")
+	NacosRegistryS3KeyPrefix = env.StringAlways("nacos_registry_s3_key_prefix")
+	NacosCsEncryptionKey = env.StringAlways("nacos_cs_encryption_key")
+	NacosCsEncryptionKeyPrevious = env.StringAlways("nacos_cs_encryption_key_previous")
+	NacosCsClientGetReturnCiphertext = env.BoolAlways("nacos_cs_client_get_return_ciphertext")
 }

@@ -13,3 +13,13 @@ cmd.md
 /one-api
 temp
 .DS_Store
+
+# Nacos 官方前端（third_party/nacos）本地 npm 安装产物
+third_party/nacos/**/node_modules
+third_party/nacos/**/dist
+# 本地 vite 写入的完整控制台产物（仓库内仅保留 web/nacos-console/dist/index.html 占位）
+web/nacos-console/dist/js/
+web/nacos-console/dist/assets/
+web/nacos-console/dist/css/
+web/nacos-console/dist/img/
+web/nacos-console/dist/*.svg

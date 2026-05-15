@@ -10,14 +10,18 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/env"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/middleware"
 )
 
-func SetRouter(router *gin.Engine, buildFS embed.FS) {
+func SetRouter(router *gin.Engine, buildFS embed.FS, nacosConsoleFS embed.FS) {
+	router.Use(middleware.NacosFeatureGate())
 	SetS3CompatRouter(router)
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
+	SetNacosRegistryRouter(router)
 	SetS3PathStyleRootRouter(router)
+	MountNacosConsoleDist(router, nacosConsoleFS)
 	frontendBaseUrl := strings.TrimSpace(env.StringAlways("frontend_base_url"))
 	if config.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

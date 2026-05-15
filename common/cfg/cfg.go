@@ -101,13 +101,20 @@ func setDefaults(v *viper.Viper) {
 	d("login_brute_fail_window_sec", int64(0))
 	d("login_brute_lock_duration_sec", int64(0))
 
-	d("login_password_rsa_private_key", "")
-	d("login_password_rsa_key_file", "")
 
 	d("frontend_base_url", "")
 	d("global_access_scope", "relay")
 
 	d("tiktoken_cache_dir", "")
+
+	d("nacos_registry_anonymous_read", true)
+	d("nacos_registry_max_upload_bytes", int64(10<<20))
+	d("nacos_registry_zip_storage", "local")
+	d("nacos_registry_zip_local_dir", "")
+	d("nacos_registry_s3_key_prefix", "nacos-ai-registry/")
+	d("nacos_cs_encryption_key", "")
+	d("nacos_cs_encryption_key_previous", "")
+	d("nacos_cs_client_get_return_ciphertext", false)
 }
 
 // Init 解析命令行、加载 TOML、写入默认值。须在整个进程最先调用之一。

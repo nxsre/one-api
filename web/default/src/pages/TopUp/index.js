@@ -54,7 +54,7 @@ const TopUp = () => {
     }
     let url = new URL(topUpLink);
     let username = user.username;
-    let user_id = user.id;
+    let user_id = user.user_id;
     url.searchParams.append('username', username);
     url.searchParams.append('user_id', user_id);
     url.searchParams.append('transaction_id', crypto.randomUUID());

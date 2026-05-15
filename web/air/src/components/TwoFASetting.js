@@ -16,7 +16,13 @@ const qrImgUrl = (otpauth) =>
     otpauth || ''
   )}`;
 
-const TwoFASetting = ({ forceMode = false, onEnabled }) => {
+const TwoFASetting = ({
+  forceMode = false,
+  onEnabled,
+  onCancelLogin,
+  cancelLoginBusy = false,
+  cancelLoginLabel = '取消并返回登录',
+}) => {
   const [status, setStatus] = useState({
     enabled: false,
     locked: false,
@@ -170,6 +176,20 @@ const TwoFASetting = ({ forceMode = false, onEnabled }) => {
     showSuccess('已复制到剪贴板');
   };
 
+  const showForceCancel =
+    forceMode && typeof onCancelLogin === 'function';
+
+  const forceCancelButton = showForceCancel ? (
+    <Button
+      basic
+      loading={cancelLoginBusy}
+      disabled={cancelLoginBusy || loading}
+      onClick={onCancelLogin}
+    >
+      {cancelLoginLabel}
+    </Button>
+  ) : null;
+
   return (
     <div style={{ marginTop: 8 }}>
       <Message info>
@@ -265,19 +285,25 @@ const TwoFASetting = ({ forceMode = false, onEnabled }) => {
                   复制备用码
                 </Button>
               </Message>
-              <Button
-                primary
-                onClick={() => {
-                  setSetupOpen(false);
-                  setEnableOpen(true);
-                  setCode('');
-                }}
-              >
-                下一步：输入验证码启用
-              </Button>
             </>
           )}
         </Modal.Content>
+        <Modal.Actions>
+          {forceCancelButton}
+          {setupData ? (
+            <Button
+              primary
+              disabled={!setupData}
+              onClick={() => {
+                setSetupOpen(false);
+                setEnableOpen(true);
+                setCode('');
+              }}
+            >
+              下一步：输入验证码启用
+            </Button>
+          ) : null}
+        </Modal.Actions>
       </Modal>
 
       <Modal
@@ -299,9 +325,11 @@ const TwoFASetting = ({ forceMode = false, onEnabled }) => {
           </Form>
         </Modal.Content>
         <Modal.Actions>
-          {!forceMode ? (
+          {showForceCancel ? (
+            forceCancelButton
+          ) : (
             <Button onClick={() => setEnableOpen(false)}>取消</Button>
-          ) : null}
+          )}
           <Button primary loading={loading} onClick={enable2fa}>
             启用
           </Button>

@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useContext, useEffect, useState } from 'react';
-import { Route, Routes } from 'react-router-dom';
-import { Message, Modal } from 'semantic-ui-react';
+import { Route, Routes, useNavigate } from 'react-router-dom';
+import { Button, Message, Modal } from 'semantic-ui-react';
 import Loading from './components/Loading';
 import User from './pages/User';
 import { PrivateRoute } from './components/PrivateRoute';
@@ -9,7 +9,7 @@ import LoginForm from './components/LoginForm';
 import NotFound from './pages/NotFound';
 import Setting from './pages/Setting';
 import EditUser from './pages/User/EditUser';
-import { getLogo, getSystemName } from './helpers';
+import { API, getLogo, getSystemName } from './helpers';
 import PasswordResetForm from './components/PasswordResetForm';
 import GitHubOAuth from './components/GitHubOAuth';
 import PasswordResetConfirm from './components/PasswordResetConfirm';
@@ -41,9 +41,11 @@ function isPublicAuthPath() {
 }
 
 function App() {
+  const navigate = useNavigate();
   const [userState, userDispatch] = useContext(UserContext);
   // const [statusState, statusDispatch] = useContext(StatusContext);
   const [force2FASetupOpen, setForce2FASetupOpen] = useState(false);
+  const [force2FACancelBusy, setForce2FACancelBusy] = useState(false);
 
   const updateLocalForce2FAUser = (required) => {
     const user = localStorage.getItem('user');
@@ -59,6 +61,23 @@ function App() {
     localStorage.setItem('user', JSON.stringify(next));
     userDispatch({ type: 'login', payload: next });
     setForce2FASetupOpen(!!required);
+  };
+
+  const cancelForce2FAAndReturnToLogin = async () => {
+    setForce2FACancelBusy(true);
+    try {
+      try {
+        await API.get('/api/user/logout');
+      } catch {
+        /* ignore */
+      }
+      localStorage.removeItem('user');
+      userDispatch({ type: 'logout' });
+      setForce2FASetupOpen(false);
+      navigate('/login');
+    } finally {
+      setForce2FACancelBusy(false);
+    }
   };
 
   const loadUser = () => {
@@ -100,9 +119,11 @@ function App() {
           <Route
             path="/"
             element={
-              <Suspense fallback={<Loading></Loading>}>
-                <Home />
-              </Suspense>
+              <PrivateRoute>
+                <Suspense fallback={<Loading></Loading>}>
+                  <Home />
+                </Suspense>
+              </PrivateRoute>
             }
           />
           <Route
@@ -287,8 +308,21 @@ function App() {
             <TwoFASetting
               forceMode
               onEnabled={() => updateLocalForce2FAUser(false)}
+              onCancelLogin={cancelForce2FAAndReturnToLogin}
+              cancelLoginBusy={force2FACancelBusy}
+              cancelLoginLabel='取消并返回登录'
             />
           </Modal.Content>
+          <Modal.Actions>
+            <Button
+              basic
+              loading={force2FACancelBusy}
+              disabled={force2FACancelBusy}
+              onClick={cancelForce2FAAndReturnToLogin}
+            >
+              取消并返回登录
+            </Button>
+          </Modal.Actions>
         </Modal>
       </Layout.Content>
     </Layout>

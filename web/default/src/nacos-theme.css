@@ -1,0 +1,296 @@
+/**
+ * Dark 模式变量与 Semantic UI 覆盖，对齐 Nacos console-ui-next globals.css `.dark`。
+ * 亮色依赖 index.css 中 :root；html 上需有 class `light` 或 `dark`（与 Nacos 一致）。
+ */
+
+html.dark {
+  color-scheme: dark;
+  --app-chrome-bg: #070f12;
+  --app-chrome-border: #1a2327;
+  --app-chrome-text: #e5e8ea;
+  --app-chrome-text-muted: #7a8185;
+  --app-shell-bg: #040a0e;
+  --app-main-canvas: var(--app-shell-bg);
+  --app-sidebar-bg: var(--app-shell-bg);
+  --app-sidebar-edge-border: #131c20;
+  --app-accent: #0099f0;
+  --app-accent-hover: #33adf4;
+  --app-accent-soft: rgba(0, 153, 240, 0.2);
+  --app-sidebar-hover-bg: rgba(17, 28, 34, 0.9);
+  --app-sidebar-active-bg: #111c22;
+  --app-nav-item-text: #cbced0;
+  --app-nav-item-hover-text: #e5e8ea;
+  --app-work-stack-gap: 16px;
+  --app-work-card-radius: 8px;
+  --app-work-card-border: #1e2a32;
+  --app-work-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.38);
+  --app-work-card-inner-pad-x: 20px;
+  --app-work-card-inner-pad-y: 18px;
+}
+
+html.dark body {
+  background: var(--app-main-canvas);
+  color: var(--app-chrome-text);
+}
+
+html.light {
+  color-scheme: light;
+}
+
+/* ---------- Semantic UI：工作区（表格、表单、卡片等）---------- */
+
+html.dark .ui.segment,
+html.dark .ui.attached.segment {
+  background: var(--app-chrome-bg) !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.dividing.header,
+html.dark .ui.header {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.sub.header {
+  color: var(--app-chrome-text-muted) !important;
+}
+
+html.dark .ui.table {
+  background: var(--app-chrome-bg) !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.table thead th {
+  background: rgba(17, 28, 34, 0.75) !important;
+  color: var(--app-chrome-text-muted) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.table tbody tr td {
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.table tbody tr:hover td {
+  background: rgba(17, 28, 34, 0.55) !important;
+}
+
+html.dark .ui.input > input,
+html.dark .ui.form input:not([type]),
+html.dark .ui.form input[type='date'],
+html.dark .ui.form input[type='datetime-local'],
+html.dark .ui.form input[type='email'],
+html.dark .ui.form input[type='number'],
+html.dark .ui.form input[type='password'],
+html.dark .ui.form input[type='search'],
+html.dark .ui.form input[type='tel'],
+html.dark .ui.form input[type='time'],
+html.dark .ui.form input[type='text'],
+html.dark .ui.form input[type='file'],
+html.dark .ui.form input[type='url'],
+html.dark .ui.form textarea {
+  background: #131c20 !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.selection.dropdown {
+  background: #131c20 !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.dropdown .menu {
+  background: #070f12 !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.dropdown .menu > .item {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.dropdown .menu > .item:hover {
+  background: rgba(17, 28, 34, 0.9) !important;
+}
+
+html.dark .ui.basic.button {
+  color: var(--app-chrome-text) !important;
+  box-shadow: 0 0 0 1px var(--app-chrome-border) inset !important;
+}
+
+html.dark .ui.label {
+  background: #131c20 !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.card,
+html.dark .ui.cards > .card {
+  background: var(--app-chrome-bg) !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
+}
+
+html.dark .ui.card > .content > .header,
+html.dark .ui.cards > .card > .content > .header {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.modal > .header,
+html.dark .ui.modal > .content {
+  background: #070f12 !important;
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.modal > .actions {
+  background: #070f12 !important;
+  border-top: 1px solid var(--app-chrome-border) !important;
+}
+
+html.dark .ui.modal .ui.button {
+  color: var(--app-chrome-text);
+}
+
+html.dark .ui.divider:not(.vertical):not(.horizontal) {
+  border-top-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.vertical.divider::before,
+html.dark .ui.vertical.divider::after {
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.list .item,
+html.dark .ui.list .item a {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.message {
+  background: rgba(17, 28, 34, 0.85) !important;
+  color: var(--app-chrome-text) !important;
+  border-color: var(--app-chrome-border) !important;
+  box-shadow: none !important;
+}
+
+html.dark .ui.info.message {
+  background: rgba(0, 159, 230, 0.14) !important;
+  color: #c8ecff !important;
+}
+
+html.dark .ui.warning.message {
+  background: rgba(255, 165, 0, 0.12) !important;
+  color: #ffd699 !important;
+}
+
+html.dark .ui.negative.message {
+  background: rgba(212, 2, 55, 0.15) !important;
+  color: #ffb3c0 !important;
+}
+
+html.dark .ui.menu {
+  background: var(--app-chrome-bg) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.menu .item {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.tabular.menu .item {
+  color: var(--app-chrome-text-muted) !important;
+}
+
+html.dark .ui.tabular.menu .active.item {
+  color: var(--app-accent) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .ui.pagination.menu .item {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .ui.pagination.menu .active.item {
+  background: rgba(0, 153, 240, 0.2) !important;
+  color: var(--app-accent) !important;
+}
+
+/* Toastify */
+html.dark .Toastify__toast {
+  background: #131c20 !important;
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .Toastify__close-button {
+  color: var(--app-chrome-text-muted) !important;
+  opacity: 0.85;
+}
+
+/* 登录页验证码块等内联浅底 */
+html.dark .auth-captcha-segment.ui.segment {
+  background: rgba(17, 28, 34, 0.65) !important;
+  border-color: var(--app-chrome-border) !important;
+}
+
+html.dark .auth-captcha-segment .auth-captcha-title {
+  color: var(--app-chrome-text) !important;
+}
+
+html.dark .auth-captcha-segment .auth-captcha-sub {
+  color: var(--app-chrome-text-muted) !important;
+}
+
+html.dark .app-main-page-panel {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+html.dark .chart-container {
+  background: var(--app-chrome-bg) !important;
+  border: 1px solid var(--app-chrome-border);
+  border-radius: 12px;
+}
+
+html.dark .app-main-page-scroll .dashboard-container {
+  background: transparent !important;
+}
+
+html.dark .app-main-page-scroll .dashboard-container .chart-card.ui.card {
+  background: var(--app-chrome-bg) !important;
+  border: 1px solid var(--app-work-card-border) !important;
+  box-shadow: var(--app-work-card-shadow) !important;
+  border-radius: var(--app-work-card-radius) !important;
+}
+
+html.dark .app-main-page-scroll .dashboard-container .chart-card.ui.card > .content {
+  background: var(--app-chrome-bg) !important;
+}
+
+html.dark
+  .app-main-page-scroll
+  .dashboard-container
+  .chart-card.ui.card
+  > .content
+  > .header {
+  border-bottom: 1px solid var(--app-work-card-border) !important;
+}
+
+html.dark .app-main-page-scroll .ui.button:not(.primary):not(.negative):not(.positive):not(.disabled),
+html.dark .app-main-page-scroll .ui.buttons .button:not(.primary):not(.negative):not(.positive):not(.disabled) {
+  background: #131c20 !important;
+  color: var(--app-chrome-text) !important;
+  border: 1px solid var(--app-chrome-border) !important;
+}
+
+html.dark .app-main-page-scroll .ui.button:not(.primary):not(.negative):not(.positive):not(.disabled):hover,
+html.dark .app-main-page-scroll .ui.buttons .button:not(.primary):not(.negative):not(.positive):not(.disabled):hover {
+  background: rgba(17, 28, 34, 0.9) !important;
+}
+
+html.dark .stat-value {
+  color: #7dd3ff !important;
+  background: rgba(0, 153, 240, 0.18) !important;
+}
+
+html.dark .ui.card > .content > .header {
+  color: var(--app-chrome-text) !important;
+}

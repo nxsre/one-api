@@ -6,6 +6,38 @@ RUN npm config set registry ${NPM_REGISTRY}
 WORKDIR /web
 COPY ./VERSION .
 COPY ./web .
+COPY ./third_party/nacos/console-ui-next ./nacos-console-src
+COPY ./third_party/nacos/console-ui ./nacos-legacy-console-src
+
+# 新版 Nacos 控制台（Vite）
+RUN cd /web/nacos-console-src && \
+    npm ci && \
+    npx tsc -b && \
+    npx vite build && \
+    mkdir -p /web/nacos-console && \
+    rm -rf /web/nacos-console/dist && \
+    cp -a /web/nacos-console-src/dist /web/nacos-console/dist
+
+# 旧版控制台（Vite，与 console-ui-next 一致）：合并 Nacos 官方 public 资源后打入 dist/legacy（供 /nacos-ui/legacy/）
+# 需网络拉取 Nacos 仓库；内网可构建前 ARG NACOS_GIT_REPO 指向镜像；不需要旧版时 ARG NACOS_LEGACY_CONSOLE=0
+ARG NACOS_LEGACY_CONSOLE=1
+ARG NACOS_GIT_REPO=https://github.com/alibaba/nacos.git
+RUN if [ "$NACOS_LEGACY_CONSOLE" != "1" ]; then \
+      echo "Skipping Nacos legacy console (NACOS_LEGACY_CONSOLE!=1)"; \
+    else \
+      apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
+      rm -rf /var/lib/apt/lists/* && \
+      git clone --depth 1 "$NACOS_GIT_REPO" /tmp/nacos-legacy && \
+      cp /web/nacos-legacy-console-src/public/index.ejs /tmp/nacos-legacy-index.ejs && \
+      cp -a /tmp/nacos-legacy/console/src/main/resources/static/console-ui/public/. /web/nacos-legacy-console-src/public/ && \
+      cp /tmp/nacos-legacy-index.ejs /web/nacos-legacy-console-src/public/index.ejs && \
+      cd /web/nacos-legacy-console-src && \
+      npm ci && \
+      npm run build:embed && \
+      mkdir -p /web/nacos-console/dist/legacy && \
+      cp -a dist/. /web/nacos-console/dist/legacy/ && \
+      rm -rf /tmp/nacos-legacy /web/nacos-legacy-console-src/node_modules /web/nacos-legacy-console-src/dist; \
+    fi
 
 RUN npm install --prefix /web/default & \
     npm install --prefix /web/berry & \
@@ -36,6 +68,7 @@ RUN go mod download
 
 COPY . .
 COPY --from=builder /web/build ./web/build
+COPY --from=builder /web/nacos-console/dist ./web/nacos-console/dist
 
 ENV TIKTOKEN_CACHE_DIR=/build/tiktoken-cache
 RUN mkdir -p /build/tiktoken-cache && go run ./cmd/prefetch-tiktoken

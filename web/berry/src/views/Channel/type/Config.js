@@ -228,6 +228,15 @@ const typeConfig = {
   45: {
     modelGroup: 'xai'
   },
+  53: {
+    input: {
+      models: ['amap-poi']
+    },
+    prompt: {
+      key: '请输入高德 Web 服务 API Key'
+    },
+    modelGroup: 'amap'
+  },
 };
 
 export { defaultConfig, typeConfig };

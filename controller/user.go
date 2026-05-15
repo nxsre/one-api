@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -55,39 +56,17 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
-	if !consumeLoginRequestProof(c, loginRequest.LoginRequestID, loginRequest.LoginRequestTs, loginRequest.LoginRequestSig) {
+	password, captchaDots, resolveErr := resolveLoginPasswordAndCaptcha(c, loginRequest)
+	if resolveErr != "" {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "登录凭证无效或已过期，请刷新页面后重试",
+			"message": resolveErr,
 			"success": false,
 		})
 		return
 	}
-	plain, err := common.DecryptLoginPasswordRSA(password)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"message": i18n.Translate(c, "invalid_parameter"),
-			"success": false,
-		})
-		return
-	}
-	password = plain
 
 	var loginCaptchaRedisCleaned bool
 	if common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled {
-		if loginRequest.CaptchaDotsEnc == "" {
-			c.JSON(http.StatusOK, gin.H{"message": i18n.Translate(c, "invalid_parameter"), "success": false})
-			return
-		}
-		dotsPlain, decErr := common.DecryptLoginPasswordRSA(loginRequest.CaptchaDotsEnc)
-		if decErr != nil {
-			c.JSON(http.StatusOK, gin.H{"message": i18n.Translate(c, "invalid_parameter"), "success": false})
-			return
-		}
-		captchaDots, decErr := parseLoginCaptchaPointsJSON([]byte(dotsPlain))
-		if decErr != nil {
-			c.JSON(http.StatusOK, gin.H{"message": i18n.Translate(c, "invalid_parameter"), "success": false})
-			return
-		}
 		sess := sessions.Default(c)
 		if common.RedisEnabled && common.RDB != nil {
 			pendingRaw := sess.Get("pending_login_captcha_id")
@@ -180,7 +159,7 @@ func SetupLogin(user *model.User, c *gin.Context) {
 		return
 	}
 	data := gin.H{
-		"id":           user.Id,
+		"user_id":      user.Uid,
 		"username":     user.Username,
 		"display_name": user.DisplayName,
 		"role":         user.Role,
@@ -331,15 +310,7 @@ func SearchUsers(c *gin.Context) {
 }
 
 func GetUser(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	user, err := model.GetUserById(id, false)
+	user, err := model.GetUserByPublicID(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -461,7 +432,7 @@ func GetSelf(c *gin.Context) {
 		return
 	}
 	data := gin.H{
-		"id":                   user.Id,
+		"user_id":      user.Uid,
 		"username":             user.Username,
 		"display_name":         user.DisplayName,
 		"role":                 user.Role,
@@ -489,13 +460,22 @@ func UpdateUser(c *gin.Context) {
 	ctx := c.Request.Context()
 	var updatedUser model.User
 	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
-	if err != nil || updatedUser.Id == 0 {
+	if err != nil || strings.TrimSpace(updatedUser.Uid) == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": i18n.Translate(c, "invalid_parameter"),
 		})
 		return
 	}
+	originUser, err := model.GetUserByPublicID(updatedUser.Uid)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	updatedUser.Id = originUser.Id
 	if updatedUser.Password == "" {
 		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
 	}
@@ -503,14 +483,6 @@ func UpdateUser(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": i18n.Translate(c, "invalid_input"),
-		})
-		return
-	}
-	originUser, err := model.GetUserById(updatedUser.Id, false)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
 		})
 		return
 	}
@@ -598,7 +570,7 @@ func UpdateSelf(c *gin.Context) {
 }
 
 func DeleteUser(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	pk, err := model.ParseUserRouteParam(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -606,7 +578,7 @@ func DeleteUser(c *gin.Context) {
 		})
 		return
 	}
-	originUser, err := model.GetUserById(id, false)
+	originUser, err := model.GetUserById(pk, false)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -622,7 +594,7 @@ func DeleteUser(c *gin.Context) {
 		})
 		return
 	}
-	err = model.DeleteUserById(id)
+	err = model.DeleteUserById(pk)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -814,14 +786,13 @@ func ManageUser(c *gin.Context) {
 		})
 		return
 	}
-	clearUser := model.User{
-		Role:   user.Role,
-		Status: user.Status,
-	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    clearUser,
+		"data": model.UserManageResult{
+			Role:   user.Role,
+			Status: user.Status,
+		},
 	})
 	return
 }
@@ -901,7 +872,7 @@ func TopUp(c *gin.Context) {
 }
 
 type adminTopUpRequest struct {
-	UserId int    `json:"user_id"`
+	UserID string `json:"user_id"`
 	Quota  int    `json:"quota"`
 	Remark string `json:"remark"`
 }
@@ -917,7 +888,15 @@ func AdminTopUp(c *gin.Context) {
 		})
 		return
 	}
-	err = model.IncreaseUserQuota(req.UserId, int64(req.Quota))
+	target, err := model.GetUserByPublicID(strings.TrimSpace(req.UserID))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	err = model.IncreaseUserQuota(target.Id, int64(req.Quota))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -928,7 +907,7 @@ func AdminTopUp(c *gin.Context) {
 	if req.Remark == "" {
 		req.Remark = fmt.Sprintf("通过 API 充值 %s", common.LogQuota(int64(req.Quota)))
 	}
-	model.RecordTopupLog(ctx, req.UserId, req.Remark, req.Quota)
+	model.RecordTopupLog(ctx, target.Id, req.Remark, req.Quota)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

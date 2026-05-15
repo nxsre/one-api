@@ -55,6 +55,7 @@ var ChannelBaseURLs = []string{
 
 	"https://generativelanguage.googleapis.com/v1beta/openai/", // 51
 	"https://co.aippt.cn", // 52 AiPPT
+	"https://restapi.amap.com", // 53 Amap POI
 }
 
 func init() {

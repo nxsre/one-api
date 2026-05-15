@@ -33,26 +33,33 @@ redis.call("DEL", KEYS[1])
 return 1
 `)
 
-func prepareLoginRequestProof(c *gin.Context) (id string, ts int64, sigB64 string, err error) {
+func prepareLoginRequestProof(c *gin.Context) (id string, ts int64, sigB64, encKeyB64 string, err error) {
 	id = uuid.New().String()
 	ts = time.Now().Unix()
 	sigB64, err = common.SignLoginRequestProof(id, ts)
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", "", err
+	}
+	encKey, encKeyB64, err := common.NewLoginEncKey()
+	if err != nil {
+		return "", 0, "", "", err
+	}
+	if err = common.StoreLoginEncKey(c, id, encKey); err != nil {
+		return "", 0, "", "", err
 	}
 	if common.RedisEnabled && common.RDB != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		key := loginReqProofKeyPrefix + id
 		if err = common.RDB.Set(ctx, key, fmt.Sprintf("%d", ts), loginReqProofTTL).Err(); err != nil {
-			return "", 0, "", err
+			return "", 0, "", "", err
 		}
-		return id, ts, sigB64, nil
+		return id, ts, sigB64, encKeyB64, nil
 	}
 	sess := sessions.Default(c)
 	sess.Set("pending_login_req_proof_id", id)
 	sess.Set("pending_login_req_proof_ts", ts)
-	return id, ts, sigB64, nil
+	return id, ts, sigB64, encKeyB64, nil
 }
 
 func consumeLoginRequestProofRedis(id string, ts int64) bool {
@@ -112,7 +119,7 @@ func consumeLoginRequestProof(c *gin.Context, id string, ts int64, sigB64 string
 	return consumeLoginRequestProofSession(c, id, ts)
 }
 
-// LoginRequestProofIssue 登录前签发一次性防重放凭证（配合 RSA 密码传输）。
+// LoginRequestProofIssue 登录前签发一次性防重放凭证与 AES 密钥（密码须用 login_enc_key 加密）。
 func LoginRequestProofIssue(c *gin.Context) {
 	if !config.PasswordLoginEnabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -121,7 +128,14 @@ func LoginRequestProofIssue(c *gin.Context) {
 		})
 		return
 	}
-	id, ts, sig, err := prepareLoginRequestProof(c)
+	if !config.SecurePasswordLoginEnabled {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "未启用安全登录，无需获取登录凭证",
+		})
+		return
+	}
+	id, ts, sig, encKeyB64, err := prepareLoginRequestProof(c)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -145,6 +159,7 @@ func LoginRequestProofIssue(c *gin.Context) {
 			"login_request_id":  id,
 			"login_request_ts":  ts,
 			"login_request_sig": sig,
+			"login_enc_key":     encKeyB64,
 		},
 	})
 }

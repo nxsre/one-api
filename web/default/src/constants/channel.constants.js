@@ -93,6 +93,13 @@ export const CHANNEL_OPTIONS = [
     description: 'OpenAI 兼容：模型填 aippt-ppt，密钥支持 JSON 或 app_key|secret_key',
   },
   {
+    key: 53,
+    text: '高德 POI',
+    value: 53,
+    color: 'blue',
+    description: 'OpenAI 兼容：模型填 amap-poi，密钥填写高德 Web 服务 API Key',
+  },
+  {
     key: 8,
     text: '自定义渠道',
     value: 8,

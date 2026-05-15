@@ -12,6 +12,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import {
   API,
+  clearNacosEmbeddedConsoleLocalSession,
   copy,
   showError,
   showInfo,
@@ -227,6 +228,7 @@ const PersonalSetting = () => {
       await API.get('/api/user/logout');
       userDispatch({ type: 'logout' });
       localStorage.removeItem('user');
+      clearNacosEmbeddedConsoleLocalSession();
       navigate('/login');
     } else {
       showError(message);
@@ -284,9 +286,10 @@ const PersonalSetting = () => {
   };
 
   return (
-    <div style={{ lineHeight: '40px' }}>
+    <div className='settings-page-body'>
       <Header as='h3'>{t('setting.personal.general.title')}</Header>
       <Message>{t('setting.personal.general.system_token_notice')}</Message>
+      <div className='settings-action-bar'>
       <Button as={Link} to={`/user/edit/`}>
         {t('setting.personal.general.buttons.update_profile')}
       </Button>
@@ -303,6 +306,7 @@ const PersonalSetting = () => {
       >
         {t('setting.personal.general.buttons.delete_account')}
       </Button>
+      </div>
 
       {systemToken && (
         <Form.Input
@@ -345,7 +349,7 @@ const PersonalSetting = () => {
               ? ` — ${t('setting.personal.s3.access_key')}: ${s3Info.accessKey}`
               : ''}
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div className='settings-action-bar' style={{ marginTop: 12 }}>
             {!s3Info.enabled ? (
               <Button primary onClick={s3Enable}>
                 {t('setting.personal.s3.enable')}

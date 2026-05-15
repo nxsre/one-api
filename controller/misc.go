@@ -16,44 +16,16 @@ import (
 )
 
 func GetStatus(c *gin.Context) {
-	config.OptionMapRWMutex.RLock()
-	outboundURLWhitelistEnabled := config.OptionMap["OutboundURLWhitelistEnabled"] == "true"
-	config.OptionMapRWMutex.RUnlock()
+	var data gin.H
+	if sessionUserLoggedIn(c) {
+		data = buildAuthenticatedStatusData()
+	} else {
+		data = buildPublicStatusData()
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
-			"version":                     common.Version,
-			"start_time":                  common.StartTime,
-			"email_verification":          config.EmailVerificationEnabled,
-			"github_oauth":                config.GitHubOAuthEnabled,
-			"github_client_id":            config.GitHubClientId,
-			"lark_client_id":              config.LarkClientId,
-			"system_name":                 config.SystemName,
-			"logo":                        config.Logo,
-			"footer_html":                 config.Footer,
-			"wechat_qrcode":               config.WeChatAccountQRCodeImageURL,
-			"wechat_login":                config.WeChatAuthEnabled,
-			"server_address":              config.ServerAddress,
-			"turnstile_check":             config.TurnstileCheckEnabled,
-			"turnstile_site_key":          config.TurnstileSiteKey,
-			"top_up_link":                 config.TopUpLink,
-			"chat_link":                   config.ChatLink,
-			"quota_per_unit":              config.QuotaPerUnit,
-			"display_in_currency":         config.DisplayInCurrencyEnabled,
-			"oidc":                        config.OidcEnabled,
-			"oidc_client_id":              config.OidcClientId,
-			"oidc_well_known":             config.OidcWellKnown,
-			"oidc_authorization_endpoint": config.OidcAuthorizationEndpoint,
-			"oidc_token_endpoint":           config.OidcTokenEndpoint,
-			"oidc_userinfo_endpoint":        config.OidcUserinfoEndpoint,
-			"login_password_rsa_public_key": common.LoginPasswordRSAPublicKeyPEM,
-			"force_2fa_for_all_users":       common.Force2FAForAllUsers,
-			"login_math_captcha":            common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled && config.PasswordLoginEnabled,
-			"secure_step_up_verify":         true,
-			"global_access_mode":             model.GetGlobalAccessMode(),
-			"outbound_url_whitelist_enabled": outboundURLWhitelistEnabled,
-		},
+		"data":    data,
 	})
 	return
 }

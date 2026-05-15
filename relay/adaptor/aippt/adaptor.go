@@ -90,7 +90,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 	if err != nil {
 		return nil, err
 	}
-	app, sec, uid, err := ParseChannelKey(meta.APIKey)
+	app, sec, uid, err := parseChannelCredentials(meta)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +161,17 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	return channelName
+}
+
+func parseChannelCredentials(meta *meta.Meta) (appKey, secretKey, uid string, err error) {
+	if meta == nil {
+		return "", "", "", fmt.Errorf("aippt: meta is nil")
+	}
+	raw := strings.TrimSpace(meta.ChannelKey)
+	if raw == "" {
+		raw = strings.TrimSpace(meta.APIKey)
+	}
+	return ParseChannelKey(raw)
 }
 
 func lastUserText(req *model.GeneralOpenAIRequest) (string, error) {
