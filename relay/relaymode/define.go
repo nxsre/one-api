@@ -15,4 +15,8 @@ const (
 	Proxy
 	AnthropicMessages
 	GeminiGenerate
+	// OpenAI Responses API（POST /v1/responses 及 /v1/responses/:id 等）
+	OpenAIResponses
+	// OpenAI Realtime：POST /v1/realtime/sessions 创建会话
+	OpenAIRealtimeSessions
 )

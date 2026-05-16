@@ -1,6 +1,6 @@
 .dashboard-container {
     padding: 20px 24px 40px;
-    background-color: #ffffff;
+    background-color: var(--app-shell-bg, #f3f6f9);
     margin-top: -15px; /* 减小与导航栏的间距 */
     max-width: 1600px;        /* 设置最大宽度 */
     margin-left: auto;        /* 水平居中 */
@@ -8,7 +8,7 @@
 }
 
 .stat-card {
-    background: linear-gradient(135deg, #2185d0 0%, #1678c2 100%) !important;
+    background: linear-gradient(135deg, #0079ce 0%, #0069b3 100%) !important;
     color: white !important;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
     transition: transform 0.2s ease !important;
@@ -47,7 +47,7 @@
 }
 
 .ui.card > .content > .header {
-    color: #2B3674;
+    color: #030d12;
     font-size: 1.2em;
     margin-bottom: 15px;
     display: flex;
@@ -58,10 +58,10 @@
 }
 
 .stat-value {
-    color: #4318FF;
+    color: #0079ce;
     font-weight: bold;
     font-size: 1.1em;
-    background: rgba(67, 24, 255, 0.1);
+    background: rgba(0, 121, 206, 0.1);
     padding: 4px 12px;
     border-radius: 8px;
     white-space: nowrap; /* 防止数值换行 */
@@ -97,9 +97,9 @@
 }
 
 .settings-tab .active.item {
-    color: #000 !important;
+    color: #0079ce !important;
     font-weight: 600 !important;
-    border-color: #000 !important;
+    border-color: #0079ce !important;
 }
 
 .ui.tab.segment {

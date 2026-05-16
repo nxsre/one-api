@@ -246,33 +246,33 @@ const OperationSetting = () => {
             <Form.TextArea
               label={t('setting.operation.ratio.model.title')}
               name='ModelRatio'
-              onChange={handleInputChange}
-              style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-              autoComplete='new-password'
-              value={inputs.ModelRatio}
               placeholder={t('setting.operation.ratio.model.placeholder')}
+              value={inputs.ModelRatio}
+              onChange={handleInputChange}
+              rows={16}
+              style={{ fontFamily: 'monospace' }}
             />
           </Form.Group>
           <Form.Group widths='equal'>
             <Form.TextArea
               label={t('setting.operation.ratio.completion.title')}
               name='CompletionRatio'
-              onChange={handleInputChange}
-              style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-              autoComplete='new-password'
-              value={inputs.CompletionRatio}
               placeholder={t('setting.operation.ratio.completion.placeholder')}
+              value={inputs.CompletionRatio}
+              onChange={handleInputChange}
+              rows={16}
+              style={{ fontFamily: 'monospace' }}
             />
           </Form.Group>
           <Form.Group widths='equal'>
             <Form.TextArea
               label={t('setting.operation.ratio.group.title')}
               name='GroupRatio'
-              onChange={handleInputChange}
-              style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-              autoComplete='new-password'
-              value={inputs.GroupRatio}
               placeholder={t('setting.operation.ratio.group.placeholder')}
+              value={inputs.GroupRatio}
+              onChange={handleInputChange}
+              rows={16}
+              style={{ fontFamily: 'monospace' }}
             />
           </Form.Group>
           <Form.Button
@@ -367,22 +367,18 @@ const OperationSetting = () => {
             <Form.Input
               label={t('setting.operation.general.topup_link')}
               name='TopUpLink'
-              onChange={handleInputChange}
-              autoComplete='new-password'
+              placeholder={t('setting.operation.general.topup_link_placeholder')}
               value={inputs.TopUpLink}
-              type='link'
-              placeholder={t(
-                'setting.operation.general.topup_link_placeholder'
-              )}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.operation.general.chat_link')}
               name='ChatLink'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.ChatLink}
-              type='link'
               placeholder={t('setting.operation.general.chat_link_placeholder')}
+              value={inputs.ChatLink}
+              onChange={handleInputChange}
+              autoComplete='off'
             />
             <Form.Input
               label={t('setting.operation.general.quota_per_unit')}

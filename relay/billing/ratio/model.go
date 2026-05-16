@@ -620,7 +620,8 @@ var ModelRatio = map[string]float64{
 	"x-ai/grok-beta":                                  7.5,
 	"x-ai/grok-vision-beta":                           7.5,
 	"xwin-lm/xwin-lm-70b":                             1.875,
-	"aippt-ppt(52)": 30,
+	"aippt-ppt(52)":                                   30,
+	"amap-poi(53)":                                    1,
 }
 
 var CompletionRatio = map[string]float64{

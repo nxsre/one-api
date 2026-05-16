@@ -14,7 +14,7 @@ const AddUser = () => {
   const { username, display_name, password } = inputs;
 
   const handleInputChange = (e, { name, value }) => {
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
+    setInputs((prev) => ({ ...prev, [name]: value }));
   };
 
   const submit = async () => {
@@ -42,7 +42,7 @@ const AddUser = () => {
                 placeholder={t('user.edit.username_placeholder')}
                 onChange={handleInputChange}
                 value={username}
-                autoComplete='off'
+                autoComplete='username'
                 required
               />
             </Form.Field>

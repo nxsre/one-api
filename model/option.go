@@ -26,6 +26,7 @@ func InitOptionMap() {
 	config.OptionMapRWMutex.Lock()
 	config.OptionMap = make(map[string]string)
 	config.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(config.PasswordLoginEnabled)
+	config.OptionMap["SecurePasswordLoginEnabled"] = strconv.FormatBool(config.SecurePasswordLoginEnabled)
 	config.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(config.PasswordRegisterEnabled)
 	config.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(config.EmailVerificationEnabled)
 	config.OptionMap["Force2FAForAllUsers"] = strconv.FormatBool(common.Force2FAForAllUsers)
@@ -82,6 +83,12 @@ func InitOptionMap() {
 	config.OptionMap["OutboundURLWhitelistDomains"] = ""
 	config.OptionMap["OutboundURLWhitelistIPs"] = ""
 	config.OptionMap["S3SiteEnabled"] = strconv.FormatBool(common.S3Enabled)
+	config.OptionMap["NacosEnabled"] = strconv.FormatBool(config.NacosEnabled)
+	config.OptionMap["AmapWebServiceSecret"] = ""
+	config.OptionMap["RoutingPolicy"] = "{}"
+	config.OptionMap["RelayRetryPolicy"] = "{}"
+	config.OptionMap["ModelAliasPolicy"] = "{}"
+	config.OptionMap["ModelRateLimitPolicy"] = "{}"
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -141,6 +148,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.PasswordRegisterEnabled = boolValue
 		case "PasswordLoginEnabled":
 			config.PasswordLoginEnabled = boolValue
+		case "SecurePasswordLoginEnabled":
+			config.SecurePasswordLoginEnabled = boolValue
 		case "EmailVerificationEnabled":
 			config.EmailVerificationEnabled = boolValue
 		case "GitHubOAuthEnabled":
@@ -167,6 +176,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.DisplayInCurrencyEnabled = boolValue
 		case "DisplayTokenStatEnabled":
 			config.DisplayTokenStatEnabled = boolValue
+		case "NacosEnabled":
+			config.NacosEnabled = boolValue
 		}
 	}
 	switch key {
@@ -255,6 +266,8 @@ func updateOptionMap(key string, value string) (err error) {
 		config.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
 	case "Theme":
 		config.Theme = value
+	case "NacosEnabled":
+		config.NacosEnabled = value == "true"
 	}
 	return err
 }

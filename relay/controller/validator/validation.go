@@ -32,6 +32,9 @@ func ValidateTextRequest(textRequest *model.GeneralOpenAIRequest, relayMode int)
 		if textRequest.Instruction == "" {
 			return errors.New("field instruction is required")
 		}
+	case relaymode.OpenAIResponses:
+	case relaymode.OpenAIRealtimeSessions:
+		return nil
 	}
 	return nil
 }

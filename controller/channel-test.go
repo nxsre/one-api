@@ -26,6 +26,7 @@ import (
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/monitor"
 	"github.com/songquanpeng/one-api/relay"
+	"github.com/songquanpeng/one-api/relay/adaptor/amap"
 	"github.com/songquanpeng/one-api/relay/adaptor/aippt"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/channeltype"
@@ -83,6 +84,12 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		}
 		return "AiPPT 预置词接口检测通过", nil, nil
 	}
+	if channel != nil && channel.Type == channeltype.AmapPOI {
+		if err := amap.TestAround(channel.GetBaseURL(), channel.Key); err != nil {
+			return "", err, nil
+		}
+		return "高德 POI 周边搜索接口检测通过", nil, nil
+	}
 	startTime := time.Now()
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -95,6 +102,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	c.Request.Header.Set("Authorization", "Bearer "+channel.Key)
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set(ctxkey.Channel, channel.Type)
+	c.Set(ctxkey.ChannelKey, channel.Key)
 	c.Set(ctxkey.BaseURL, channel.GetBaseURL())
 	cfg, _ := channel.LoadConfig()
 	c.Set(ctxkey.Config, cfg)

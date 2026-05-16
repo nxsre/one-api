@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/logger"
@@ -506,7 +505,7 @@ func Admin2FAStats(c *gin.Context) {
 // AdminDisable2FA 管理员强制禁用用户2FA
 func AdminDisable2FA(c *gin.Context) {
 	userIdStr := c.Param("id")
-	userId, err := strconv.Atoi(userIdStr)
+	userId, err := model.ParseUserRouteParam(userIdStr)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

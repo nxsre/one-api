@@ -22,7 +22,8 @@ import {
   Autocomplete,
   FormHelperText,
   Switch,
-  Checkbox
+  Checkbox,
+  FormControlLabel
 } from '@mui/material';
 
 import { Formik } from 'formik';
@@ -107,7 +108,7 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
       setFieldValue('models', initialModel(localModels));
     }
 
-    setFieldValue('config', {});
+    setFieldValue('config', { routing_provider: '', routing_skip_adaptive: false });
   };
 
   const fetchGroups = async () => {
@@ -242,7 +243,14 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
       }
       if (data.config !== '') {
         data.config = JSON.parse(data.config);
+      } else {
+        data.config = {};
       }
+      data.config = {
+        routing_provider: '',
+        routing_skip_adaptive: false,
+        ...data.config
+      };
 
       data.base_url = data.base_url ?? '';
       delete data.other;
@@ -596,6 +604,26 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
                 ) : (
                   <FormHelperText id="helper-tex-channel-system_prompt-label"> {inputPrompt.system_prompt} </FormHelperText>
                 )}
+              </FormControl>
+              <FormControl fullWidth sx={{ ...theme.typography.otherInput }}>
+                <TextField
+                  label="Direction（Provider）标签"
+                  value={values.config?.routing_provider ?? ''}
+                  onChange={(e) => setFieldValue('config.routing_provider', e.target.value)}
+                  placeholder="例如 azure-east / openai-main"
+                />
+                <FormHelperText>用于双层打分与探测分组；留空则沿用渠道默认行为。</FormHelperText>
+              </FormControl>
+              <FormControl fullWidth sx={{ ...theme.typography.otherInput }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={!!values.config?.routing_skip_adaptive}
+                      onChange={(e) => setFieldValue('config.routing_skip_adaptive', e.target.checked)}
+                    />
+                  }
+                  label="跳过自适应权重调整（手工倍率与熔断仍生效）"
+                />
               </FormControl>
               <DialogActions>
                 <Button onClick={onCancel}>取消</Button>

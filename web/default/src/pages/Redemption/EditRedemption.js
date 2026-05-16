@@ -3,7 +3,16 @@ import { useTranslation } from 'react-i18next';
 import { Button, Form, Card } from 'semantic-ui-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API, downloadTextAsFile, showError, showSuccess } from '../../helpers';
-import { renderQuota, renderQuotaWithPrompt } from '../../helpers/render';
+import { renderQuotaWithPrompt } from '../../helpers/render';
+import SettingMonacoField from '../../components/SettingMonacoField';
+
+const buildRedemptionBaseline = (d) => ({
+  name: String(d?.name ?? ''),
+  quota:
+    d?.quota === undefined || d?.quota === null ? '' : String(d.quota),
+  count:
+    d?.count === undefined || d?.count === null ? '' : String(d.count),
+});
 
 const EditRedemption = () => {
   const { t } = useTranslation();
@@ -18,14 +27,13 @@ const EditRedemption = () => {
     count: 1,
   };
   const [inputs, setInputs] = useState(originInputs);
+  const [inputBaseline, setInputBaseline] = useState(() =>
+    buildRedemptionBaseline(originInputs)
+  );
   const { name, quota, count } = inputs;
 
   const handleCancel = () => {
     navigate('/redemption');
-  };
-
-  const handleInputChange = (e, { name, value }) => {
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
 
   const loadRedemption = async () => {
@@ -33,6 +41,7 @@ const EditRedemption = () => {
     const { success, message, data } = res.data;
     if (success) {
       setInputs(data);
+      setInputBaseline(buildRedemptionBaseline(data));
     } else {
       showError(message);
     }
@@ -67,6 +76,7 @@ const EditRedemption = () => {
       } else {
         showSuccess(t('redemption.messages.create_success'));
         setInputs(originInputs);
+        setInputBaseline(buildRedemptionBaseline(originInputs));
       }
     } else {
       showError(message);
@@ -88,41 +98,46 @@ const EditRedemption = () => {
             {isEdit ? t('redemption.edit.title_edit') : t('redemption.edit.title_create')}
           </Card.Header>
           <Form loading={loading} autoComplete='new-password'>
-            <Form.Field>
-              <Form.Input
-                label={t('redemption.edit.name')}
-                name='name'
-                placeholder={t('redemption.edit.name_placeholder')}
-                onChange={handleInputChange}
-                value={name}
-                autoComplete='new-password'
-                required={!isEdit}
-              />
-            </Form.Field>
-            <Form.Field>
-              <Form.Input
-                label={`${t('redemption.edit.quota')}${renderQuotaWithPrompt(quota, t)}`}
-                name='quota'
-                placeholder={t('redemption.edit.quota_placeholder')}
-                onChange={handleInputChange}
-                value={quota}
-                autoComplete='new-password'
-                type='number'
-              />
-            </Form.Field>
+            <SettingMonacoField
+              label={t('redemption.edit.name')}
+              hint={t('redemption.edit.name_placeholder')}
+              value={name}
+              originValue={inputBaseline.name}
+              onChange={(v) =>
+                setInputs((prev) => ({ ...prev, name: v }))
+              }
+              height={96}
+            />
+            <SettingMonacoField
+              label={`${t('redemption.edit.quota')}${renderQuotaWithPrompt(quota, t)}`}
+              hint={t('redemption.edit.quota_placeholder')}
+              value={String(quota ?? '')}
+              originValue={inputBaseline.quota}
+              onChange={(v) => {
+                const n = v.trim() === '' ? 0 : parseInt(v, 10);
+                setInputs((prev) => ({
+                  ...prev,
+                  quota: Number.isNaN(n) ? prev.quota : n,
+                }));
+              }}
+              height={88}
+            />
             {!isEdit && (
               <>
-                <Form.Field>
-                  <Form.Input
-                    label={t('redemption.edit.count')}
-                    name='count'
-                    placeholder={t('redemption.edit.count_placeholder')}
-                    onChange={handleInputChange}
-                    value={count}
-                    autoComplete='new-password'
-                    type='number'
-                  />
-                </Form.Field>
+                <SettingMonacoField
+                  label={t('redemption.edit.count')}
+                  hint={t('redemption.edit.count_placeholder')}
+                  value={String(count ?? '')}
+                  originValue={inputBaseline.count}
+                  onChange={(v) => {
+                    const n = v.trim() === '' ? 0 : parseInt(v, 10);
+                    setInputs((prev) => ({
+                      ...prev,
+                      count: Number.isNaN(n) ? prev.count : n,
+                    }));
+                  }}
+                  height={88}
+                />
               </>
             )}
             <Button positive onClick={submit}>

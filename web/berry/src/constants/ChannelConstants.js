@@ -197,6 +197,18 @@ export const CHANNEL_OPTIONS = {
     value: 52,
     color: 'primary'
   },
+  53: {
+    key: 53,
+    text: '高德 POI',
+    value: 53,
+    color: 'primary'
+  },
+  54: {
+    key: 54,
+    text: 'Bifrost',
+    value: 54,
+    color: 'secondary'
+  },
   41: {
     key: 41,
     text: 'Novita',

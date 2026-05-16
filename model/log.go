@@ -14,7 +14,8 @@ import (
 
 type Log struct {
 	Id                int    `json:"id"`
-	UserId            int    `json:"user_id" gorm:"index"`
+	UserId            int    `json:"-" gorm:"column:user_id;index"`
+	UserPublicID      string `json:"user_id" gorm:"-"`
 	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_type"`
 	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
 	Content           string `json:"content"`
@@ -119,7 +120,11 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		tx = tx.Where("channel_id = ?", channel)
 	}
 	err = tx.Order("id desc").Limit(num).Offset(startIdx).Find(&logs).Error
-	return logs, err
+	if err != nil {
+		return logs, err
+	}
+	AttachPublicUserIDToLogs(logs)
+	return logs, nil
 }
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int) (logs []*Log, err error) {
@@ -142,17 +147,71 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		tx = tx.Where("created_at <= ?", endTimestamp)
 	}
 	err = tx.Order("id desc").Limit(num).Offset(startIdx).Omit("id").Find(&logs).Error
-	return logs, err
+	if err != nil {
+		return logs, err
+	}
+	AttachPublicUserIDToLogs(logs)
+	return logs, nil
 }
 
 func SearchAllLogs(keyword string) (logs []*Log, err error) {
 	err = LOG_DB.Where("type = ? or content LIKE ?", keyword, keyword+"%").Order("id desc").Limit(config.MaxRecentItems).Find(&logs).Error
-	return logs, err
+	if err != nil {
+		return logs, err
+	}
+	AttachPublicUserIDToLogs(logs)
+	return logs, nil
 }
 
 func SearchUserLogs(userId int, keyword string) (logs []*Log, err error) {
 	err = LOG_DB.Where("user_id = ? and type = ?", userId, keyword).Order("id desc").Limit(config.MaxRecentItems).Omit("id").Find(&logs).Error
-	return logs, err
+	if err != nil {
+		return logs, err
+	}
+	AttachPublicUserIDToLogs(logs)
+	return logs, nil
+}
+
+// AttachPublicUserIDToLogs 为日志列表填充对外用户 ID（users.uid），不修改数据库。
+func AttachPublicUserIDToLogs(logs []*Log) {
+	if len(logs) == 0 {
+		return
+	}
+	seen := make(map[int]struct{})
+	var ids []int
+	for _, lg := range logs {
+		if lg == nil {
+			continue
+		}
+		if _, ok := seen[lg.UserId]; !ok {
+			seen[lg.UserId] = struct{}{}
+			ids = append(ids, lg.UserId)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	type row struct {
+		Id  int
+		Uid string
+	}
+	var rows []row
+	if err := DB.Table("users").Select("id", "uid").Where("id IN ?", ids).Scan(&rows).Error; err != nil {
+		logger.SysError("AttachPublicUserIDToLogs: " + err.Error())
+		return
+	}
+	m := make(map[int]string, len(rows))
+	for _, r := range rows {
+		m[r.Id] = r.Uid
+	}
+	for _, lg := range logs {
+		if lg == nil {
+			continue
+		}
+		if u, ok := m[lg.UserId]; ok {
+			lg.UserPublicID = u
+		}
+	}
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int) (quota int64) {

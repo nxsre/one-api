@@ -10,7 +10,7 @@ import {
   Modal,
 } from 'semantic-ui-react';
 import { Link } from 'react-router-dom';
-import { API, showError, showSuccess, verifyJSON } from '../helpers';
+import { API, showError, showSuccess } from '../helpers';
 import { marked } from 'marked';
 
 const OtherSetting = () => {
@@ -66,10 +66,6 @@ const OtherSetting = () => {
     setLoading(false);
   };
 
-  const handleInputChange = async (e, { name, value }) => {
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
-  };
-
   const submitNotice = async () => {
     await updateOption('Notice', inputs.Notice);
   };
@@ -92,6 +88,10 @@ const OtherSetting = () => {
 
   const submitOption = async (key) => {
     await updateOption(key, inputs[key]);
+  };
+
+  const handleFieldChange = (e, { name, value }) => {
+    setInputs((prev) => ({ ...prev, [name]: value }));
   };
 
   const openGitHubRelease = () => {
@@ -122,11 +122,11 @@ const OtherSetting = () => {
           <Form.Group widths='equal'>
             <Form.TextArea
               label={t('setting.other.notice.content')}
+              name='Notice'
               placeholder={t('setting.other.notice.content_placeholder')}
               value={inputs.Notice}
-              name='Notice'
-              onChange={handleInputChange}
-              style={{ minHeight: 100, fontFamily: 'JetBrains Mono, Consolas' }}
+              onChange={handleFieldChange}
+              rows={10}
             />
           </Form.Group>
           <Form.Button onClick={submitNotice}>
@@ -138,31 +138,33 @@ const OtherSetting = () => {
           <Form.Group widths='equal'>
             <Form.Input
               label={t('setting.other.system.name')}
+              name='SystemName'
               placeholder={t('setting.other.system.name_placeholder')}
               value={inputs.SystemName}
-              name='SystemName'
-              onChange={handleInputChange}
+              onChange={handleFieldChange}
+              autoComplete='off'
             />
           </Form.Group>
           <Form.Button onClick={submitSystemName}>
             {t('setting.other.system.buttons.save_name')}
           </Form.Button>
           <Form.Group widths='equal'>
-            <Form.Input
-              label={
-                <label>
-                  {t('setting.other.system.theme.title')}（
-                  <Link to='https://github.com/songquanpeng/one-api/blob/main/web/README.md'>
-                    {t('setting.other.system.theme.link')}
-                  </Link>
-                  ）
-                </label>
-              }
-              placeholder={t('setting.other.system.theme.placeholder')}
-              value={inputs.Theme}
-              name='Theme'
-              onChange={handleInputChange}
-            />
+            <Form.Field>
+              <label>
+                {t('setting.other.system.theme.title')}（
+                <Link to='https://github.com/songquanpeng/one-api/blob/main/web/README.md'>
+                  {t('setting.other.system.theme.link')}
+                </Link>
+                ）
+              </label>
+              <Form.Input
+                name='Theme'
+                placeholder={t('setting.other.system.theme.placeholder')}
+                value={inputs.Theme}
+                onChange={handleFieldChange}
+                autoComplete='off'
+              />
+            </Form.Field>
           </Form.Group>
           <Form.Button onClick={submitTheme}>
             {t('setting.other.system.buttons.save_theme')}
@@ -170,11 +172,11 @@ const OtherSetting = () => {
           <Form.Group widths='equal'>
             <Form.Input
               label={t('setting.other.system.logo')}
+              name='Logo'
               placeholder={t('setting.other.system.logo_placeholder')}
               value={inputs.Logo}
-              name='Logo'
-              type='url'
-              onChange={handleInputChange}
+              onChange={handleFieldChange}
+              autoComplete='off'
             />
           </Form.Group>
           <Form.Button onClick={submitLogo}>
@@ -186,11 +188,11 @@ const OtherSetting = () => {
           <Form.Group widths='equal'>
             <Form.TextArea
               label={t('setting.other.content.homepage.title')}
+              name='HomePageContent'
               placeholder={t('setting.other.content.homepage.placeholder')}
               value={inputs.HomePageContent}
-              name='HomePageContent'
-              onChange={handleInputChange}
-              style={{ minHeight: 150, fontFamily: 'JetBrains Mono, Consolas' }}
+              onChange={handleFieldChange}
+              rows={14}
             />
           </Form.Group>
           <Form.Button onClick={() => submitOption('HomePageContent')}>
@@ -199,11 +201,11 @@ const OtherSetting = () => {
           <Form.Group widths='equal'>
             <Form.TextArea
               label={t('setting.other.content.about.title')}
+              name='About'
               placeholder={t('setting.other.content.about.placeholder')}
               value={inputs.About}
-              name='About'
-              onChange={handleInputChange}
-              style={{ minHeight: 150, fontFamily: 'JetBrains Mono, Consolas' }}
+              onChange={handleFieldChange}
+              rows={14}
             />
           </Form.Group>
           <Form.Button onClick={submitAbout}>
@@ -211,12 +213,13 @@ const OtherSetting = () => {
           </Form.Button>
           <Message>{t('setting.other.copyright.notice')}</Message>
           <Form.Group widths='equal'>
-            <Form.Input
+            <Form.TextArea
               label={t('setting.other.content.footer.title')}
+              name='Footer'
               placeholder={t('setting.other.content.footer.placeholder')}
               value={inputs.Footer}
-              name='Footer'
-              onChange={handleInputChange}
+              onChange={handleFieldChange}
+              rows={6}
             />
           </Form.Group>
           <Form.Button onClick={() => submitOption('Footer')}>

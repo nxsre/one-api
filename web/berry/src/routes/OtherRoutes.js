@@ -3,6 +3,7 @@ import { lazy } from 'react';
 // project imports
 import Loadable from 'ui-component/Loadable';
 import MinimalLayout from 'layout/MinimalLayout';
+import RequireLogin from 'utils/route-guard/RequireLogin';
 
 // login option 3 routing
 const AuthLogin = Loadable(lazy(() => import('views/Authentication/Auth/Login')));
@@ -24,7 +25,11 @@ const OtherRoutes = {
   children: [
     {
       path: '',
-      element: <Home />
+      element: (
+        <RequireLogin>
+          <Home />
+        </RequireLogin>
+      )
     },
     {
       path: '/about',

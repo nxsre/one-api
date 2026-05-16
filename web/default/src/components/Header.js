@@ -13,6 +13,7 @@ import {
 } from 'semantic-ui-react';
 import {
   API,
+  clearNacosEmbeddedConsoleLocalSession,
   getLogo,
   getSystemName,
   isAdmin,
@@ -27,6 +28,24 @@ let headerButtons = [
     name: 'header.channel',
     to: '/channel',
     icon: 'sitemap',
+    admin: true,
+  },
+  {
+    name: 'header.routing',
+    to: '/routing',
+    icon: 'random',
+    admin: true,
+  },
+  {
+    name: 'header.nacos_skills',
+    to: '/nacos/skills',
+    icon: 'code branch',
+    admin: true,
+  },
+  {
+    name: 'header.nacos_perm',
+    to: '/nacos/permissions',
+    icon: 'shield alternate',
     admin: true,
   },
   {
@@ -96,6 +115,7 @@ const Header = () => {
     showSuccess('注销成功!');
     userDispatch({ type: 'logout' });
     localStorage.removeItem('user');
+    clearNacosEmbeddedConsoleLocalSession();
     navigate('/login');
   }
 
@@ -138,14 +158,12 @@ const Header = () => {
     });
   };
 
-  // Add language switcher dropdown
-  const languageOptions = [
-    { key: 'zh', text: '中文', value: 'zh' },
-    { key: 'en', text: 'English', value: 'en' },
-  ];
+  const isEnglishUI =
+    i18n.language && String(i18n.language).toLowerCase().startsWith('en');
 
-  const changeLanguage = (language) => {
-    i18n.changeLanguage(language);
+  const toggleLanguage = async () => {
+    await i18n.changeLanguage(isEnglishUI ? 'zh' : 'en');
+    window.location.reload();
   };
 
   if (isMobile()) {
@@ -189,19 +207,15 @@ const Header = () => {
           <Segment style={{ marginTop: 0, borderTop: '0' }}>
             <Menu secondary vertical style={{ width: '100%', margin: 0 }}>
               {renderButtons(true)}
-              <Menu.Item>
-                <Dropdown
-                  selection
-                  trigger={
-                    <Icon
-                      name='language'
-                      style={{ margin: 0, fontSize: '18px' }}
-                    />
-                  }
-                  options={languageOptions}
-                  value={i18n.language}
-                  onChange={(_, { value }) => changeLanguage(value)}
-                />
+              <Menu.Item
+                onClick={() => {
+                  toggleLanguage();
+                  setShowSidebar(false);
+                }}
+                style={{ fontSize: '15px' }}
+              >
+                <Icon name='language' style={{ marginRight: '8px' }} />
+                {t('header.language_switch_tooltip')}
               </Menu.Item>
               <Menu.Item>
                 {userState.user ? (
@@ -269,21 +283,19 @@ const Header = () => {
           </Menu.Item>
           {renderButtons(false)}
           <Menu.Menu position='right'>
-            <Dropdown
-              item
-              trigger={
-                <Icon name='language' style={{ margin: 0, fontSize: '18px' }} />
-              }
-              options={languageOptions}
-              value={i18n.language}
-              onChange={(_, { value }) => changeLanguage(value)}
-              style={{
-                fontSize: '16px',
-                fontWeight: '400',
-                color: '#666',
-                padding: '0 10px',
-              }}
-            />
+            <Menu.Item fitted='horizontally'>
+              <Button
+                type='button'
+                basic
+                icon
+                style={{ margin: '0 4px' }}
+                onClick={toggleLanguage}
+                title={t('header.language_switch_tooltip')}
+                aria-label={t('header.language_switch_tooltip')}
+              >
+                <Icon name='language' />
+              </Button>
+            </Menu.Item>
             {userState.user ? (
               <Dropdown
                 text={userState.user.username}

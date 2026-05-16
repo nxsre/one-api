@@ -160,7 +160,7 @@ const UsersTable = () => {
         return ('' + a[key]).localeCompare(b[key]);
       }
     });
-    if (sortedUsers[0].id === users[0].id) {
+    if (sortedUsers[0].user_id === users[0].user_id) {
       sortedUsers.reverse();
     }
     setUsers(sortedUsers);
@@ -192,7 +192,7 @@ const UsersTable = () => {
             <Table.HeaderCell
               style={{ cursor: 'pointer' }}
               onClick={() => {
-                sortUser('id');
+                sortUser('user_id');
               }}
             >
               {t('user.table.id')}
@@ -250,8 +250,8 @@ const UsersTable = () => {
             .map((user, idx) => {
               if (user.deleted) return <></>;
               return (
-                <Table.Row key={user.id}>
-                  <Table.Cell>{user.id}</Table.Cell>
+                <Table.Row key={user.user_id}>
+                  <Table.Cell>{user.user_id}</Table.Cell>
                   <Table.Cell>
                     <Popup
                       content={user.email ? user.email : '未绑定邮箱地址'}
@@ -353,7 +353,7 @@ const UsersTable = () => {
                       <Button
                         size={'tiny'}
                         as={Link}
-                        to={'/user/edit/' + user.id}
+                        to={'/user/edit/' + user.user_id}
                       >
                         {t('user.buttons.edit')}
                       </Button>

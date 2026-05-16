@@ -2,6 +2,7 @@ package relay
 
 import (
 	"github.com/songquanpeng/one-api/relay/adaptor"
+	"github.com/songquanpeng/one-api/relay/adaptor/amap"
 	"github.com/songquanpeng/one-api/relay/adaptor/aiproxy"
 	"github.com/songquanpeng/one-api/relay/adaptor/aippt"
 	"github.com/songquanpeng/one-api/relay/adaptor/ali"
@@ -67,6 +68,8 @@ func GetAdaptor(apiType int) adaptor.Adaptor {
 		return &replicate.Adaptor{}
 	case apitype.AiPPT:
 		return &aippt.Adaptor{}
+	case apitype.AmapPOI:
+		return &amap.Adaptor{}
 	}
 	return nil
 }

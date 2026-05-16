@@ -14,10 +14,12 @@ import {
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../context/User';
+import { StatusContext } from '../context/Status';
 import {
   API,
   buildLoginPayload,
   getLogo,
+  isSecurePasswordLoginEnabled,
   showError,
   showInfo,
   showSuccess,
@@ -25,6 +27,21 @@ import {
 } from '../helpers';
 import { onGitHubOAuthClicked, onLarkOAuthClicked } from './utils';
 import larkIcon from '../images/lark.svg';
+import NacosThemeToggle from './NacosThemeToggle';
+
+/** 仅允许站内相对路径，防止开放重定向 */
+function consumeSafeInternalRedirect(searchParams) {
+  const raw = searchParams.get('redirect');
+  if (!raw) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(String(raw).trim());
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith('/') || decoded.startsWith('//')) return null;
+  return decoded;
+}
 
 const LoginForm = () => {
   const { t } = useTranslation();
@@ -37,7 +54,16 @@ const LoginForm = () => {
   const [submitted, setSubmitted] = useState(false);
   const { username, password } = inputs;
   const [userState, userDispatch] = useContext(UserContext);
+  const [statusState] = useContext(StatusContext);
   const navigate = useNavigate();
+  const afterLoginNavigate = (defaultPath) => {
+    const target = consumeSafeInternalRedirect(searchParams);
+    if (target) {
+      window.location.assign(target);
+      return;
+    }
+    navigate(defaultPath);
+  };
   const [status, setStatus] = useState({});
   const logo = getLogo();
 
@@ -75,24 +101,21 @@ const LoginForm = () => {
     if (searchParams.get('expired')) {
       showError(t('messages.error.login_expired'));
     }
-    (async () => {
-      try {
-        const res = await API.get('/api/status');
-        if (res.data?.success && res.data.data) {
-          mergeStatus(res.data.data);
-        }
-      } catch {
-        const s = localStorage.getItem('status');
-        if (s) {
-          try {
-            setStatus(JSON.parse(s));
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-    })();
-  }, [mergeStatus, searchParams, t]);
+  }, [searchParams, t]);
+
+  useEffect(() => {
+    if (statusState.status) {
+      mergeStatus(statusState.status);
+      return;
+    }
+    const cachedStatus = localStorage.getItem('status');
+    if (!cachedStatus) return;
+    try {
+      mergeStatus(JSON.parse(cachedStatus));
+    } catch {
+      /* ignore */
+    }
+  }, [mergeStatus, statusState.status]);
 
   const loadLoginCaptcha = useCallback(async () => {
     if (!status.login_math_captcha || turnstileEnabled) return;
@@ -109,16 +132,22 @@ const LoginForm = () => {
         setCaptchaChallengeId(d.captcha_id || '');
         setCaptchaClicks([]);
         setCaptchaLoadError('');
-        if (
-          d.login_request_id &&
-          d.login_request_sig != null &&
-          d.login_request_ts != null
-        ) {
-          loginRequestProofRef.current = {
-            id: d.login_request_id,
-            ts: Number(d.login_request_ts),
-            sig: d.login_request_sig,
-          };
+        if (isSecurePasswordLoginEnabled()) {
+          if (
+            d.login_request_id &&
+            d.login_request_sig != null &&
+            d.login_request_ts != null &&
+            d.login_enc_key
+          ) {
+            loginRequestProofRef.current = {
+              id: d.login_request_id,
+              ts: Number(d.login_request_ts),
+              sig: d.login_request_sig,
+              encKey: d.login_enc_key,
+            };
+          } else {
+            loginRequestProofRef.current = null;
+          }
         } else {
           loginRequestProofRef.current = null;
         }
@@ -147,11 +176,20 @@ const LoginForm = () => {
     }
   }, [status.login_math_captcha, turnstileEnabled, t]);
 
+  // 不在进入登录页时请求验证码；仅在打开验证码弹窗且尚未加载时拉取（含从「登录」入口打开弹窗）
   useEffect(() => {
-    if (status.login_math_captcha && !turnstileEnabled) {
-      void loadLoginCaptcha();
-    }
-  }, [status.login_math_captcha, turnstileEnabled, loadLoginCaptcha]);
+    if (!showCaptchaModal) return;
+    if (!status.login_math_captcha || turnstileEnabled) return;
+    if (captchaMasterSrc || captchaLoading) return;
+    void loadLoginCaptcha();
+  }, [
+    showCaptchaModal,
+    status.login_math_captcha,
+    turnstileEnabled,
+    captchaMasterSrc,
+    captchaLoading,
+    loadLoginCaptcha,
+  ]);
 
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
 
@@ -167,7 +205,7 @@ const LoginForm = () => {
     if (success) {
       userDispatch({ type: 'login', payload: data });
       localStorage.setItem('user', JSON.stringify(data));
-      navigate('/');
+      afterLoginNavigate('/');
       showSuccess(t('messages.success.login'));
       setShowWeChatLoginModal(false);
     } else {
@@ -244,11 +282,11 @@ const LoginForm = () => {
           );
         }
         if (username === 'root' && password === '123456') {
-          navigate('/user/edit');
+          afterLoginNavigate('/user/edit');
           showSuccess(t('messages.success.login'));
           showWarning(t('messages.error.root_password'));
         } else {
-          navigate(data?.require_force_2fa_setup ? '/setting' : '/token');
+          afterLoginNavigate(data?.require_force_2fa_setup ? '/setting' : '/token');
           showSuccess(t('messages.success.login'));
         }
       } else {
@@ -284,9 +322,9 @@ const LoginForm = () => {
         localStorage.setItem('user', JSON.stringify(data));
         if (data?.require_force_2fa_setup) {
           showWarning('请前往个人设置完成两步验证配置');
-          navigate('/setting');
+          afterLoginNavigate('/setting');
         } else {
-          navigate('/token');
+          afterLoginNavigate('/token');
         }
         showSuccess(t('messages.success.login'));
       } else {
@@ -300,8 +338,12 @@ const LoginForm = () => {
   };
 
   return (
-    <Grid textAlign='center' style={{ marginTop: '48px' }}>
-      <Grid.Column style={{ maxWidth: 450 }}>
+    <>
+      <div className='app-public-theme-bar'>
+        <NacosThemeToggle />
+      </div>
+      <Grid textAlign='center' style={{ marginTop: '24px' }}>
+        <Grid.Column style={{ maxWidth: 450 }}>
         <Card
           fluid
           className='chart-card'
@@ -342,19 +384,10 @@ const LoginForm = () => {
               />
 
               {status.login_math_captcha && !turnstileEnabled && (
-                <Segment
-                  style={{
-                    background: '#f9fafb',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 10,
-                    marginBottom: 16,
-                    padding: 10,
-                    textAlign: 'left',
-                  }}
-                >
+              <Segment className='auth-captcha-segment'>
                   <div
+                    className='auth-captcha-title'
                     style={{
-                      color: '#374151',
                       display: 'flex',
                       fontSize: 13,
                       fontWeight: 600,
@@ -363,7 +396,7 @@ const LoginForm = () => {
                     }}
                   >
                     <span>{t('auth.login.captcha_title')}</span>
-                    <span style={{ color: '#6b7280', fontWeight: 500 }}>
+                    <span className='auth-captcha-sub' style={{ fontWeight: 500 }}>
                       {t('auth.login.captcha_progress', {
                         n: captchaClicks.length,
                         m: captchaDotNum || '—',
@@ -754,6 +787,7 @@ const LoginForm = () => {
         </Modal>
       </Grid.Column>
     </Grid>
+    </>
   );
 };
 

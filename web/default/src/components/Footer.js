@@ -29,8 +29,8 @@ const Footer = () => {
   }, []);
 
   return (
-    <Segment vertical>
-      <Container textAlign='center' style={{ color: '#666666' }}>
+    <Segment vertical className='app-main-footer-segment'>
+      <Container textAlign='center' className='app-footer-text'>
         {footer ? (
           <div
             className='custom-footer'

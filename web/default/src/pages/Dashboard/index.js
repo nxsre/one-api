@@ -14,7 +14,6 @@ import {
   YAxis,
 } from 'recharts';
 import axios from 'axios';
-import './Dashboard.css';
 
 // 在 Dashboard 组件内添加自定义配置
 const chartConfig = {

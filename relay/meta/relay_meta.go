@@ -23,7 +23,9 @@ type Meta struct {
 	ModelMapping map[string]string
 	// BaseURL is the proxy url set in the channel config
 	BaseURL  string
-	APIKey   string
+	// ChannelKey is the upstream credential from channel config (not the client's sk- token).
+	ChannelKey string
+	APIKey     string
 	APIType  int
 	Config   model.ChannelConfig
 	IsStream bool
@@ -51,7 +53,8 @@ func GetByContext(c *gin.Context) *Meta {
 		ModelMapping:       c.GetStringMapString(ctxkey.ModelMapping),
 		OriginModelName:    c.GetString(ctxkey.RequestModel),
 		BaseURL:            c.GetString(ctxkey.BaseURL),
-		APIKey:             strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer "),
+		ChannelKey:         c.GetString(ctxkey.ChannelKey),
+		APIKey:             bearerToken(c.Request.Header.Get("Authorization")),
 		RequestURLPath:     c.Request.URL.String(),
 		ForcedSystemPrompt: c.GetString(ctxkey.SystemPrompt),
 		StartTime:          time.Now(),
@@ -65,4 +68,12 @@ func GetByContext(c *gin.Context) *Meta {
 	}
 	meta.APIType = channeltype.ToAPIType(meta.ChannelType)
 	return &meta
+}
+
+func bearerToken(authHeader string) string {
+	authHeader = strings.TrimSpace(authHeader)
+	if len(authHeader) >= 7 && strings.EqualFold(authHeader[:7], "bearer ") {
+		return strings.TrimSpace(authHeader[7:])
+	}
+	return authHeader
 }

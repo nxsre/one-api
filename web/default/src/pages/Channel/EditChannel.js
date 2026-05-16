@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Button, Card, Form, Message, Modal} from 'semantic-ui-react';
+import {Button, Card, Form, Header, Message, Modal, Checkbox} from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {
   API,
@@ -16,11 +16,36 @@ import {
 } from '../../helpers';
 import {CHANNEL_OPTIONS} from '../../constants';
 import {renderChannelTip} from '../../helpers/render';
+import SettingMonacoField from '../../components/SettingMonacoField';
+
+const buildChannelInputBaseline = (inp, customModelStr) => ({
+  name: String(inp?.name ?? ''),
+  key: String(inp?.key ?? ''),
+  base_url: String(inp?.base_url ?? ''),
+  other: String(inp?.other ?? ''),
+  model_mapping: String(inp?.model_mapping ?? ''),
+  system_prompt: String(inp?.system_prompt ?? ''),
+  customModel: String(customModelStr ?? ''),
+});
 
 const MODEL_MAPPING_EXAMPLE = {
   'gpt-3.5-turbo-0301': 'gpt-3.5-turbo',
   'gpt-4-0314': 'gpt-4',
   'gpt-4-32k-0314': 'gpt-4-32k',
+};
+
+const DEFAULT_CHANNEL_CONFIG = {
+  region: '',
+  sk: '',
+  ak: '',
+  user_id: '',
+  vertex_ai_project_id: '',
+  vertex_ai_adc: '',
+  api_version: '',
+  library_id: '',
+  plugin: '',
+  routing_provider: '',
+  routing_skip_adaptive: false,
 };
 
 function type2secretPrompt(type, t) {
@@ -35,6 +60,10 @@ function type2secretPrompt(type, t) {
       return t('channel.edit.key_prompts.tencent');
     case 52:
       return t('channel.edit.key_prompts.aippt');
+    case 53:
+      return t('channel.edit.key_prompts.amap_poi');
+    case 54:
+      return t('channel.edit.key_prompts.bifrost');
     default:
       return t('channel.edit.key_prompts.default');
   }
@@ -85,7 +114,7 @@ const EditChannel = () => {
     }
   };
 
-  const originInputs = {
+  const defaultChannelInputs = {
     name: '',
     type: 1,
     key: '',
@@ -99,23 +128,19 @@ const EditChannel = () => {
   const [loadKeyOpen, setLoadKeyOpen] = useState(false);
   const [loadKeyCode, setLoadKeyCode] = useState('');
   const [loadKeyBusy, setLoadKeyBusy] = useState(false);
-  const [inputs, setInputs] = useState(originInputs);
+  const [inputs, setInputs] = useState(defaultChannelInputs);
+  const [inputBaseline, setInputBaseline] = useState(() =>
+    buildChannelInputBaseline(defaultChannelInputs, '')
+  );
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
   const [basicModels, setBasicModels] = useState([]);
   const [fullModels, setFullModels] = useState([]);
   const [customModel, setCustomModel] = useState('');
-  const [config, setConfig] = useState({
-    region: '',
-    sk: '',
-    ak: '',
-    user_id: '',
-    vertex_ai_project_id: '',
-    vertex_ai_adc: '',
-    api_version: '',
-    library_id: '',
-    plugin: '',
+  const [config, setConfig] = useState({ ...DEFAULT_CHANNEL_CONFIG });
+  const [configBaseline, setConfigBaseline] = useState({
+    ...DEFAULT_CHANNEL_CONFIG,
   });
   const handleInputChange = (e, { name, value }) => {
     if (name === 'type') {
@@ -166,20 +191,16 @@ const EditChannel = () => {
       }
       const { other: _legacyOther, ...channelData } = data;
       setInputs(channelData);
+      setInputBaseline(buildChannelInputBaseline(channelData, ''));
       if (data.config !== '' && data.config != null) {
-        setConfig(JSON.parse(data.config));
+        const cfg = JSON.parse(data.config);
+        const merged = { ...DEFAULT_CHANNEL_CONFIG, ...cfg };
+        setConfig(merged);
+        setConfigBaseline(merged);
       } else {
-        setConfig({
-          region: '',
-          sk: '',
-          ak: '',
-          user_id: '',
-          vertex_ai_project_id: '',
-          vertex_ai_adc: '',
-          api_version: '',
-          library_id: '',
-          plugin: '',
-        });
+        const empty = { ...DEFAULT_CHANNEL_CONFIG };
+        setConfig(empty);
+        setConfigBaseline(empty);
       }
       setBasicModels(getChannelModels(data.type));
     } else {
@@ -303,9 +324,16 @@ const EditChannel = () => {
     if (success) {
       if (isEdit) {
         showSuccess(t('channel.edit.messages.update_success'));
+        await loadChannel();
       } else {
         showSuccess(t('channel.edit.messages.create_success'));
-        setInputs(originInputs);
+        setInputs(defaultChannelInputs);
+        setInputBaseline(
+          buildChannelInputBaseline(defaultChannelInputs, '')
+        );
+        setCustomModel('');
+        setConfig({ ...DEFAULT_CHANNEL_CONFIG });
+        setConfigBaseline({ ...DEFAULT_CHANNEL_CONFIG });
       }
     } else {
       showError(message);
@@ -355,11 +383,12 @@ const EditChannel = () => {
             <Form.Field>
               <Form.Input
                 label={t('channel.edit.name')}
-                name='name'
                 placeholder={t('channel.edit.name_placeholder')}
-                onChange={handleInputChange}
-                value={inputs.name}
+                name='name'
                 required
+                value={inputs.name}
+                onChange={handleInputChange}
+                autoComplete='off'
               />
             </Form.Field>
             <Form.Field>
@@ -421,30 +450,28 @@ const EditChannel = () => {
 
             {/* Custom base URL field */}
             {inputs.type === 8 && (
-              <Form.Field>
-                <Form.Input
-                    required
-                    label={t('channel.edit.proxy_url')}
-                    name='base_url'
-                    placeholder={t('channel.edit.proxy_url_placeholder')}
-                    onChange={handleInputChange}
-                    value={inputs.base_url}
-                    autoComplete='new-password'
-                />
-              </Form.Field>
+              <SettingMonacoField
+                label={t('channel.edit.proxy_url')}
+                hint={t('channel.edit.proxy_url_placeholder')}
+                value={inputs.base_url}
+                originValue={inputBaseline.base_url}
+                onChange={(v) =>
+                  handleInputChange(null, { name: 'base_url', value: v })
+                }
+                height={96}
+              />
             )}
             {inputs.type === 50 && (
-                <Form.Field>
-                  <Form.Input
-                      required
+                <SettingMonacoField
                   label={t('channel.edit.base_url')}
-                  name='base_url'
-                  placeholder={t('channel.edit.base_url_placeholder')}
-                  onChange={handleInputChange}
+                  hint={t('channel.edit.base_url_placeholder')}
                   value={inputs.base_url}
-                  autoComplete='new-password'
+                  originValue={inputBaseline.base_url}
+                  onChange={(v) =>
+                    handleInputChange(null, { name: 'base_url', value: v })
+                  }
+                  height={96}
                 />
-              </Form.Field>
             )}
 
             {inputs.type === 18 && (
@@ -563,16 +590,13 @@ const EditChannel = () => {
                 >
                   {t('channel.edit.buttons.clear')}
                 </Button>
-                <Form.TextArea
-                  placeholder={t('channel.edit.buttons.custom_placeholder')}
+                <SettingMonacoField
+                  label={t('channel.edit.models')}
+                  hint={t('channel.edit.buttons.custom_placeholder')}
                   value={customModel}
-                  onChange={(e, { value }) => setCustomModel(value)}
-                  rows={3}
-                  style={{
-                    marginTop: 8,
-                    fontFamily:
-                      'JetBrains Mono, Consolas, monospace',
-                  }}
+                  originValue={inputBaseline.customModel}
+                  onChange={setCustomModel}
+                  height={156}
                 />
                 <Button type={'button'} onClick={addCustomModel} style={{ marginTop: 8 }}>
                   {t('channel.edit.buttons.add_custom')}
@@ -581,57 +605,56 @@ const EditChannel = () => {
             )}
             {inputs.type !== 43 && (
               <>
-                <Form.Field>
-                  <Form.TextArea
-                    label={t('channel.edit.model_mapping')}
-                    placeholder={`${t(
-                      'channel.edit.model_mapping_placeholder'
-                    )}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
-                    name='model_mapping'
-                    onChange={handleInputChange}
-                    value={inputs.model_mapping}
-                    style={{
-                      minHeight: 150,
-                      fontFamily: 'JetBrains Mono, Consolas',
-                    }}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-                <Form.Field>
-                  <Form.TextArea
-                    label={t('channel.edit.system_prompt')}
-                    placeholder={t('channel.edit.system_prompt_placeholder')}
-                    name='system_prompt'
-                    onChange={handleInputChange}
-                    value={inputs.system_prompt}
-                    style={{
-                      minHeight: 150,
-                      fontFamily: 'JetBrains Mono, Consolas',
-                    }}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
+                <SettingMonacoField
+                  label={t('channel.edit.model_mapping')}
+                  hint={`${t(
+                    'channel.edit.model_mapping_placeholder'
+                  )}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
+                  language='json'
+                  enableJsonFormat
+                  value={inputs.model_mapping}
+                  originValue={inputBaseline.model_mapping}
+                  onChange={(v) =>
+                    handleInputChange(null, { name: 'model_mapping', value: v })
+                  }
+                  height={272}
+                  minimap
+                />
+                <SettingMonacoField
+                  label={t('channel.edit.system_prompt')}
+                  hint={t('channel.edit.system_prompt_placeholder')}
+                  language='plaintext'
+                  value={inputs.system_prompt}
+                  originValue={inputBaseline.system_prompt}
+                  onChange={(v) =>
+                    handleInputChange(null, { name: 'system_prompt', value: v })
+                  }
+                  height={272}
+                  minimap
+                />
               </>
             )}
             {inputs.type === 33 && (
               <Form.Field>
-                <Form.Input
+                <SettingMonacoField
                   label='Region'
-                  name='region'
-                  required
-                  placeholder={t('channel.edit.aws_region_placeholder')}
-                  onChange={handleConfigChange}
+                  hint={t('channel.edit.aws_region_placeholder')}
                   value={config.region}
-                  autoComplete=''
+                  originValue={configBaseline.region}
+                  onChange={(v) =>
+                    handleConfigChange(null, { name: 'region', value: v })
+                  }
+                  height={88}
                 />
-                <Form.Input
+                <SettingMonacoField
                   label='AK'
-                  name='ak'
-                  required
-                  placeholder={t('channel.edit.aws_ak_placeholder')}
-                  onChange={handleConfigChange}
+                  hint={t('channel.edit.aws_ak_placeholder')}
                   value={config.ak}
-                  autoComplete=''
+                  originValue={configBaseline.ak}
+                  onChange={(v) =>
+                    handleConfigChange(null, { name: 'ak', value: v })
+                  }
+                  height={88}
                 />
                 <Form.Input
                   label='SK'
@@ -640,51 +663,101 @@ const EditChannel = () => {
                   placeholder={t('channel.edit.aws_sk_placeholder')}
                   onChange={handleConfigChange}
                   value={config.sk}
-                  autoComplete=''
+                  type='password'
+                  autoComplete='new-password'
                 />
               </Form.Field>
             )}
             {inputs.type === 42 && (
               <Form.Field>
-                <Form.Input
+                <SettingMonacoField
                   label='Region'
-                  name='region'
-                  required
-                  placeholder={t('channel.edit.vertex_region_placeholder')}
-                  onChange={handleConfigChange}
+                  hint={t('channel.edit.vertex_region_placeholder')}
                   value={config.region}
-                  autoComplete=''
+                  originValue={configBaseline.region}
+                  onChange={(v) =>
+                    handleConfigChange(null, { name: 'region', value: v })
+                  }
+                  height={88}
                 />
-                <Form.Input
+                <SettingMonacoField
                   label={t('channel.edit.vertex_project_id')}
-                  name='vertex_ai_project_id'
-                  required
-                  placeholder={t('channel.edit.vertex_project_id_placeholder')}
-                  onChange={handleConfigChange}
+                  hint={t('channel.edit.vertex_project_id_placeholder')}
                   value={config.vertex_ai_project_id}
-                  autoComplete=''
+                  originValue={configBaseline.vertex_ai_project_id}
+                  onChange={(v) =>
+                    handleConfigChange(null, {
+                      name: 'vertex_ai_project_id',
+                      value: v,
+                    })
+                  }
+                  height={88}
                 />
-                <Form.Input
+                <SettingMonacoField
                   label={t('channel.edit.vertex_credentials')}
-                  name='vertex_ai_adc'
-                  required
-                  placeholder={t('channel.edit.vertex_credentials_placeholder')}
-                  onChange={handleConfigChange}
+                  hint={t('channel.edit.vertex_credentials_placeholder')}
+                  language='json'
+                  enableJsonFormat
+                  minimap
                   value={config.vertex_ai_adc}
-                  autoComplete=''
+                  originValue={configBaseline.vertex_ai_adc}
+                  onChange={(v) =>
+                    handleConfigChange(null, {
+                      name: 'vertex_ai_adc',
+                      value: v,
+                    })
+                  }
+                  height={280}
                 />
               </Form.Field>
             )}
             {inputs.type === 34 && (
-              <Form.Input
+              <SettingMonacoField
                 label={t('channel.edit.user_id')}
-                name='user_id'
-                required
-                placeholder={t('channel.edit.user_id_placeholder')}
-                onChange={handleConfigChange}
+                hint={t('channel.edit.user_id_placeholder')}
                 value={config.user_id}
-                autoComplete=''
+                originValue={configBaseline.user_id}
+                onChange={(v) =>
+                  handleConfigChange(null, { name: 'user_id', value: v })
+                }
+                height={88}
               />
+            )}
+            {inputs.type !== 33 && inputs.type !== 42 && (
+              <>
+                <Header as='h4' dividing>
+                  {t('channel.edit.routing_advanced')}
+                </Header>
+                <Form.Field>
+                  <label>{t('channel.edit.routing_provider')}</label>
+                  <Form.Input
+                    name='routing_provider'
+                    placeholder={t(
+                      'channel.edit.routing_provider_placeholder'
+                    )}
+                    value={config.routing_provider}
+                    onChange={(e, { value }) =>
+                      handleConfigChange(null, {
+                        name: 'routing_provider',
+                        value,
+                      })
+                    }
+                  />
+                </Form.Field>
+                <Form.Field>
+                  <Checkbox
+                    toggle
+                    label={t('channel.edit.routing_skip_adaptive')}
+                    checked={!!config.routing_skip_adaptive}
+                    onChange={(e, { checked }) =>
+                      handleConfigChange(null, {
+                        name: 'routing_skip_adaptive',
+                        value: checked,
+                      })
+                    }
+                  />
+                </Form.Field>
+              </>
             )}
             {isEdit &&
               !batch &&
@@ -704,21 +777,17 @@ const EditChannel = () => {
             {inputs.type !== 33 &&
               inputs.type !== 42 &&
               (batch ? (
-                <Form.Field>
-                  <Form.TextArea
-                    label={t('channel.edit.key')}
-                    name='key'
-                    required
-                    placeholder={t('channel.edit.batch_placeholder')}
-                    onChange={handleInputChange}
-                    value={inputs.key}
-                    style={{
-                      minHeight: 150,
-                      fontFamily: 'JetBrains Mono, Consolas',
-                    }}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
+                <SettingMonacoField
+                  label={t('channel.edit.key')}
+                  hint={t('channel.edit.batch_placeholder')}
+                  value={inputs.key}
+                  originValue={inputBaseline.key}
+                  onChange={(v) =>
+                    handleInputChange(null, { name: 'key', value: v })
+                  }
+                  height={220}
+                  minimap
+                />
               ) : (
                 <Form.Field>
                   <Form.Input
@@ -733,19 +802,16 @@ const EditChannel = () => {
                 </Form.Field>
               ))}
             {inputs.type === 37 && (
-              <Form.Field>
-                <Form.Input
-                  label='Account ID'
-                  name='user_id'
-                  required
-                  placeholder={
-                    '请输入 Account ID，例如：d8d7c61dbc334c32d3ced580e4bf42b4'
-                  }
-                  onChange={handleConfigChange}
-                  value={config.user_id}
-                  autoComplete=''
-                />
-              </Form.Field>
+              <SettingMonacoField
+                label='Account ID'
+                hint='请输入 Account ID，例如：d8d7c61dbc334c32d3ced580e4bf42b4'
+                value={config.user_id}
+                originValue={configBaseline.user_id}
+                onChange={(v) =>
+                  handleConfigChange(null, { name: 'user_id', value: v })
+                }
+                height={88}
+              />
             )}
             {inputs.type !== 33 && !isEdit && (
               <Form.Checkbox
@@ -760,30 +826,28 @@ const EditChannel = () => {
               inputs.type !== 8 &&
                 inputs.type !== 50 &&
               inputs.type !== 22 && (
-                <Form.Field>
-                  <Form.Input
-                      label={t('channel.edit.proxy_url')}
-                    name='base_url'
-                      placeholder={t('channel.edit.proxy_url_placeholder')}
-                    onChange={handleInputChange}
-                    value={inputs.base_url}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
+                <SettingMonacoField
+                  label={t('channel.edit.proxy_url')}
+                  hint={t('channel.edit.proxy_url_placeholder')}
+                  value={inputs.base_url}
+                  originValue={inputBaseline.base_url}
+                  onChange={(v) =>
+                    handleInputChange(null, { name: 'base_url', value: v })
+                  }
+                  height={96}
+                />
               )}
             {inputs.type === 22 && (
-              <Form.Field>
-                <Form.Input
-                  label='私有部署地址'
-                  name='base_url'
-                  placeholder={
-                    '请输入私有部署地址，格式为：https://fastgpt.run/api/openapi'
-                  }
-                  onChange={handleInputChange}
-                  value={inputs.base_url}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
+              <SettingMonacoField
+                label='私有部署地址'
+                hint='请输入私有部署地址，格式为：https://fastgpt.run/api/openapi'
+                value={inputs.base_url}
+                originValue={inputBaseline.base_url}
+                onChange={(v) =>
+                  handleInputChange(null, { name: 'base_url', value: v })
+                }
+                height={96}
+              />
             )}
             <Button onClick={handleCancel}>
               {t('channel.edit.buttons.cancel')}

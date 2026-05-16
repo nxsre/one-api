@@ -2,6 +2,7 @@ import {toast} from 'react-toastify';
 import {toastConstants} from '../constants';
 import React from 'react';
 import {API} from './api';
+import { clearNacosEmbeddedConsoleLocalSession } from './nacosEmbeddedConsole';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -20,6 +21,39 @@ export function isRoot() {
   if (!user) return false;
   user = JSON.parse(user);
   return user.role >= 100;
+}
+
+/** 与 /api/status 的 secure_password_login 一致；未加载 status 时默认 false。 */
+export function isSecurePasswordLoginEnabled() {
+  try {
+    const raw = localStorage.getItem('status');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (Object.prototype.hasOwnProperty.call(data, 'secure_password_login')) {
+      return (
+        data.secure_password_login === true ||
+        data.secure_password_login === 'true'
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/** 与 /api/status 的 nacos_enabled 一致；未加载 status 时默认 false。 */
+export function isNacosEnabled() {
+  try {
+    const raw = localStorage.getItem('status');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (data && Object.prototype.hasOwnProperty.call(data, 'nacos_enabled')) {
+      return data.nacos_enabled === true || data.nacos_enabled === 'true';
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 export function getSystemName() {
@@ -82,6 +116,7 @@ export function showError(error) {
         case 401:
           // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
           localStorage.removeItem('user');
+          clearNacosEmbeddedConsoleLocalSession();
           if (window.location.pathname !== '/login') {
             window.location.replace('/login?expired=true');
           }

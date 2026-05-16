@@ -16,6 +16,11 @@ func ParseChannelKey(raw string) (appKey, secretKey, uid string, err error) {
 	if raw == "" {
 		return "", "", "", fmt.Errorf("aippt: empty channel key")
 	}
+	if looksLikeOneAPIToken(raw) {
+		return "", "", "", fmt.Errorf(
+			"aippt: 渠道密钥须为 AiPPT 的 app_key|secret_key（或 JSON），勿将令牌管理中的 sk- 令牌填入渠道密钥；客户端请使用 OpenAI 兼容 Authorization: Bearer <sk-令牌>",
+		)
+	}
 	if strings.HasPrefix(raw, "{") {
 		var m struct {
 			APIKey    string `json:"api_key"`
@@ -52,7 +57,14 @@ func ParseChannelKey(raw string) (appKey, secretKey, uid string, err error) {
 	if len(lines) >= 2 {
 		return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1]), "openclaw_default", nil
 	}
-	return "", "", "", fmt.Errorf("aippt: use app_key|secret_key or two lines or JSON")
+	return "", "", "", fmt.Errorf(
+		"aippt: 渠道密钥格式无效，请使用 app_key|secret_key、两行文本或 JSON（api_key/api_secret）",
+	)
+}
+
+func looksLikeOneAPIToken(s string) bool {
+	s = strings.TrimSpace(s)
+	return strings.HasPrefix(s, "sk-")
 }
 
 func filterEmpty(in []string) []string {

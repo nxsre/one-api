@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';
 import Turnstile from 'react-turnstile';
+import NacosThemeToggle from './NacosThemeToggle';
 
 const RegisterForm = () => {
   const { t } = useTranslation();
@@ -127,8 +128,12 @@ const RegisterForm = () => {
   };
 
   return (
-    <Grid textAlign='center' style={{ marginTop: '48px' }}>
-      <Grid.Column style={{ maxWidth: 450 }}>
+    <>
+      <div className='app-public-theme-bar'>
+        <NacosThemeToggle />
+      </div>
+      <Grid textAlign='center' style={{ marginTop: '24px' }}>
+        <Grid.Column style={{ maxWidth: 450 }}>
         <Card
           fluid
           className='chart-card'
@@ -249,10 +254,7 @@ const RegisterForm = () => {
                 }}
               >
                 {t('auth.register.has_account')}
-                <Link
-                  to='/login'
-                  style={{ color: '#2185d0', marginLeft: '2px' }}
-                >
+                <Link to='/login' className='app-register-login-link'>
                   {t('auth.register.login')}
                 </Link>
               </div>
@@ -261,6 +263,7 @@ const RegisterForm = () => {
         </Card>
       </Grid.Column>
     </Grid>
+    </>
   );
 };
 

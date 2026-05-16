@@ -8,7 +8,10 @@ const defaultConfig = {
     system_prompt: '',
     models: [],
     groups: ['default'],
-    config: {}
+    config: {
+      routing_provider: '',
+      routing_skip_adaptive: false
+    }
   },
   inputLabel: {
     name: '渠道名称',
@@ -242,6 +245,25 @@ const typeConfig = {
   },
   45: {
     modelGroup: 'xai'
+  },
+  53: {
+    input: {
+      models: ['amap-poi']
+    },
+    prompt: {
+      key: '请输入高德 Web 服务 API Key'
+    },
+    modelGroup: 'amap'
+  },
+  54: {
+    input: {
+      models: []
+    },
+    prompt: {
+      key: 'Bifrost：密钥；Base URL 填网关根地址',
+      base_url: '例如 http://127.0.0.1:8080'
+    },
+    modelGroup: 'bifrost'
   }
 };
 
