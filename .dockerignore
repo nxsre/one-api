@@ -1,0 +1,41 @@
+# 减小 docker build 发送的 context 体积（尤其避免把宿主机 node_modules、本地二进制等打进构建上下文）。
+# 说明：nodejs 阶段仍会通过 COPY ./web 等获得前端源码；依赖在镜像内 npm ci 安装，无需上传 node_modules。
+
+# VCS / CI
+.git
+.github
+
+# 本地运行产物、数据与密钥（不应进入镜像构建）
+bin/
+logs/
+data/
+*.db
+one-api
+.env
+.env.*
+!.env.example
+
+# 依赖与包管理器缓存（镜像内重新安装）
+**/node_modules/
+**/npm-debug.log*
+**/.npm/
+**/yarn-error.log*
+
+# 前端本地打包产物（由 node 阶段生成；若有残留会放大 context）
+web/**/build/
+web/build/
+web/nacos-console/
+
+# K8s / 文档 / 杂项（Go 编译不需要）
+docs/
+k8s/
+docker-compose*.yml
+config.docker.toml
+
+# 本地 BuildKit 缓存导出目录（若放在仓库内）
+.docker-buildcache/
+
+# 常见 IDE / 系统文件
+**/.DS_Store
+.idea/
+.vscode/

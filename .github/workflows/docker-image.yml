@@ -32,6 +32,12 @@ jobs:
         run: |
           git describe --tags > VERSION 
 
+      - name: Prepare Nacos upstream (legacy console bind mount, replaces stub dir)
+        run: |
+          set -eux
+          rm -rf third_party/nacos/nacos-upstream
+          git clone --depth 1 https://github.com/alibaba/nacos.git third_party/nacos/nacos-upstream
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

@@ -52,6 +52,7 @@ import NacosConsoleExternalOpen from './pages/Nacos/NacosConsoleExternalOpen';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
+const Routing = lazy(() => import('./pages/Routing'));
 
 function isPublicAuthPath() {
   const path = window.location.pathname;
@@ -240,6 +241,16 @@ function App() {
           <Suspense fallback={<Loading></Loading>}>
             <EditChannel />
           </Suspense>
+        }
+      />
+      <Route
+        path='/routing'
+        element={
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <Routing />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route

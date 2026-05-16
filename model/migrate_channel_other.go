@@ -11,6 +11,13 @@ import (
 
 // migrateChannelMergeOtherIntoConfig 将旧列 other 合并进 config JSON（与 middleware 中原兼容逻辑一致），便于随后删除 other 列。
 func migrateChannelMergeOtherIntoConfig() error {
+	ok, err := channelsTableHasOtherColumn()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
 	type row struct {
 		ID     int
 		Type   int

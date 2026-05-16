@@ -285,6 +285,8 @@ const EditChannel = (props) => {
         if (localInputs.type === 24 && !cfg.api_version) {
             cfg.api_version = 'v1';
         }
+        cfg.routing_provider = inputs.routing_provider || '';
+        cfg.routing_skip_adaptive = !!inputs.routing_skip_adaptive;
         localInputs.config = JSON.stringify(cfg);
         delete localInputs.other;
         let res;
@@ -296,17 +298,6 @@ const EditChannel = (props) => {
         localInputs.auto_ban = autoBan ? 1 : 0;
         localInputs.models = localInputs.models.join(',');
         localInputs.group = localInputs.groups.join(',');
-        let cfg = {};
-        try {
-            if (inputs.config && typeof inputs.config === 'string' && inputs.config.trim()) {
-                cfg = JSON.parse(inputs.config);
-            }
-        } catch {
-            cfg = {};
-        }
-        cfg.routing_provider = inputs.routing_provider || '';
-        cfg.routing_skip_adaptive = !!inputs.routing_skip_adaptive;
-        localInputs.config = JSON.stringify(cfg);
         delete localInputs.routing_provider;
         delete localInputs.routing_skip_adaptive;
         if (isEdit) {

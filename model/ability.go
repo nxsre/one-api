@@ -35,6 +35,7 @@ func QueryEnabledChannelsForGroupModel(group, model string) ([]*Channel, error) 
 	return channels, err
 }
 
+
 func (channel *Channel) AddAbilities() error {
 	models_ := strings.Split(channel.Models, ",")
 	models_ = utils.DeDuplication(models_)

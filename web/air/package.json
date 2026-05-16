@@ -27,7 +27,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build && mv -f build ../build/air",
+    "build": "react-scripts build && mkdir -p ../build && rm -rf ../build/air && mv -f build ../build/air",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
