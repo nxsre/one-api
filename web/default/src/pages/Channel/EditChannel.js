@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Button, Card, Form, Message, Modal} from 'semantic-ui-react';
+import {Button, Card, Form, Header, Message, Modal, Checkbox} from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {
   API,
@@ -41,6 +41,8 @@ const DEFAULT_CHANNEL_CONFIG = {
   user_id: '',
   vertex_ai_project_id: '',
   vertex_ai_adc: '',
+  routing_provider: '',
+  routing_skip_adaptive: false,
 };
 
 function type2secretPrompt(type, t) {
@@ -57,6 +59,8 @@ function type2secretPrompt(type, t) {
       return t('channel.edit.key_prompts.aippt');
     case 53:
       return t('channel.edit.key_prompts.amap_poi');
+    case 54:
+      return t('channel.edit.key_prompts.bifrost');
     default:
       return t('channel.edit.key_prompts.default');
   }
@@ -694,6 +698,42 @@ const EditChannel = () => {
                 }
                 height={88}
               />
+            )}
+            {inputs.type !== 33 && inputs.type !== 42 && (
+              <>
+                <Header as='h4' dividing>
+                  {t('channel.edit.routing_advanced')}
+                </Header>
+                <Form.Field>
+                  <label>{t('channel.edit.routing_provider')}</label>
+                  <Form.Input
+                    name='routing_provider'
+                    placeholder={t(
+                      'channel.edit.routing_provider_placeholder'
+                    )}
+                    value={config.routing_provider}
+                    onChange={(e, { value }) =>
+                      handleConfigChange(null, {
+                        name: 'routing_provider',
+                        value,
+                      })
+                    }
+                  />
+                </Form.Field>
+                <Form.Field>
+                  <Checkbox
+                    toggle
+                    label={t('channel.edit.routing_skip_adaptive')}
+                    checked={!!config.routing_skip_adaptive}
+                    onChange={(e, { checked }) =>
+                      handleConfigChange(null, {
+                        name: 'routing_skip_adaptive',
+                        value: checked,
+                      })
+                    }
+                  />
+                </Form.Field>
+              </>
             )}
             {isEdit &&
               !batch &&

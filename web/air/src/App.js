@@ -21,6 +21,7 @@ import Redemption from './pages/Redemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
 import Chat from './pages/Chat';
+import Routing from './pages/Routing';
 import { Layout } from '@douyinfe/semi-ui';
 import Midjourney from './pages/Midjourney';
 import Detail from './pages/Detail';
@@ -148,6 +149,14 @@ function App() {
               <Suspense fallback={<Loading></Loading>}>
                 <EditChannel />
               </Suspense>
+            }
+          />
+          <Route
+            path="/routing"
+            element={
+              <PrivateRoute>
+                <Routing />
+              </PrivateRoute>
             }
           />
           <Route

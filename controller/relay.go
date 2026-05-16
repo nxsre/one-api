@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
@@ -14,11 +15,11 @@ import (
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/middleware"
-	dbmodel "github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/monitor"
 	relayctl "github.com/songquanpeng/one-api/relay/controller"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
+	"github.com/songquanpeng/one-api/routing"
 )
 
 // https://platform.openai.com/docs/api-reference/chat
@@ -55,52 +56,83 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 		requestBody, _ := common.GetRequestBody(c)
 		logger.Debugf(ctx, "request body: %s", string(requestBody))
 	}
+	startAt := time.Now()
 	channelId := c.GetInt(ctxkey.ChannelId)
 	userId := c.GetInt(ctxkey.Id)
+	group := c.GetString(ctxkey.Group)
+	originalModel := c.GetString(ctxkey.OriginalModel)
+	retryPol := routing.CurrentRelayRetryPolicy()
+	maxRetries := routing.EffectiveMaxRetries()
+
+	tried := map[int]struct{}{channelId: {}}
+
 	bizErr := exec(c)
+	recordRelayOutcome(c, originalModel, bizErr, startAt)
+
 	if bizErr != nil && bizErr.StatusCode == -1 {
 		return
 	}
 	if bizErr == nil {
 		monitor.Emit(channelId, true)
+		routing.RecordCircuitSuccess(channelId)
 		return
 	}
 	lastFailedChannelId := channelId
 	channelName := c.GetString(ctxkey.ChannelName)
-	group := c.GetString(ctxkey.Group)
-	originalModel := c.GetString(ctxkey.OriginalModel)
 	go processChannelRelayError(ctx, userId, channelId, channelName, *bizErr)
 	requestId := c.GetString(helper.RequestIdKey)
-	retryTimes := config.RetryTimes
-	if !shouldRetry(c, bizErr.StatusCode) {
+	if !shouldRelayRetry(c, bizErr.StatusCode, retryPol) {
 		logger.Errorf(ctx, "relay error happen, status code is %d, won't retry in this case", bizErr.StatusCode)
-		retryTimes = 0
+		maxRetries = 0
 	}
-	for i := retryTimes; i > 0; i-- {
-		channel, err := dbmodel.CacheGetRandomSatisfiedChannel(group, originalModel, i != retryTimes)
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(retryBackoffDuration(attempt-1, retryPol))
+		}
+
+		excluded := relayExcludeIDs(tried, lastFailedChannelId, retryPol)
+		opts := routing.SelectOpts{
+			StickyKey:           c.GetString(ctxkey.RoutingStickyKey),
+			RequestModel:        originalModel,
+			ExcludeChannelIDs:   excluded,
+			SkipCircuitDisabled: routing.CurrentRoutingPolicy().CircuitFailThreshold > 0,
+		}
+		channel, err := routing.SelectChannel(group, originalModel, attempt > 0, opts)
 		if err != nil {
-			logger.Errorf(ctx, "CacheGetRandomSatisfiedChannel failed: %+v", err)
+			logger.Errorf(ctx, "SelectChannel failed: %+v", err)
 			break
 		}
-		logger.Infof(ctx, "using channel #%d to retry (remain times %d)", channel.Id, i)
-		if channel.Id == lastFailedChannelId {
+		if _, dup := tried[channel.Id]; dup {
 			continue
 		}
+		logger.Infof(ctx, "using channel #%d to retry (attempt %d/%d)", channel.Id, attempt+1, maxRetries)
+		tried[channel.Id] = struct{}{}
+
 		middleware.SetupContextForSelectedChannel(c, channel, originalModel)
 		requestBody, err := common.GetRequestBody(c)
+		if err != nil {
+			logger.Errorf(ctx, "GetRequestBody failed: %v", err)
+			break
+		}
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+
+		startAt = time.Now()
 		bizErr = exec(c)
+		recordRelayOutcome(c, originalModel, bizErr, startAt)
+
 		if bizErr != nil && bizErr.StatusCode == -1 {
 			return
 		}
 		if bizErr == nil {
-			monitor.Emit(channelId, true)
+			okCh := c.GetInt(ctxkey.ChannelId)
+			monitor.Emit(okCh, true)
+			routing.RecordCircuitSuccess(okCh)
 			return
 		}
-		channelId := c.GetInt(ctxkey.ChannelId)
-		lastFailedChannelId = channelId
-		channelName := c.GetString(ctxkey.ChannelName)
-		go processChannelRelayError(ctx, userId, channelId, channelName, *bizErr)
+		lastFailedChannelId = c.GetInt(ctxkey.ChannelId)
+		channelName = c.GetString(ctxkey.ChannelName)
+		go processChannelRelayError(ctx, userId, lastFailedChannelId, channelName, *bizErr)
 	}
 	if bizErr != nil {
 		if bizErr.StatusCode == http.StatusTooManyRequests {
@@ -115,8 +147,59 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 	}
 }
 
-func shouldRetry(c *gin.Context, statusCode int) bool {
+func recordRelayOutcome(c *gin.Context, originalModel string, bizErr *model.ErrorWithStatusCode, startAt time.Time) {
+	channelId := c.GetInt(ctxkey.ChannelId)
+	provider := c.GetString(ctxkey.ChannelRoutingProvider)
+	tokenID := c.GetInt(ctxkey.TokenId)
+	ok := bizErr == nil
+	if bizErr != nil && bizErr.StatusCode == -1 {
+		ok = true
+	}
+	ms := time.Since(startAt).Milliseconds()
+	routing.RecordRelayMetric(channelId, originalModel, tokenID, provider, ok, ms)
+}
+
+func relayExcludeIDs(tried map[int]struct{}, lastFailed int, pol routing.RelayRetryPolicy) map[int]struct{} {
+	if pol.ForceDifferentChannelEachAttempt {
+		ex := make(map[int]struct{}, len(tried))
+		for id := range tried {
+			ex[id] = struct{}{}
+		}
+		return ex
+	}
+	return map[int]struct{}{lastFailed: {}}
+}
+
+func retryBackoffDuration(zeroBasedAttempt int, pol routing.RelayRetryPolicy) time.Duration {
+	ms := pol.BaseBackoffMs
+	for i := 0; i < zeroBasedAttempt; i++ {
+		ms *= 2
+		if ms > pol.MaxBackoffMs {
+			ms = pol.MaxBackoffMs
+			break
+		}
+	}
+	if ms > pol.MaxBackoffMs {
+		ms = pol.MaxBackoffMs
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+func shouldRelayRetry(c *gin.Context, statusCode int, rp routing.RelayRetryPolicy) bool {
 	if _, ok := c.Get(ctxkey.SpecificChannelId); ok {
+		return false
+	}
+	for _, code := range rp.RetryHTTPStatusDenylist {
+		if statusCode == code {
+			return false
+		}
+	}
+	if len(rp.RetryHTTPStatusAllowlist) > 0 {
+		for _, code := range rp.RetryHTTPStatusAllowlist {
+			if statusCode == code {
+				return true
+			}
+		}
 		return false
 	}
 	if statusCode == http.StatusTooManyRequests {
@@ -141,6 +224,7 @@ func processChannelRelayError(ctx context.Context, userId int, channelId int, ch
 		monitor.DisableChannel(channelId, channelName, err.Message)
 	} else {
 		monitor.Emit(channelId, false)
+		routing.RecordCircuitFailure(channelId)
 	}
 }
 

@@ -31,6 +31,12 @@ let headerButtons = [
     admin: true,
   },
   {
+    name: 'header.routing',
+    to: '/routing',
+    icon: 'random',
+    admin: true,
+  },
+  {
     name: 'header.nacos_skills',
     to: '/nacos/skills',
     icon: 'code branch',

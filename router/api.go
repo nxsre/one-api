@@ -101,6 +101,22 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.DELETE("/disabled", controller.DeleteDisabledChannel)
 			channelRoute.DELETE("/:id", controller.DeleteChannel)
 		}
+
+		routingRoute := apiRouter.Group("/routing")
+		routingRoute.Use(middleware.AdminAuth())
+		{
+			routingRoute.GET("/metrics-day", controller.GetRoutingMetricsDay)
+			routingRoute.GET("/channel-preview", controller.GetRoutingChannelPreview)
+			routingRoute.GET("/circuit-states", controller.GetRoutingCircuitStates)
+			routingRoute.POST("/manual-weight", controller.PostRoutingManualWeight)
+			routingRoute.GET("/policy-bundle", controller.GetRoutingPolicyBundle)
+			routingRoute.POST("/validate-alias-policy", controller.PostRoutingValidateAliasPolicy)
+			routingRoute.GET("/fuse-events", controller.GetRoutingFuseEvents)
+			routingRoute.GET("/timeseries", controller.GetRoutingTimeseries)
+			routingRoute.GET("/model-catalog", controller.GetRoutingModelCatalog)
+			routingRoute.POST("/reset-auto-weight", controller.PostRoutingResetAutoWeight)
+		}
+
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{

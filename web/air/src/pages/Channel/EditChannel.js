@@ -46,7 +46,10 @@ const EditChannel = (props) => {
         system_prompt: '',
         models: [],
         auto_ban: 1,
-        groups: ['default']
+        groups: ['default'],
+        routing_provider: '',
+        routing_skip_adaptive: false,
+        config: '{}'
     };
     const [batch, setBatch] = useState(false);
     const [autoBan, setAutoBan] = useState(true);
@@ -155,6 +158,16 @@ const EditChannel = (props) => {
             if (data.model_mapping !== '') {
                 data.model_mapping = JSON.stringify(JSON.parse(data.model_mapping), null, 2);
             }
+            let cfg = {};
+            try {
+                if (data.config && typeof data.config === 'string' && data.config.trim()) {
+                    cfg = JSON.parse(data.config);
+                }
+            } catch {
+                cfg = {};
+            }
+            data.routing_provider = cfg.routing_provider || '';
+            data.routing_skip_adaptive = !!cfg.routing_skip_adaptive;
             setInputs(data);
             if (data.auto_ban === 0) {
                 setAutoBan(false);
@@ -257,6 +270,19 @@ const EditChannel = (props) => {
         localInputs.auto_ban = autoBan ? 1 : 0;
         localInputs.models = localInputs.models.join(',');
         localInputs.group = localInputs.groups.join(',');
+        let cfg = {};
+        try {
+            if (inputs.config && typeof inputs.config === 'string' && inputs.config.trim()) {
+                cfg = JSON.parse(inputs.config);
+            }
+        } catch {
+            cfg = {};
+        }
+        cfg.routing_provider = inputs.routing_provider || '';
+        cfg.routing_skip_adaptive = !!inputs.routing_skip_adaptive;
+        localInputs.config = JSON.stringify(cfg);
+        delete localInputs.routing_provider;
+        delete localInputs.routing_skip_adaptive;
         if (isEdit) {
             res = await API.put(`/api/channel/`, {...localInputs, id: parseInt(channelId)});
         } else {
@@ -527,6 +553,24 @@ const EditChannel = (props) => {
                       value={inputs.system_prompt}
                       autoComplete='new-password'
                     />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>智能路由（Direction）：</Typography.Text>
+                    </div>
+                    <Input
+                      placeholder="Direction（Provider）标签，例如 azure-east / openai-main"
+                      value={inputs.routing_provider}
+                      onChange={(value) => handleInputChange('routing_provider', value)}
+                      style={{ width: '100%', marginTop: 8 }}
+                    />
+                    <div style={{ marginTop: 10, display: 'flex' }}>
+                        <Space>
+                            <Checkbox
+                                checked={!!inputs.routing_skip_adaptive}
+                                onChange={(checked) => handleInputChange('routing_skip_adaptive', checked)}
+                            />
+                            <Typography.Text strong>跳过自适应权重调整（手工倍率与熔断仍生效）</Typography.Text>
+                        </Space>
+                    </div>
                     <Typography.Text style={{
                         color: 'rgba(var(--semi-blue-5), 1)',
                         userSelect: 'none',

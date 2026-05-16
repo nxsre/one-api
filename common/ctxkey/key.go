@@ -23,4 +23,7 @@ const (
 	AvailableModels   = "available_models"
 	KeyRequestBody    = "key_request_body"
 	SystemPrompt      = "system_prompt"
+	RoutingStickyKey  = "routing_sticky_key"
+	LogicalModel           = "logical_model"
+	ChannelRoutingProvider = "channel_routing_provider"
 )

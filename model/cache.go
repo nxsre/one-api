@@ -8,8 +8,6 @@ import (
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/common/random"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -224,9 +222,17 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
+// LoadSortedChannelsForGroupModel 加载排序后的候选渠道列表（供路由层加权/一致性哈希/熔断过滤）。
+func LoadSortedChannelsForGroupModel(group, model string) ([]*Channel, error) {
 	if !config.MemoryCacheEnabled {
-		return GetRandomSatisfiedChannel(group, model, ignoreFirstPriority)
+		channels, err := QueryEnabledChannelsForGroupModel(group, model)
+		if err != nil {
+			return nil, err
+		}
+		if len(channels) == 0 {
+			return nil, errors.New("channel not found")
+		}
+		return channels, nil
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
@@ -234,22 +240,7 @@ func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPrior
 	if len(channels) == 0 {
 		return nil, errors.New("channel not found")
 	}
-	endIdx := len(channels)
-	// choose by priority
-	firstChannel := channels[0]
-	if firstChannel.GetPriority() > 0 {
-		for i := range channels {
-			if channels[i].GetPriority() != firstChannel.GetPriority() {
-				endIdx = i
-				break
-			}
-		}
-	}
-	idx := rand.Intn(endIdx)
-	if ignoreFirstPriority {
-		if endIdx < len(channels) { // which means there are more than one priority
-			idx = random.RandRange(endIdx, len(channels))
-		}
-	}
-	return channels[idx], nil
+	out := make([]*Channel, len(channels))
+	copy(out, channels)
+	return out, nil
 }

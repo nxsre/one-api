@@ -203,6 +203,12 @@ export const CHANNEL_OPTIONS = {
     value: 53,
     color: 'primary'
   },
+  54: {
+    key: 54,
+    text: 'Bifrost',
+    value: 54,
+    color: 'secondary'
+  },
   41: {
     key: 41,
     text: 'Novita',

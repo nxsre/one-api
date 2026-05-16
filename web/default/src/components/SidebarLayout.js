@@ -109,6 +109,7 @@ const nacosNavGroup = {
 const sidebarNavItems = [
   { name: 'header.home', to: '/', icon: 'home', admin: false, exact: true },
   nacosNavGroup,
+  { name: 'header.routing', to: '/routing', icon: 'random', admin: true },
   { name: 'header.channel', to: '/channel', icon: 'sitemap', admin: true },
   { name: 'header.token', to: '/token', icon: 'key', admin: false },
   { name: 'header.redemption', to: '/redemption', icon: 'dollar sign', admin: true },
@@ -178,7 +179,8 @@ const SidebarLayout = ({ children }) => {
   useEffect(() => {
     if (
       location.pathname.startsWith('/nacos') ||
-      location.pathname.startsWith('/channel')
+      location.pathname.startsWith('/channel') ||
+      location.pathname.startsWith('/routing')
     ) {
       setNacosSectionOpen(true);
     }

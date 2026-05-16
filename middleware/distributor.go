@@ -11,6 +11,7 @@ import (
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/channeltype"
+	"github.com/songquanpeng/one-api/routing"
 )
 
 type ModelRequest struct {
@@ -42,9 +43,14 @@ func Distribute() func(c *gin.Context) {
 				return
 			}
 		} else {
-			requestModel = c.GetString(ctxkey.RequestModel)
 			var err error
-			channel, err = model.CacheGetRandomSatisfiedChannel(userGroup, requestModel, false)
+			requestModel = c.GetString(ctxkey.RequestModel)
+			opts := routing.SelectOpts{
+				StickyKey:           c.GetString(ctxkey.RoutingStickyKey),
+				ExcludeChannelIDs:   nil,
+				SkipCircuitDisabled: routing.CurrentRoutingPolicy().CircuitFailThreshold > 0,
+			}
+			channel, err = routing.SelectChannel(userGroup, requestModel, false, opts)
 			if err != nil {
 				message := fmt.Sprintf("当前分组 %s 下对于模型 %s 无可用渠道", userGroup, requestModel)
 				if channel != nil {
@@ -65,6 +71,7 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set(ctxkey.Channel, channel.Type)
 	c.Set(ctxkey.ChannelId, channel.Id)
 	c.Set(ctxkey.ChannelName, channel.Name)
+	c.Set(ctxkey.ChannelRoutingProvider, channel.RoutingProviderTag())
 	if channel.SystemPrompt != nil && *channel.SystemPrompt != "" {
 		c.Set(ctxkey.SystemPrompt, *channel.SystemPrompt)
 	}

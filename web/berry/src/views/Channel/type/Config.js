@@ -8,7 +8,10 @@ const defaultConfig = {
     model_mapping: '',
     models: [],
     groups: ['default'],
-    config: {}
+    config: {
+      routing_provider: '',
+      routing_skip_adaptive: false
+    }
   },
   inputLabel: {
     name: '渠道名称',
@@ -237,6 +240,16 @@ const typeConfig = {
     },
     modelGroup: 'amap'
   },
+  54: {
+    input: {
+      models: []
+    },
+    prompt: {
+      key: 'Bifrost：密钥；Base URL 填网关根地址',
+      base_url: '例如 http://127.0.0.1:8080'
+    },
+    modelGroup: 'bifrost'
+  }
 };
 
 export { defaultConfig, typeConfig };

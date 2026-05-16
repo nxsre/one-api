@@ -16,6 +16,7 @@ jobs:
     permissions:
       packages: write
       contents: read
+      actions: write # docker/build-push-action GHA cache (cache-to type=gha)
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3
@@ -59,10 +60,13 @@ jobs:
             ${{ contains(github.ref, 'alpha') && format('ghcr.io/{0}-alpha', github.repository) || format('ghcr.io/{0}', github.repository) }}
 
       - name: Build and push Docker images
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ contains(github.ref, 'alpha') && 'linux/amd64' || 'linux/amd64' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # CI 跨构建复用 layer：npm / Go mod / go-build（需 BuildKit + build-push-action v4+）
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

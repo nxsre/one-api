@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
@@ -30,7 +32,15 @@ func getAndValidateTextRequest(c *gin.Context, relayMode int) (*relaymodel.Gener
 	textRequest := &relaymodel.GeneralOpenAIRequest{}
 	err := common.UnmarshalBodyReusable(c, textRequest)
 	if err != nil {
-		return nil, err
+		if relayMode == relaymode.OpenAIResponses || relayMode == relaymode.OpenAIRealtimeSessions {
+			if rm := strings.TrimSpace(c.GetString(ctxkey.RequestModel)); rm != "" {
+				textRequest = &relaymodel.GeneralOpenAIRequest{Model: rm}
+				err = nil
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	if relayMode == relaymode.Moderations && textRequest.Model == "" {
 		textRequest.Model = "text-moderation-latest"
@@ -47,6 +57,23 @@ func getAndValidateTextRequest(c *gin.Context, relayMode int) (*relaymodel.Gener
 
 func getPromptTokens(textRequest *relaymodel.GeneralOpenAIRequest, relayMode int) int {
 	switch relayMode {
+	case relaymode.OpenAIResponses:
+		if len(textRequest.Messages) > 0 {
+			return openai.CountTokenMessages(textRequest.Messages, textRequest.Model)
+		}
+		raw, _ := json.Marshal(textRequest)
+		n := len(raw) / 4
+		if n < 128 {
+			n = 128
+		}
+		return n
+	case relaymode.OpenAIRealtimeSessions:
+		raw, _ := json.Marshal(textRequest)
+		n := len(raw)/4 + 64
+		if n < 96 {
+			n = 96
+		}
+		return n
 	case relaymode.ChatCompletions:
 		return openai.CountTokenMessages(textRequest.Messages, textRequest.Model)
 	case relaymode.Completions:

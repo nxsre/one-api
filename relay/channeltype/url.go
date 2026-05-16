@@ -54,8 +54,9 @@ var ChannelBaseURLs = []string{
 	"",                                          // 50
 
 	"https://generativelanguage.googleapis.com/v1beta/openai/", // 51
-	"https://co.aippt.cn", // 52 AiPPT
+	"https://co.aippt.cn",      // 52 AiPPT
 	"https://restapi.amap.com", // 53 Amap POI
+	"",                         // 54 Bifrost（请在渠道中填写网关 Base URL，如 http://127.0.0.1:8080）
 }
 
 func init() {

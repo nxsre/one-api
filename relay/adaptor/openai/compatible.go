@@ -85,6 +85,8 @@ func GetCompatibleChannelMeta(channelType int) (string, []string) {
 		return "alibailian", alibailian.ModelList
 	case channeltype.GeminiOpenAICompatible:
 		return "geminiv2", geminiv2.ModelList
+	case channeltype.Bifrost:
+		return "bifrost", []string{}
 	default:
 		return "openai", ModelList
 	}

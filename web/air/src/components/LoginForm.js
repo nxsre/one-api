@@ -4,6 +4,7 @@ import { UserContext } from '../context/User';
 import {
   API,
   buildLoginPayload,
+  getLogo,
   showError,
   showInfo,
   showSuccess,

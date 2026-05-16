@@ -201,5 +201,11 @@ func shouldCheckModel(c *gin.Context) bool {
 	if strings.HasPrefix(p, "/models/") && strings.Contains(p, ":") {
 		return true
 	}
+	if strings.HasPrefix(p, "/v1/responses") {
+		return true
+	}
+	if strings.HasPrefix(p, "/v1/realtime") {
+		return true
+	}
 	return false
 }

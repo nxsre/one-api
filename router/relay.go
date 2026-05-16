@@ -11,6 +11,11 @@ func registerOpenAIV1RelayRoutes(g *gin.RouterGroup) {
 	g.Any("/oneapi/proxy/:channelid/*target", controller.Relay)
 	g.POST("/completions", controller.Relay)
 	g.POST("/chat/completions", controller.Relay)
+	g.POST("/responses", controller.Relay)
+	g.GET("/responses/:id", controller.Relay)
+	g.POST("/responses/:id/cancel", controller.Relay)
+	g.POST("/realtime/sessions", controller.Relay)
+	g.GET("/realtime", controller.RelayRealtimeWebSocket)
 	g.POST("/edits", controller.Relay)
 	g.POST("/images/generations", controller.Relay)
 	g.POST("/images/edits", controller.RelayNotImplemented)
@@ -87,7 +92,7 @@ func SetRelayRouter(router *gin.Engine) {
 	amapOpenAI.POST("/poi", controller.RelayAmapPOI)
 
 	stack := func(g *gin.RouterGroup) {
-		g.Use(middleware.RelayPanicRecover(), middleware.TokenAuth(), middleware.Distribute())
+		g.Use(middleware.RelayPanicRecover(), middleware.ResponsesRealtimeFormatBridge(), middleware.TokenAuth(), middleware.RoutingPrep(), middleware.Distribute())
 	}
 
 	relayLegacy := router.Group("/v1")

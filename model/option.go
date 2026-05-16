@@ -85,6 +85,10 @@ func InitOptionMap() {
 	config.OptionMap["S3SiteEnabled"] = strconv.FormatBool(common.S3Enabled)
 	config.OptionMap["NacosEnabled"] = strconv.FormatBool(config.NacosEnabled)
 	config.OptionMap["AmapWebServiceSecret"] = ""
+	config.OptionMap["RoutingPolicy"] = "{}"
+	config.OptionMap["RelayRetryPolicy"] = "{}"
+	config.OptionMap["ModelAliasPolicy"] = "{}"
+	config.OptionMap["ModelRateLimitPolicy"] = "{}"
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }

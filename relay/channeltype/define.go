@@ -55,5 +55,7 @@ const (
 	GeminiOpenAICompatible
 	AiPPT
 	AmapPOI
+	// Bifrost：OpenAI 兼容上游网关（自适应路由等在 Bifrost 侧启用，企业版见官方文档）
+	Bifrost
 	Dummy
 )

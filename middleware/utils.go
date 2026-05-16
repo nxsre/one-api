@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,23 @@ func abortWithMessage(c *gin.Context, statusCode int, message string) {
 
 func getRequestModel(c *gin.Context) (string, error) {
 	path := relaymode.NormalizeAPIPath(c.Request.URL.Path)
+
+	if c.Request.Method == http.MethodGet {
+		p := strings.TrimSuffix(path, "/")
+		if p == "/v1/realtime" {
+			m := strings.TrimSpace(c.Query("model"))
+			if m != "" {
+				return m, nil
+			}
+			return "", fmt.Errorf("realtime websocket 需要在查询参数中指定 model")
+		}
+	}
+	if strings.HasPrefix(path, "/v1/responses") && (c.Request.Method == http.MethodGet || c.Request.Method == http.MethodDelete) {
+		if m := strings.TrimSpace(c.Query("model")); m != "" {
+			return m, nil
+		}
+	}
+
 	if strings.HasPrefix(path, "/v1beta/models/") {
 		rest := strings.TrimPrefix(path, "/v1beta/models/")
 		rest = strings.TrimPrefix(rest, "/")

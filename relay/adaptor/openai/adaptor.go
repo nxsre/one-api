@@ -107,6 +107,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
+	if meta.Mode == relaymode.OpenAIResponses || meta.Mode == relaymode.OpenAIRealtimeSessions {
+		return PassthroughUpstreamResponse(c, resp)
+	}
 	if meta.IsStream {
 		var responseText string
 		err, responseText, usage = StreamHandler(c, resp, meta.Mode)

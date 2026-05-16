@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"gorm.io/gorm"
-
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/utils"
 )
@@ -19,35 +17,22 @@ type Ability struct {
 	Priority  *int64 `json:"priority" gorm:"bigint;default:0;index"`
 }
 
-func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
-	ability := Ability{}
-	groupCol := "`group`"
+// QueryEnabledChannelsForGroupModel 返回分组下某模型可用渠道（按优先级降序、channel_id 升序，与内存缓存一致）。
+func QueryEnabledChannelsForGroupModel(group, model string) ([]*Channel, error) {
+	groupCol := "abilities.`group`"
 	trueVal := "1"
 	if common.UsingPostgreSQL {
-		groupCol = `"group"`
+		groupCol = `abilities."group"`
 		trueVal = "true"
 	}
-
-	var err error = nil
-	var channelQuery *gorm.DB
-	if ignoreFirstPriority {
-		channelQuery = DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-	} else {
-		maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-		channelQuery = DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal+" and priority = (?)", group, model, maxPrioritySubQuery)
-	}
-	if common.UsingSQLite || common.UsingPostgreSQL {
-		err = channelQuery.Order("RANDOM()").First(&ability).Error
-	} else {
-		err = channelQuery.Order("RAND()").First(&ability).Error
-	}
-	if err != nil {
-		return nil, err
-	}
-	channel := Channel{}
-	channel.Id = ability.ChannelId
-	err = DB.First(&channel, "id = ?", ability.ChannelId).Error
-	return &channel, err
+	var channels []*Channel
+	err := DB.Table("channels").
+		Select("channels.*").
+		Joins("INNER JOIN abilities ON abilities.channel_id = channels.id").
+		Where(groupCol+" = ? AND abilities.model = ? AND abilities.enabled = "+trueVal+" AND channels.status = ?", group, model, ChannelStatusEnabled).
+		Order("abilities.priority DESC, abilities.channel_id ASC").
+		Find(&channels).Error
+	return channels, err
 }
 
 func (channel *Channel) AddAbilities() error {

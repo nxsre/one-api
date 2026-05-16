@@ -27,6 +27,7 @@ import PasswordResetConfirm from './components/PasswordResetConfirm';
 import { UserContext } from './context/User';
 import { StatusContext } from './context/Status';
 import Channel from './pages/Channel';
+import RoutingOperations from './pages/Routing';
 import Token from './pages/Token';
 import EditToken from './pages/Token/EditToken';
 import EditChannel from './pages/Channel/EditChannel';
@@ -206,6 +207,14 @@ function App() {
             <Suspense fallback={<Loading></Loading>}>
               <Home />
             </Suspense>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/routing'
+        element={
+          <PrivateRoute>
+            <RoutingOperations />
           </PrivateRoute>
         }
       />

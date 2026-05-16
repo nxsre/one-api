@@ -8,11 +8,23 @@ import {
   IconKey,
   IconGardenCart,
   IconUser,
-  IconUserScan
+  IconUserScan,
+  IconTopologyStar3
 } from '@tabler/icons-react';
 
 // constant
-const icons = { IconDashboard, IconSitemap, IconArticle, IconCoin, IconAdjustments, IconKey, IconGardenCart, IconUser, IconUserScan };
+const icons = {
+  IconDashboard,
+  IconSitemap,
+  IconArticle,
+  IconCoin,
+  IconAdjustments,
+  IconKey,
+  IconGardenCart,
+  IconUser,
+  IconUserScan,
+  IconTopologyStar3
+};
 
 // ==============================|| DASHBOARD MENU ITEMS ||============================== //
 
@@ -35,6 +47,15 @@ const panel = {
       type: 'item',
       url: '/panel/channel',
       icon: icons.IconSitemap,
+      breadcrumbs: false,
+      isAdmin: true
+    },
+    {
+      id: 'routing',
+      title: '智能路由',
+      type: 'item',
+      url: '/panel/routing',
+      icon: icons.IconTopologyStar3,
       breadcrumbs: false,
       isAdmin: true
     },

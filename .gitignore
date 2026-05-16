@@ -13,6 +13,7 @@ cmd.md
 /one-api
 temp
 .DS_Store
+.docker-buildcache
 
 # Nacos 官方前端（third_party/nacos）本地 npm 安装产物
 third_party/nacos/**/node_modules

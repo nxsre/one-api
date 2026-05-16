@@ -43,6 +43,8 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.AiPPT
 	case AmapPOI:
 		apiType = apitype.AmapPOI
+	case Bifrost:
+		apiType = apitype.OpenAI
 	case Proxy:
 		apiType = apitype.Proxy
 	}

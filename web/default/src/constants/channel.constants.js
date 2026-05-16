@@ -100,6 +100,14 @@ export const CHANNEL_OPTIONS = [
     description: 'OpenAI 兼容：模型填 amap-poi，密钥填写高德 Web 服务 API Key',
   },
   {
+    key: 54,
+    text: 'Bifrost',
+    value: 54,
+    color: 'purple',
+    description:
+      'OpenAI 兼容网关上游：<strong>Base URL</strong> 填 Bifrost 实例（如 http://127.0.0.1:8080）；密钥填 Bifrost 接受的 Bearer。<strong>自适应负载等企业路由能力</strong>在 Bifrost 侧启用，参见文档 docs/bifrost-integration.md',
+  },
+  {
     key: 8,
     text: '自定义渠道',
     value: 8,

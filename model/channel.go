@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
@@ -50,6 +51,10 @@ type ChannelConfig struct {
 	Plugin            string `json:"plugin,omitempty"`
 	VertexAIProjectID string `json:"vertex_ai_project_id,omitempty"`
 	VertexAIADC       string `json:"vertex_ai_adc,omitempty"`
+	// RoutingProvider Direction（上游集群/供应商）分组标签，用于双层打分与探测流量。
+	RoutingProvider string `json:"routing_provider,omitempty"`
+	// RoutingSkipAdaptive 为 true 时该渠道不参与自动降权/恢复倍率（仍保留手工倍率与熔断）。
+	RoutingSkipAdaptive bool `json:"routing_skip_adaptive,omitempty"`
 }
 
 func GetAllChannels(startIdx int, num int, scope string) ([]*Channel, error) {
@@ -102,6 +107,14 @@ func (channel *Channel) GetPriority() int64 {
 		return 0
 	}
 	return *channel.Priority
+}
+
+// GetWeight 返回渠道权重；nil 或 0 视为 1，用于加权路由。
+func (channel *Channel) GetWeight() uint {
+	if channel.Weight == nil || *channel.Weight == 0 {
+		return 1
+	}
+	return *channel.Weight
 }
 
 func (channel *Channel) GetBaseURL() string {
@@ -185,6 +198,28 @@ func (channel *Channel) LoadConfig() (ChannelConfig, error) {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// RoutingProviderTag Direction 分组标识（默认 default）。
+func (channel *Channel) RoutingProviderTag() string {
+	cfg, err := channel.LoadConfig()
+	if err != nil {
+		return "default"
+	}
+	s := strings.TrimSpace(cfg.RoutingProvider)
+	if s == "" {
+		return "default"
+	}
+	return s
+}
+
+// RoutingAdaptiveEffective 是否参与自适应权重（与 RoutingSkipAdaptive 相反）。
+func (channel *Channel) RoutingAdaptiveEffective() bool {
+	cfg, err := channel.LoadConfig()
+	if err != nil {
+		return true
+	}
+	return !cfg.RoutingSkipAdaptive
 }
 
 func UpdateChannelStatusById(id int, status int) {

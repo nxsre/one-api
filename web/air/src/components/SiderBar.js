@@ -16,6 +16,7 @@ import {
   IconImage,
   IconKey,
   IconLayers,
+  IconPulse,
   IconSetting,
   IconUser
 } from '@douyinfe/semi-icons';
@@ -46,6 +47,13 @@ const SiderBar = () => {
       itemKey: 'channel',
       to: '/channel',
       icon: <IconLayers />,
+      className: isAdmin() ? 'semi-navigation-item-normal' : 'tableHiddle'
+    },
+    {
+      text: '智能路由',
+      itemKey: 'routing',
+      to: '/routing',
+      icon: <IconPulse />,
       className: isAdmin() ? 'semi-navigation-item-normal' : 'tableHiddle'
     },
     {
@@ -182,6 +190,7 @@ const SiderBar = () => {
               const routerMap = {
                 home: '/',
                 channel: '/channel',
+                routing: '/routing',
                 token: '/token',
                 redemption: '/redemption',
                 topup: '/topup',

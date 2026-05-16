@@ -34,6 +34,7 @@ export const CHANNEL_OPTIONS = [
   { key: 46, text: 'Replicate', value: 46, color: 'blue' },
   { key: 52, text: 'AiPPT', value: 52, color: 'blue' },
   { key: 53, text: '高德 POI', value: 53, color: 'blue' },
+  { key: 54, text: 'Bifrost', value: 54, color: 'purple' },
   { key: 8, text: '自定义渠道', value: 8, color: 'pink' },
   { key: 22, text: '知识库：FastGPT', value: 22, color: 'blue' },
   { key: 21, text: '知识库：AI Proxy', value: 21, color: 'purple' },
