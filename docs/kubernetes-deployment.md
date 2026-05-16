@@ -101,6 +101,16 @@ livenessProbe:
   - **控制台**：将管理路径指向 **primary** Service，或只开内网 `ClusterIP` + `kubectl port-forward`。
 - **TLS**：Ingress 终止 TLS 或使用 **cert-manager**；应用内 `tls_cert_file` 多用于裸 Pod/边缘无 Ingress 的场景。
 
+### 6.1 `secret-config.yaml` 中的应用内 TLS 示例
+
+示例清单 **`k8s/example/secret-config.yaml`** 在 `primary.toml` / `worker.toml` 内已包含 **`tls_cert_file`、`tls_key_file`、`https_only`、`https_port`** 的默认空值与注释示例（与仓库根目录 `config.example.toml` 语义一致）。若启用进程内 HTTPS：
+
+1. 将证书放入 Kubernetes **Secret**（如 `kubernetes.io/tls`），在 Deployment 中 **volumeMount** 到与配置一致的路径（示例中为 `/etc/one-api/tls/`）。
+2. 编辑该 Secret 中的 TOML，取消注释或填入正确的 `tls_cert_file` / `tls_key_file`。
+3. 若 **`https_only = true`** 且 **`port`** 改为 **443**（或仅暴露 HTTPS），需同步修改 Deployment 的 **端口、Service 与探针**（例如 `readinessProbe.httpGet.scheme: HTTPS`）。
+
+主从两份 TOML 的 TLS 段通常相同；证书卷可同时挂到 primary 与 worker。
+
 ---
 
 ## 7. 滚动发布与数据库升级
@@ -116,7 +126,7 @@ livenessProbe:
 目录 **`k8s/example/`** 提供：
 
 - `namespace.yaml`
-- `secret-config.yaml` — **务必替换**占位 DSN、密钥后再应用（切勿提交真实秘密到 Git）。
+- `secret-config.yaml` — **务必替换**占位 DSN、密钥后再应用；内含可选的 **应用内 TLS**（`tls_cert_file` / `tls_key_file` / `https_only` / `https_port`）示例与注释（切勿提交真实秘密到 Git）。
 - `deployment-primary.yaml`
 - `deployment-worker.yaml`
 - `service.yaml`
