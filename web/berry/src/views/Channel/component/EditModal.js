@@ -44,7 +44,6 @@ const validationSchema = Yup.object().shape({
     is: (is_edit, type) => !is_edit && type !== 33,
     then: Yup.string().required('密钥 不能为空')
   }),
-  other: Yup.string(),
   models: Yup.array().min(1, '模型 不能为空'),
   groups: Yup.array().min(1, '用户组 不能为空'),
   base_url: Yup.string().when('type', {
@@ -156,11 +155,15 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
     if (values.base_url && values.base_url.endsWith('/')) {
       values.base_url = values.base_url.slice(0, values.base_url.length - 1);
     }
-    if (values.type === 3 && values.other === '') {
-      values.other = '2023-09-01-preview';
+    const cfg = { ...values.config };
+    if (values.type === 3 && !cfg.api_version) {
+      cfg.api_version = '2023-09-01-preview';
     }
-    if (values.type === 18 && values.other === '') {
-      values.other = 'v2.1';
+    if (values.type === 18 && !cfg.api_version) {
+      cfg.api_version = 'v2.1';
+    }
+    if (values.type === 24 && !cfg.api_version) {
+      cfg.api_version = 'v1';
     }
     if (values.key === '') {
       if (values.config.ak && values.config.sk && values.config.region) {
@@ -172,7 +175,7 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
 
     let res;
     const modelsStr = values.models.map((model) => model.id).join(',');
-    const configStr = JSON.stringify(values.config);
+    const configStr = JSON.stringify(cfg);
     values.group = values.groups.join(',');
     if (channelId) {
       res = await API.put(`/api/channel/`, {
@@ -242,6 +245,7 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
       }
 
       data.base_url = data.base_url ?? '';
+      delete data.other;
       data.is_edit = true;
       initChannel(data.type);
       setInitialInput(data);
@@ -368,30 +372,6 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
                   <FormHelperText id="helper-tex-channel-base_url-label"> {inputPrompt.base_url} </FormHelperText>
                 )}
               </FormControl>
-
-              {inputPrompt.other && (
-                <FormControl fullWidth error={Boolean(touched.other && errors.other)} sx={{ ...theme.typography.otherInput }}>
-                  <InputLabel htmlFor="channel-other-label">{inputLabel.other}</InputLabel>
-                  <OutlinedInput
-                    id="channel-other-label"
-                    label={inputLabel.other}
-                    type="text"
-                    value={values.other}
-                    name="other"
-                    onBlur={handleBlur}
-                    onChange={handleChange}
-                    inputProps={{}}
-                    aria-describedby="helper-text-channel-other-label"
-                  />
-                  {touched.other && errors.other ? (
-                    <FormHelperText error id="helper-tex-channel-other-label">
-                      {errors.other}
-                    </FormHelperText>
-                  ) : (
-                    <FormHelperText id="helper-tex-channel-other-label"> {inputPrompt.other} </FormHelperText>
-                  )}
-                </FormControl>
-              )}
 
               <FormControl fullWidth sx={{ ...theme.typography.otherInput }}>
                 <Autocomplete
@@ -564,7 +544,7 @@ const EditModal = ({ open, channelId, onCancel, onOk }) => {
                         key={'config.' + configName}
                         name={'config.' + configName}
                         value={values.config?.[configName] || ''}
-                        label={configName}
+                        label={inputLabel.config[configName] || configName}
                         placeholder={inputPrompt.config[configName]}
                         onChange={handleChange}
                       />

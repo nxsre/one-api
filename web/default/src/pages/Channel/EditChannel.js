@@ -90,7 +90,6 @@ const EditChannel = () => {
     type: 1,
     key: '',
     base_url: '',
-    other: '',
     model_mapping: '',
     system_prompt: '',
     models: [],
@@ -114,6 +113,9 @@ const EditChannel = () => {
     user_id: '',
     vertex_ai_project_id: '',
     vertex_ai_adc: '',
+    api_version: '',
+    library_id: '',
+    plugin: '',
   });
   const handleInputChange = (e, { name, value }) => {
     if (name === 'type') {
@@ -162,9 +164,22 @@ const EditChannel = () => {
           2
         );
       }
-      setInputs(data);
-      if (data.config !== '') {
+      const { other: _legacyOther, ...channelData } = data;
+      setInputs(channelData);
+      if (data.config !== '' && data.config != null) {
         setConfig(JSON.parse(data.config));
+      } else {
+        setConfig({
+          region: '',
+          sk: '',
+          ak: '',
+          user_id: '',
+          vertex_ai_project_id: '',
+          vertex_ai_adc: '',
+          api_version: '',
+          library_id: '',
+          plugin: '',
+        });
       }
       setBasicModels(getChannelModels(data.type));
     } else {
@@ -262,13 +277,20 @@ const EditChannel = () => {
         localInputs.base_url.length - 1
       );
     }
-    if (localInputs.type === 3 && localInputs.other === '') {
-      localInputs.other = '2024-03-01-preview';
+    let cfg = { ...config };
+    if (localInputs.type === 3 && !cfg.api_version) {
+      cfg.api_version = '2024-03-01-preview';
+    }
+    if (localInputs.type === 18 && !cfg.api_version) {
+      cfg.api_version = 'v2.1';
+    }
+    if (localInputs.type === 24 && !cfg.api_version) {
+      cfg.api_version = 'v1';
     }
     let res;
     localInputs.models = localInputs.models.join(',');
     localInputs.group = localInputs.groups.join(',');
-    localInputs.config = JSON.stringify(config);
+    localInputs.config = JSON.stringify(cfg);
     if (isEdit) {
       res = await API.put(`/api/channel/`, {
         ...localInputs,
@@ -387,10 +409,10 @@ const EditChannel = () => {
                 <Form.Field>
                   <Form.Input
                     label='默认 API 版本'
-                    name='other'
+                    name='api_version'
                     placeholder='请输入默认 API 版本，例如：2024-03-01-preview，该配置可以被实际的请求查询参数所覆盖'
-                    onChange={handleInputChange}
-                    value={inputs.other}
+                    onChange={handleConfigChange}
+                    value={config.api_version || ''}
                     autoComplete='new-password'
                   />
                 </Form.Field>
@@ -429,10 +451,10 @@ const EditChannel = () => {
               <Form.Field>
                 <Form.Input
                   label={t('channel.edit.spark_version')}
-                  name='other'
+                  name='api_version'
                   placeholder={t('channel.edit.spark_version_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.other}
+                  onChange={handleConfigChange}
+                  value={config.api_version || ''}
                   autoComplete='new-password'
                 />
               </Form.Field>
@@ -441,10 +463,10 @@ const EditChannel = () => {
               <Form.Field>
                 <Form.Input
                   label={t('channel.edit.knowledge_id')}
-                  name='other'
+                  name='library_id'
                   placeholder={t('channel.edit.knowledge_id_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.other}
+                  onChange={handleConfigChange}
+                  value={config.library_id || ''}
                   autoComplete='new-password'
                 />
               </Form.Field>
@@ -453,10 +475,22 @@ const EditChannel = () => {
               <Form.Field>
                 <Form.Input
                   label={t('channel.edit.plugin_param')}
-                  name='other'
+                  name='plugin'
                   placeholder={t('channel.edit.plugin_param_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.other}
+                  onChange={handleConfigChange}
+                  value={config.plugin || ''}
+                  autoComplete='new-password'
+                />
+              </Form.Field>
+            )}
+            {inputs.type === 24 && (
+              <Form.Field>
+                <Form.Input
+                  label='Gemini API 版本'
+                  name='api_version'
+                  placeholder='请输入版本号，例如：v1'
+                  onChange={handleConfigChange}
+                  value={config.api_version || ''}
                   autoComplete='new-password'
                 />
               </Form.Field>

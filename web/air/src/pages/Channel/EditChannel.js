@@ -41,7 +41,6 @@ const EditChannel = (props) => {
         key: '',
         openai_organization: '',
         base_url: '',
-        other: '',
         model_mapping: '',
         system_prompt: '',
         models: [],
@@ -51,6 +50,11 @@ const EditChannel = (props) => {
     const [batch, setBatch] = useState(false);
     const [autoBan, setAutoBan] = useState(true);
     // const [autoBan, setAutoBan] = useState(true);
+    const [config, setConfig] = useState({
+        api_version: '',
+        library_id: '',
+        plugin: '',
+    });
     const [inputs, setInputs] = useState(originInputs);
     const [originModelOptions, setOriginModelOptions] = useState([]);
     const [modelOptions, setModelOptions] = useState([]);
@@ -124,6 +128,7 @@ const EditChannel = (props) => {
                   typeChanged && prev.models.length === 0 ? localModels : prev.models;
                 return {...prev, type: value, models: nextModels};
             });
+            setConfig({ api_version: '', library_id: '', plugin: '' });
             return;
         }
         setInputs((inputs) => ({...inputs, [name]: value}));
@@ -156,6 +161,20 @@ const EditChannel = (props) => {
                 data.model_mapping = JSON.stringify(JSON.parse(data.model_mapping), null, 2);
             }
             setInputs(data);
+            if (data.config) {
+                try {
+                    const c = JSON.parse(data.config);
+                    setConfig({
+                        api_version: c.api_version || '',
+                        library_id: c.library_id || '',
+                        plugin: c.plugin || '',
+                    });
+                } catch (e) {
+                    setConfig({ api_version: '', library_id: '', plugin: '' });
+                }
+            } else {
+                setConfig({ api_version: '', library_id: '', plugin: '' });
+            }
             if (data.auto_ban === 0) {
                 setAutoBan(false);
             } else {
@@ -220,7 +239,8 @@ const EditChannel = (props) => {
                 }
             );
         } else {
-            setInputs(originInputs)
+            setInputs(originInputs);
+            setConfig({ api_version: '', library_id: '', plugin: '' });
         }
     }, [props.editingChannel.id]);
 
@@ -242,12 +262,18 @@ const EditChannel = (props) => {
         if (localInputs.base_url && localInputs.base_url.endsWith('/')) {
             localInputs.base_url = localInputs.base_url.slice(0, localInputs.base_url.length - 1);
         }
-        if (localInputs.type === 3 && localInputs.other === '') {
-            localInputs.other = '2024-03-01-preview';
+        let cfg = { ...config };
+        if (localInputs.type === 3 && !cfg.api_version) {
+            cfg.api_version = '2024-03-01-preview';
         }
-        if (localInputs.type === 18 && localInputs.other === '') {
-            localInputs.other = 'v2.1';
+        if (localInputs.type === 18 && !cfg.api_version) {
+            cfg.api_version = 'v2.1';
         }
+        if (localInputs.type === 24 && !cfg.api_version) {
+            cfg.api_version = 'v1';
+        }
+        localInputs.config = JSON.stringify(cfg);
+        delete localInputs.other;
         let res;
         if (!Array.isArray(localInputs.models)) {
             showError('提交失败，请勿重复提交！');
@@ -364,12 +390,12 @@ const EditChannel = (props) => {
                             </div>
                             <Input
                               label='默认 API 版本'
-                              name='azure_other'
+                              name='azure_api_version'
                               placeholder={'请输入默认 API 版本，例如：2024-03-01-preview，该配置可以被实际的请求查询参数所覆盖'}
                               onChange={value => {
-                                  handleInputChange('other', value)
+                                  setConfig((c) => ({ ...c, api_version: value }));
                               }}
-                              value={inputs.other}
+                              value={config.api_version}
                               autoComplete='new-password'
                             />
                         </>
@@ -431,12 +457,12 @@ const EditChannel = (props) => {
                                 <Typography.Text strong>模型版本：</Typography.Text>
                             </div>
                             <Input
-                              name='other'
+                              name='api_version'
                               placeholder={'请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1'}
                               onChange={value => {
-                                  handleInputChange('other', value)
+                                  setConfig((c) => ({ ...c, api_version: value }));
                               }}
-                              value={inputs.other}
+                              value={config.api_version}
                               autoComplete='new-password'
                             />
                         </>
@@ -450,12 +476,48 @@ const EditChannel = (props) => {
                             </div>
                             <Input
                               label='知识库 ID'
-                              name='other'
+                              name='library_id'
                               placeholder={'请输入知识库 ID，例如：123456'}
                               onChange={value => {
-                                  handleInputChange('other', value)
+                                  setConfig((c) => ({ ...c, library_id: value }));
                               }}
-                              value={inputs.other}
+                              value={config.library_id}
+                              autoComplete='new-password'
+                            />
+                        </>
+                      )
+                    }
+                    {
+                      inputs.type === 17 && (
+                        <>
+                            <div style={{ marginTop: 10 }}>
+                                <Typography.Text strong>DashScope 插件参数：</Typography.Text>
+                            </div>
+                            <Input
+                              name='plugin'
+                              placeholder={'请输入插件参数（X-DashScope-Plugin 请求头取值）'}
+                              onChange={value => {
+                                  setConfig((c) => ({ ...c, plugin: value }));
+                              }}
+                              value={config.plugin}
+                              autoComplete='new-password'
+                            />
+                        </>
+                      )
+                    }
+                    {
+                      inputs.type === 24 && (
+                        <>
+                            <div style={{ marginTop: 10 }}>
+                                <Typography.Text strong>Gemini API 版本：</Typography.Text>
+                            </div>
+                            <Input
+                              name='gemini_api_version'
+                              placeholder={'例如：v1'}
+                              onChange={value => {
+                                  setConfig((c) => ({ ...c, api_version: value }));
+                              }}
+                              value={config.api_version}
                               autoComplete='new-password'
                             />
                         </>
