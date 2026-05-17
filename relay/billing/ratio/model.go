@@ -326,8 +326,8 @@ var ModelRatio = map[string]float64{
 	"step-1v-8k":   0.005 / 1000 * RMB,
 	"step-1v-32k":  0.015 / 1000 * RMB,
 	// aws llama3 https://aws.amazon.com/cn/bedrock/pricing/
-	"llama3-8b-8192(33)":  0.0003 / 0.002,  // $0.0003 / 1K tokens
-	"llama3-70b-8192(33)": 0.00265 / 0.002, // $0.00265 / 1K tokens
+	"llama3-8b-8192(23)":  0.0003 / 0.002,  // $0.0003 / 1K tokens
+	"llama3-70b-8192(23)": 0.00265 / 0.002, // $0.00265 / 1K tokens
 	// https://cohere.com/pricing
 	"command":               0.5,
 	"command-nightly":       0.5,
@@ -620,14 +620,16 @@ var ModelRatio = map[string]float64{
 	"x-ai/grok-beta":                                  7.5,
 	"x-ai/grok-vision-beta":                           7.5,
 	"xwin-lm/xwin-lm-70b":                             1.875,
-	"aippt-ppt(52)":                                   30,
-	"amap-poi(53)":                                    1,
+	"aippt-ppt(43)":                                   30,
+	"amap(44)":                                        1,
+	"amap-poi(44)":                                    1, // 兼容旧模型名
+	"deep-research(45)":                               15,
 }
 
 var CompletionRatio = map[string]float64{
 	// aws llama3
-	"llama3-8b-8192(33)":  0.0006 / 0.0003,
-	"llama3-70b-8192(33)": 0.0035 / 0.00265,
+	"llama3-8b-8192(23)":  0.0006 / 0.0003,
+	"llama3-70b-8192(23)": 0.0035 / 0.00265,
 	// whisper
 	"whisper-1": 0, // only count input tokens
 	// deepseek

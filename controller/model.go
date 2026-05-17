@@ -2,6 +2,10 @@ package controller
 
 import (
 	"fmt"
+	"net/http"
+	"sort"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/model"
@@ -11,8 +15,6 @@ import (
 	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	relaymodel "github.com/songquanpeng/one-api/relay/model"
-	"net/http"
-	"strings"
 )
 
 // https://platform.openai.com/docs/api-reference/models/list
@@ -43,25 +45,27 @@ type OpenAIModels struct {
 }
 
 var models []OpenAIModels
-var modelsMap map[string]OpenAIModels
 var channelId2Models map[int][]string
 
+func dedupeBuiltinOpenAIModelsByID(in []OpenAIModels) []OpenAIModels {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]OpenAIModels, 0, len(in))
+	for _, m := range in {
+		id := strings.TrimSpace(m.Id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, m)
+	}
+	return out
+}
+
 func init() {
-	var permission []OpenAIModelPermission
-	permission = append(permission, OpenAIModelPermission{
-		Id:                 "modelperm-LwHkVFn8AcMItP432fKKDIKJ",
-		Object:             "model_permission",
-		Created:            1626777600,
-		AllowCreateEngine:  true,
-		AllowSampling:      true,
-		AllowLogprobs:      true,
-		AllowSearchIndices: false,
-		AllowView:          true,
-		AllowFineTuning:    false,
-		Organization:       "*",
-		Group:              nil,
-		IsBlocking:         false,
-	})
+	permission := defaultModelPermissions()
 	// https://platform.openai.com/docs/models/model-endpoint-compatibility
 	for i := 0; i < apitype.Dummy; i++ {
 		if i == apitype.AIProxyLibrary {
@@ -99,12 +103,12 @@ func init() {
 			})
 		}
 	}
-	modelsMap = make(map[string]OpenAIModels)
-	for _, model := range models {
-		modelsMap[model.Id] = model
-	}
+	models = dedupeBuiltinOpenAIModelsByID(models)
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
+		if channeltype.ToAPIType(i) == apitype.AIProxyLibrary {
+			continue
+		}
 		adaptor := relay.GetAdaptor(channeltype.ToAPIType(i))
 		meta := &meta.Meta{
 			ChannelType: i,
@@ -124,8 +128,10 @@ func DashboardListModels(c *gin.Context) {
 
 func ListAllModels(c *gin.Context) {
 	c.JSON(200, gin.H{
-		"object": "list",
-		"data":   models,
+		"success": true,
+		"message": "",
+		"object":  "list",
+		"data":    mergedOpenAIModelsBestEffort(),
 	})
 }
 
@@ -144,7 +150,7 @@ func ListModels(c *gin.Context) {
 		modelSet[availableModel] = true
 	}
 	availableOpenAIModels := make([]OpenAIModels, 0)
-	for _, model := range models {
+	for _, model := range mergedOpenAIModelsBestEffort() {
 		if _, ok := modelSet[model.Id]; ok {
 			modelSet[model.Id] = false
 			availableOpenAIModels = append(availableOpenAIModels, model)
@@ -153,12 +159,13 @@ func ListModels(c *gin.Context) {
 	for modelName, ok := range modelSet {
 		if ok {
 			availableOpenAIModels = append(availableOpenAIModels, OpenAIModels{
-				Id:      modelName,
-				Object:  "model",
-				Created: 1626777600,
-				OwnedBy: "custom",
-				Root:    modelName,
-				Parent:  nil,
+				Id:         modelName,
+				Object:     "model",
+				Created:    1626777600,
+				OwnedBy:    "custom",
+				Permission: defaultModelPermissions(),
+				Root:       modelName,
+				Parent:     nil,
 			})
 		}
 	}
@@ -170,8 +177,16 @@ func ListModels(c *gin.Context) {
 
 func RetrieveModel(c *gin.Context) {
 	modelId := c.Param("model")
-	if model, ok := modelsMap[modelId]; ok {
-		c.JSON(200, model)
+	var found *OpenAIModels
+	for _, m := range mergedOpenAIModelsBestEffort() {
+		if m.Id == modelId {
+			mm := m
+			found = &mm
+			break
+		}
+	}
+	if found != nil {
+		c.JSON(200, *found)
 	} else {
 		Error := relaymodel.Error{
 			Message: fmt.Sprintf("The model '%s' does not exist", modelId),
@@ -188,6 +203,25 @@ func RetrieveModel(c *gin.Context) {
 func GetUserAvailableModels(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.GetInt(ctxkey.Id)
+	if model.IsAdmin(id) {
+		models, err := model.ListDistinctEnabledModels()
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		if len(models) == 0 {
+			models = distinctSortedModelIDsFromMerged()
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    models,
+		})
+		return
+	}
 	userGroup, err := model.CacheGetUserGroup(id)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -210,4 +244,23 @@ func GetUserAvailableModels(c *gin.Context) {
 		"data":    models,
 	})
 	return
+}
+
+func distinctSortedModelIDsFromMerged() []string {
+	mm := mergedOpenAIModelsBestEffort()
+	seen := make(map[string]struct{}, len(mm))
+	out := make([]string, 0, len(mm))
+	for _, m := range mm {
+		id := strings.TrimSpace(m.Id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

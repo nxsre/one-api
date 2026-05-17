@@ -17,7 +17,7 @@ import (
 // GetRoutingModelCatalog 静态适配器内置模型名 ∪ 全库渠道「已开通模型」字段（去重、排序），供路由运维下拉使用。
 func GetRoutingModelCatalog(c *gin.Context) {
 	set := make(map[string]struct{})
-	for _, m := range models {
+	for _, m := range mergedOpenAIModelsBestEffort() {
 		id := strings.TrimSpace(m.Id)
 		if id != "" {
 			set[id] = struct{}{}
@@ -159,7 +159,7 @@ func GetRoutingCircuitStates(c *gin.Context) {
 func GetRoutingPolicyBundle(c *gin.Context) {
 	config.OptionMapRWMutex.RLock()
 	defer config.OptionMapRWMutex.RUnlock()
-	keys := []string{"RoutingPolicy", "RelayRetryPolicy", "ModelAliasPolicy", "ModelRateLimitPolicy"}
+	keys := []string{"RoutingPolicy", "RelayRetryPolicy", "ModelAliasPolicy", "ModelRateLimitPolicy", "RelayProtocolBridgeEnabled"}
 	data := map[string]string{}
 	for _, k := range keys {
 		if config.OptionMap != nil {

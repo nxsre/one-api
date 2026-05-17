@@ -5,6 +5,8 @@ const LOG_TYPE = {
   3: { value: '3', text: '管理', color: 'default' },
   4: { value: '4', text: '系统', color: 'secondary' },
   5: { value: '5', text: '测试', color: 'secondary' },
+  6: { value: '6', text: '错误', color: 'error' },
+  7: { value: '7', text: '退款', color: 'success' },
 };
 
 export default LOG_TYPE;

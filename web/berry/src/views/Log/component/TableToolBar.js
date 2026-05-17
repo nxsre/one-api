@@ -199,6 +199,31 @@ export default function TableToolBar({
           </FormControl>
         )}
 
+        <FormControl>
+          <InputLabel htmlFor="log-group-label">分组</InputLabel>
+          <OutlinedInput
+            id="group"
+            name="group"
+            sx={{ minWidth: "100%" }}
+            label="分组"
+            value={filterName.group || ""}
+            onChange={handleFilterName}
+            placeholder="user group"
+          />
+        </FormControl>
+        <FormControl>
+          <InputLabel htmlFor="log-request-id-label">请求 ID</InputLabel>
+          <OutlinedInput
+            id="request_id"
+            name="request_id"
+            sx={{ minWidth: "100%" }}
+            label="请求 ID"
+            value={filterName.request_id || ""}
+            onChange={handleFilterName}
+            placeholder="request_id"
+          />
+        </FormControl>
+
         <FormControl sx={{ minWidth: "22%" }}>
           <InputLabel htmlFor="channel-type-label">类型</InputLabel>
           <Select

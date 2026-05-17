@@ -35,7 +35,7 @@ var nacosConsoleFS embed.FS
 func main() {
 	common.Init()
 	logger.SetupLogger()
-	logger.SysLogf("One API %s started", common.Version)
+	logger.SysLogf("One API %s (build %s) started", common.Version, common.BuildID)
 
 	if strings.TrimSpace(cfg.V.GetString("gin_mode")) != gin.DebugMode {
 		gin.SetMode(gin.ReleaseMode)

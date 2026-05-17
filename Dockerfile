@@ -8,6 +8,9 @@
 
 FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/library/node:24 AS builder
 
+# 使用 bash：并行 npm build + POSIX wait 可能吞掉失败退出码，镜像仍「构建成功」但 embed 里是半成品或旧产物。
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 RUN npm config set registry ${NPM_REGISTRY}
 
@@ -48,16 +51,24 @@ RUN --mount=type=bind,source=${NACOS_UPSTREAM_BIND},target=/tmp/nacos-upstream-b
     rm -rf /web/nacos-legacy-console-src/node_modules /web/nacos-legacy-console-src/dist
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --prefix /web/default & \
-    npm install --prefix /web/berry & \
-    npm install --prefix /web/air & \
-    wait
+    npm install --prefix /web/default && \
+    npm install --prefix /web/berry && \
+    npm install --prefix /web/air
 
 RUN --mount=type=cache,target=/root/.npm \
-    DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat ./VERSION) npm run build --prefix /web/default & \
-    DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat ./VERSION) npm run build --prefix /web/berry & \
-    DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat ./VERSION) npm run build --prefix /web/air & \
-    wait
+    V="$(cat ./VERSION)" && \
+    export DISABLE_ESLINT_PLUGIN=true REACT_APP_VERSION="$V" && \
+    npm run build --prefix /web/default && \
+    npm run build --prefix /web/berry && \
+    npm run build --prefix /web/air
+
+# 任一主题构建失败或未产出 bundle 时立刻失败，避免 silent bad embed
+RUN shopt -s nullglob && \
+    for theme in default berry air; do \
+      [[ -f "/web/build/${theme}/index.html" ]] || { echo "missing /web/build/${theme}/index.html"; exit 1; }; \
+      bundles=(/web/build/"${theme}"/static/js/*.js); \
+      ((${#bundles[@]} >= 1)) || { echo "missing JS bundles for ${theme}"; ls -la "/web/build/${theme}/static" || true; exit 1; }; \
+    done
 
 FROM golang:alpine AS builder2
 
@@ -91,7 +102,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags "-s -w -X 'github.com/songquanpeng/one-api/common.Version=$(cat VERSION)' -linkmode external -extldflags '-static'" -o one-api
+    BUILD_TS=$(date -u +%Y%m%d%H%M%S) && \
+    go build -trimpath -ldflags "-s -w -X github.com/songquanpeng/one-api/common.Version=$(cat VERSION) -X github.com/songquanpeng/one-api/common.BuildID=${BUILD_TS} -linkmode external -extldflags '-static'" -o one-api
 
 FROM alpine:latest
 

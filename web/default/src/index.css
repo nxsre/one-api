@@ -159,6 +159,8 @@ code {
   --app-sidebar-hover-bg: rgba(226, 237, 243, 0.72);
   --app-sidebar-active-bg: #e2edf3;
   --app-sidebar-width: 256px;
+  --app-sidebar-width-collapsed: 64px;
+  --app-sidebar-collapsed-row-min-height: 44px;
   --app-header-pad-y: 8px;
   --app-header-inner-min: 56px;
   --app-header-border: 1px;
@@ -206,6 +208,7 @@ code {
   border-right: var(--app-header-border) solid var(--app-sidebar-edge-border);
   box-shadow: none;
   background: var(--app-sidebar-bg);
+  transition: width 0.18s ease;
 }
 
 /* 与 .app-topbar 同一行高（含上下 padding + 底边线），视觉对齐 */
@@ -304,6 +307,16 @@ code {
   gap: 0.35em;
 }
 
+/* Nacos 分组标题：默认折叠场景下更醒目，字号接近普通菜单项 */
+.app-sidebar .app-sidebar-nav-group--nacos > .app-sidebar-nav-group-header,
+.app-sidebar-menu--mobile .app-sidebar-nav-group--nacos > .app-sidebar-nav-group-header {
+  font-size: 0.95rem !important;
+  letter-spacing: 0.03em;
+  gap: 0.45em;
+  padding: 0.42em 0.3em !important;
+  color: var(--app-nav-item-text) !important;
+}
+
 .app-sidebar-nav-group-header--collapsible {
   cursor: pointer !important;
   user-select: none;
@@ -362,6 +375,122 @@ code {
   color: var(--app-accent) !important;
 }
 
+.app-sidebar-footer {
+  flex-shrink: 0;
+  border-top: var(--app-header-border) solid var(--app-chrome-border);
+  padding: 8px 10px 10px;
+  background: var(--app-shell-bg);
+}
+
+.app-sidebar-toggle.ui.button {
+  margin: 0 !important;
+  color: var(--app-chrome-text-muted) !important;
+}
+
+.app-sidebar-toggle.ui.button:hover {
+  color: var(--app-accent) !important;
+  background: var(--app-sidebar-hover-bg) !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-title {
+  display: none;
+}
+
+.app-sidebar--collapsed .app-sidebar-brand {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.app-sidebar--collapsed .app-sidebar-brand-link {
+  justify-content: center;
+}
+
+.app-sidebar--collapsed .app-sidebar-nav-group-chevron {
+  display: none !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-nav-label {
+  display: none !important;
+}
+
+/* 折叠侧栏：拉高每一行并锁定图标比例，避免 Semantic UI 默认行高下过矮导致图标字体被压扁 */
+.app-sidebar--collapsed .app-sidebar-menu.ui.vertical.menu > .item:not(.app-sidebar-nav-group) {
+  min-height: var(--app-sidebar-collapsed-row-min-height) !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-menu.ui.vertical.menu > .item.app-sidebar-nav-group {
+  position: relative;
+  min-height: var(--app-sidebar-collapsed-row-min-height) !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-menu .app-sidebar-nav-group-header {
+  min-height: calc(var(--app-sidebar-collapsed-row-min-height) - 4px) !important;
+  margin: 0 !important;
+  padding: 6px 8px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-menu.ui.vertical.menu > .item .icon,
+.app-sidebar--collapsed .app-sidebar-menu .app-sidebar-nav-group-header .icon {
+  flex-shrink: 0 !important;
+  align-self: center !important;
+  line-height: 1 !important;
+  height: auto !important;
+  min-width: 1.25em !important;
+  width: auto !important;
+  font-size: 1.28rem !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-menu.ui.vertical.menu > .item:not(.app-sidebar-nav-group) > .icon:first-child {
+  margin-right: 0 !important;
+}
+
+.app-sidebar--collapsed
+  .app-sidebar-nav-group
+  > .menu.vertical.menu {
+  display: none;
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 0;
+  margin: 0 !important;
+  min-width: 208px;
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
+  background: var(--app-chrome-bg) !important;
+  border: 1px solid var(--app-chrome-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--app-work-card-shadow) !important;
+  z-index: 300;
+  padding: 6px 0 !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-nav-group:hover > .menu.vertical.menu,
+.app-sidebar--collapsed .app-sidebar-nav-group:focus-within > .menu.vertical.menu {
+  display: block !important;
+}
+
+.app-sidebar--collapsed .app-sidebar-nav-group > .menu.vertical.menu > .item {
+  margin: 2px 8px !important;
+}
+
+.app-shell--sidebar-collapsed .app-sidebar {
+  width: var(--app-sidebar-width-collapsed);
+}
+
+.app-shell--sidebar-collapsed .app-main {
+  margin-left: var(--app-sidebar-width-collapsed);
+}
+
 .app-main {
   margin-left: var(--app-sidebar-width);
   flex: 1;
@@ -373,6 +502,7 @@ code {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: margin-left 0.18s ease;
 }
 
 .app-topbar {
@@ -617,6 +747,24 @@ code {
   margin-bottom: 1rem !important;
   padding-bottom: 0.85rem !important;
   border-bottom: 1px solid var(--app-work-card-border) !important;
+}
+
+/* Nacos Skills 等带表格下拉的页面：允许菜单溢出卡片（默认 chart-card 为 overflow:hidden 会裁切 Dropdown） */
+.app-main-page-scroll
+  .dashboard-container
+  .chart-card.nacos-registry-table-card.ui.card {
+  overflow: visible !important;
+}
+.app-main-page-scroll
+  .dashboard-container
+  .chart-card.nacos-registry-table-card.ui.card
+  > .content {
+  overflow: visible !important;
+}
+
+/* 操作列「更多」菜单叠在表格之上 */
+.app-main-page-scroll .ui.dropdown.nacos-skills-actions-dropdown .menu {
+  z-index: 2000 !important;
 }
 
 /* 默认按钮：白底 + 边框，避免在灰壳层上几乎看不见 */

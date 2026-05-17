@@ -21,8 +21,6 @@ import { ITEMS_PER_PAGE } from 'constants';
 import { IconRefresh, IconHttpDelete, IconPlus, IconBrandSpeedtest, IconCoinYuan } from '@tabler/icons-react';
 import EditeModal from './component/EditModal';
 
-// ----------------------------------------------------------------------
-// CHANNEL_OPTIONS,
 export default function ChannelPage() {
   const [channels, setChannels] = useState([]);
   const [activePage, setActivePage] = useState(0);
@@ -32,6 +30,9 @@ export default function ChannelPage() {
   const matchUpMd = useMediaQuery(theme.breakpoints.up('sm'));
   const [openModal, setOpenModal] = useState(false);
   const [editChannelId, setEditChannelId] = useState(0);
+
+  const [channelTypeMap, setChannelTypeMap] = useState({});
+  const [channelTypesList, setChannelTypesList] = useState([]);
 
   const loadChannels = async (startIdx) => {
     setSearching(true);
@@ -189,6 +190,24 @@ export default function ChannelPage() {
         showError(reason);
       });
     loadChannelModels().then();
+    (async () => {
+      try {
+        const res = await API.get('/api/model_catalog/editor_options');
+        const list = res.data?.data?.channel_types || [];
+        const map = {};
+        for (const o of list) {
+          map[o.value] = {
+            text: o.text,
+            color: o.color || 'default',
+            value: o.value
+          };
+        }
+        setChannelTypeMap(map);
+        setChannelTypesList(list);
+      } catch (_) {
+        /* ignore */
+      }
+    })();
   }, []);
 
   return (
@@ -265,6 +284,7 @@ export default function ChannelPage() {
                     key={row.id}
                     handleOpenModal={handleOpenModal}
                     setModalChannelId={setEditChannelId}
+                    channelTypeMap={channelTypeMap}
                   />
                 ))}
               </TableBody>
@@ -280,7 +300,13 @@ export default function ChannelPage() {
           rowsPerPageOptions={[ITEMS_PER_PAGE]}
         />
       </Card>
-      <EditeModal open={openModal} onCancel={handleCloseModal} onOk={handleOkModal} channelId={editChannelId} />
+      <EditeModal
+        open={openModal}
+        onCancel={handleCloseModal}
+        onOk={handleOkModal}
+        channelId={editChannelId}
+        channelTypesList={channelTypesList}
+      />
     </>
   );
 }

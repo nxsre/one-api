@@ -153,15 +153,19 @@ The initial account username is `root` and password is `123456`.
 For more detailed deployment tutorials, please refer to [this page](https://iamazing.cn/page/how-to-deploy-a-website).
 
 ### Multi-machine Deployment
-1. Set the same `SESSION_SECRET` for all servers.
-2. Set `SQL_DSN` and use MySQL instead of SQLite. All servers should connect to the same database.
-3. Set the `NODE_TYPE` for all non-master nodes to `slave`.
-4. Set `SYNC_FREQUENCY` for servers to periodically sync configurations from the database.
-5. Non-master nodes can optionally set `FRONTEND_BASE_URL` to redirect page requests to the master server.
-6. Install Redis separately on non-master nodes, and configure `REDIS_CONN_STRING` so that the database can be accessed with zero latency when the cache has not expired.
-7. If the main server also has high latency accessing the database, Redis must be enabled and `SYNC_FREQUENCY` must be set to periodically sync configurations from the database.
 
-Please refer to the [environment variables](#environment-variables) section for details on using environment variables.
+See **[docs/cluster-deployment.md](./docs/cluster-deployment.md)** for cluster-wide behavior (shared DB and Redis behind NGINX/LVS/K8s, `SYNC_FREQUENCY`, routing and **ModelRateLimitPolicy**). **[docs/kubernetes-deployment.md](./docs/kubernetes-deployment.md)** covers Kubernetes manifests.
+
+Summary:
+
+1. Use the same `SESSION_SECRET` on all servers.
+2. Set `SQL_DSN` to a network database (MySQL/PostgreSQL); **all instances share one database** (do not use SQLite for multi-replica).
+3. Set `NODE_TYPE=slave` on worker nodes; keep at least one primary-style node for DB migrations (see Kubernetes doc).
+4. Set `SYNC_FREQUENCY` (seconds); **60–300** is a common range for config/channel cache freshness vs DB load.
+5. **Strongly recommended:** use the **same `REDIS_CONN_STRING` to one logical Redis** for all instances. **Model rate limits, circuit-breaker / adaptive routing state, and sessions rely on shared Redis**; do not point each app node at a different isolated Redis if you need global limits.
+6. Optionally set `FRONTEND_BASE_URL` on workers to redirect UI to a single frontend URL.
+
+For environment variables, see [environment variables](#environment-variables) and **`config.example.toml`**.
 
 ### Deployment on Control Panels (e.g., Baota)
 Refer to [#175](https://github.com/songquanpeng/one-api/issues/175) for detailed instructions.

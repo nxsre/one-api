@@ -1,7 +1,7 @@
 const defaultConfig = {
   input: {
     name: '',
-    type: 1,
+    type: 41,
     key: '',
     base_url: '',
     model_mapping: '',
@@ -40,8 +40,48 @@ const defaultConfig = {
   modelGroup: 'openai'
 };
 
+// key 与 relay/channeltype 紧凑枚举 type 对齐（与 channels.type、BuiltinEditorTypes 一致）
 const typeConfig = {
-  3: {
+  41: {
+    modelGroup: 'openai'
+  },
+  15: {
+    input: {
+      models: ['gemini-2.0-flash']
+    },
+    prompt: {
+      base_url: '可留空使用 Google 官方 …/v1beta/openai'
+    },
+    modelGroup: 'google gemini openai'
+  },
+  42: {
+    inputLabel: {
+      config: { api_version: 'API 版本' }
+    },
+    input: {
+      models: ['gemini-2.0-flash']
+    },
+    prompt: {
+      config: { api_version: '例如 v1 或 v1beta（与上游 OpenAI 兼容前缀一致）' }
+    },
+    modelGroup: 'google gemini openai'
+  },
+  46: {
+    input: {
+      models: ['claude-instant-1', 'claude-2', 'claude-2.0', 'claude-2.1']
+    },
+    modelGroup: 'anthropic'
+  },
+  43: {
+    input: {
+      models: []
+    },
+    prompt: {
+      key: '请输入 AiPPT 渠道密钥（格式见类型说明）'
+    },
+    modelGroup: 'aippt'
+  },
+  2: {
     inputLabel: {
       base_url: 'AZURE_OPENAI_ENDPOINT',
       config: {
@@ -55,19 +95,19 @@ const typeConfig = {
       }
     }
   },
-  11: {
+  4: {
     input: {
       models: ['PaLM-2']
     },
     modelGroup: 'google palm'
   },
-  14: {
+  5: {
     input: {
       models: ['claude-instant-1', 'claude-2', 'claude-2.0', 'claude-2.1']
     },
     modelGroup: 'anthropic'
   },
-  15: {
+  6: {
     input: {
       models: ['ERNIE-Bot', 'ERNIE-Bot-turbo', 'ERNIE-Bot-4', 'Embedding-V1']
     },
@@ -76,13 +116,13 @@ const typeConfig = {
     },
     modelGroup: 'baidu'
   },
-  16: {
+  7: {
     input: {
       models: ['glm-4', 'glm-4v', 'glm-3-turbo', 'chatglm_turbo', 'chatglm_pro', 'chatglm_std', 'chatglm_lite']
     },
     modelGroup: 'zhipu'
   },
-  17: {
+  8: {
     inputLabel: {
       config: {
         plugin: '插件参数'
@@ -98,7 +138,7 @@ const typeConfig = {
     },
     modelGroup: 'ali'
   },
-  18: {
+  9: {
     inputLabel: {
       config: { api_version: '版本号' }
     },
@@ -111,13 +151,13 @@ const typeConfig = {
     },
     modelGroup: 'xunfei'
   },
-  19: {
+  10: {
     input: {
       models: ['360GPT_S2_V9', 'embedding-bert-512-v1', 'embedding_s1_v1', 'semantic_similarity_s1_v1']
     },
     modelGroup: '360'
   },
-  21: {
+  12: {
     inputLabel: {
       config: { library_id: '知识库 ID' }
     },
@@ -125,12 +165,7 @@ const typeConfig = {
       config: { library_id: '请输入知识库 ID，例如：123456' }
     }
   },
-  22: {
-    prompt: {
-      key: '按照如下格式输入：APIKey-AppId，例如：fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041'
-    }
-  },
-  23: {
+  13: {
     input: {
       models: ['hunyuan']
     },
@@ -139,7 +174,7 @@ const typeConfig = {
     },
     modelGroup: 'tencent'
   },
-  24: {
+  14: {
     inputLabel: {
       config: { api_version: '版本号' }
     },
@@ -151,34 +186,37 @@ const typeConfig = {
     },
     modelGroup: 'google gemini'
   },
-  25: {
+  16: {
     input: {
       models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']
     },
     modelGroup: 'moonshot'
   },
-  26: {
+  17: {
     input: {
       models: ['Baichuan2-Turbo', 'Baichuan2-Turbo-192k', 'Baichuan-Text-Embedding']
     },
     modelGroup: 'baichuan'
   },
-  27: {
+  18: {
     input: {
       models: ['abab5.5s-chat', 'abab5.5-chat', 'abab6-chat']
     },
     modelGroup: 'minimax'
   },
-  29: {
+  19: {
+    modelGroup: 'mistral'
+  },
+  20: {
     modelGroup: 'groq'
   },
-  30: {
+  21: {
     modelGroup: 'ollama'
   },
-  31: {
+  22: {
     modelGroup: 'lingyiwanwu'
   },
-  33: {
+  24: {
     inputLabel: {
       key: '',
       config: {
@@ -197,7 +235,7 @@ const typeConfig = {
     },
     modelGroup: 'anthropic'
   },
-  37: {
+  28: {
     inputLabel: {
       config: {
         user_id: 'Account ID'
@@ -210,7 +248,7 @@ const typeConfig = {
     },
     modelGroup: 'Cloudflare'
   },
-  34: {
+  25: {
     inputLabel: {
       config: {
         user_id: 'User ID'
@@ -224,7 +262,7 @@ const typeConfig = {
     },
     modelGroup: 'Coze'
   },
-  42: {
+  33: {
     inputLabel: {
       key: '',
       config: {
@@ -243,27 +281,30 @@ const typeConfig = {
     },
     modelGroup: 'anthropic'
   },
-  45: {
+  36: {
     modelGroup: 'xai'
   },
-  53: {
+  44: {
     input: {
-      models: ['amap-poi']
+      models: ['amap']
     },
     prompt: {
       key: '请输入高德 Web 服务 API Key'
     },
     modelGroup: 'amap'
   },
-  54: {
+  45: {
     input: {
-      models: []
+      models: ['deep-research']
     },
     prompt: {
-      key: 'Bifrost：密钥；Base URL 填网关根地址',
-      base_url: '例如 http://127.0.0.1:8080'
+      key: '深知上游 Bearer Token',
+      base_url: '完整前缀至 …/deepresearch；客户端须 stream:true',
+      config: {
+        deep_research_mode: '可选：general | academic | user_files'
+      }
     },
-    modelGroup: 'bifrost'
+    modelGroup: 'deepresearch'
   }
 };
 

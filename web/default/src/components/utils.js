@@ -22,8 +22,8 @@ export async function onGitHubOAuthClicked(github_client_id) {
 export async function onLarkOAuthClicked(lark_client_id) {
   const state = await getOAuthState();
   if (!state) return;
-  let redirect_uri = `${window.location.origin}/oauth/lark`;
+  const redirect_uri = `${window.location.origin}/oauth/lark`;
   window.open(
-    `https://open.feishu.cn/open-apis/authen/v1/index?redirect_uri=${redirect_uri}&app_id=${lark_client_id}&state=${state}`
+    `https://open.feishu.cn/open-apis/authen/v1/index?redirect_uri=${encodeURIComponent(redirect_uri)}&app_id=${encodeURIComponent(lark_client_id)}&state=${encodeURIComponent(state)}`
   );
 }

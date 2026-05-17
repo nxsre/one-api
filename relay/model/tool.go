@@ -1,8 +1,9 @@
 package model
 
 type Tool struct {
-	Id       string   `json:"id,omitempty"`
-	Type     string   `json:"type,omitempty"` // when splicing claude tools stream messages, it is empty
+	Index    int    `json:"index,omitempty"` // OpenAI 流式 chunk 中 tool_calls 的下标
+	Id       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"` // when splicing claude tools stream messages, it is empty
 	Function Function `json:"function"`
 }
 

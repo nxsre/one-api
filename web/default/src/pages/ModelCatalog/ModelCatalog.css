@@ -1,0 +1,81 @@
+.model-catalog-filter-count {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+
+.model-catalog-toolbar-form {
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+/* 搜索框占满可用宽度，避免长 placeholder 被截断 */
+.model-catalog-toolbar-form > .model-catalog-search-input.field {
+  flex: 1 1 520px;
+  min-width: min(100%, 420px);
+  max-width: none;
+  width: auto;
+  margin-bottom: 0 !important;
+}
+
+.model-catalog-toolbar-form > .model-catalog-search-input .ui.input {
+  width: 100%;
+}
+
+.model-catalog-toolbar-form > .model-catalog-search-input .ui.input > input {
+  width: 100%;
+  min-width: 0;
+}
+
+.model-catalog-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.model-catalog-table-wrap table.ui.table {
+  white-space: nowrap;
+}
+
+.model-catalog-table-wrap table.ui.table td.collapsible-text {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-catalog-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: 12px;
+}
+
+.model-catalog-pagination__size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.model-catalog-pagination__label {
+  font-size: 0.92rem;
+  color: rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+}
+
+.model-catalog-pagination__pages {
+  flex: 1 1 auto;
+  justify-content: center;
+  margin: 0 !important;
+}
+
+.model-catalog-pagination__range {
+  font-size: 0.92rem;
+  color: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}

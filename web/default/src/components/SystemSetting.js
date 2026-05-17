@@ -21,6 +21,7 @@ const SystemSetting = () => {
     EmailVerificationEnabled: '',
     Force2FAForAllUsers: '',
     GitHubOAuthEnabled: '',
+    LarkOAuthEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
     LarkClientId: '',
@@ -101,6 +102,7 @@ const SystemSetting = () => {
       case 'EmailVerificationEnabled':
       case 'Force2FAForAllUsers':
       case 'GitHubOAuthEnabled':
+      case 'LarkOAuthEnabled':
       case 'WeChatAuthEnabled':
       case 'TurnstileCheckEnabled':
       case 'EmailDomainRestrictionEnabled':
@@ -467,10 +469,13 @@ const SystemSetting = () => {
               name='WeChatAuthEnabled'
               onChange={handleInputChange}
             />
+            <Form.Checkbox
+              checked={inputs.LarkOAuthEnabled === 'true'}
+              label={t('setting.system.login.lark_oauth')}
+              name='LarkOAuthEnabled'
+              onChange={handleInputChange}
+            />
           </Form.Group>
-          <Message info size='small'>
-            {t('setting.system.login.secure_password_login_hint')}
-          </Message>
           <Form.Group inline>
             <Form.Checkbox
               checked={inputs.RegisterEnabled === 'true'}

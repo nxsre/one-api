@@ -83,10 +83,8 @@ func GetCompatibleChannelMeta(channelType int) (string, []string) {
 		return "openrouter", openrouter.ModelList
 	case channeltype.AliBailian:
 		return "alibailian", alibailian.ModelList
-	case channeltype.GeminiOpenAICompatible:
+	case channeltype.GeminiCompatible, channeltype.GeminiOpenAICompatible:
 		return "geminiv2", geminiv2.ModelList
-	case channeltype.Bifrost:
-		return "bifrost", []string{}
 	default:
 		return "openai", ModelList
 	}

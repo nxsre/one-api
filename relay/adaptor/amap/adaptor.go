@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/client"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/relay/adaptor"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/channeltype"
@@ -22,8 +23,8 @@ import (
 )
 
 const (
-	channelName    = "amap-poi"
-	ModelAmapPOI   = "amap-poi"
+	channelName    = "amap"
+	ModelAmap      = "amap"
 	defaultBaseURL = "https://restapi.amap.com"
 )
 
@@ -100,11 +101,11 @@ func (a *Adaptor) Init(_ *meta.Meta) {}
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 	if meta == nil {
-		return "", errors.New("amap-poi: meta is nil")
+		return "", errors.New("amap: meta is nil")
 	}
 	base := strings.TrimSpace(meta.BaseURL)
-	if base == "" && meta.ChannelType > 0 && meta.ChannelType < len(channeltype.ChannelBaseURLs) {
-		base = channeltype.ChannelBaseURLs[meta.ChannelType]
+	if base == "" && meta.ChannelType > 0 && meta.ChannelType < channeltype.Dummy {
+		base = channeltype.DefaultBaseURL(meta.ChannelType)
 	}
 	if base == "" {
 		base = defaultBaseURL
@@ -122,27 +123,27 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *me
 
 func (a *Adaptor) ConvertRequest(_ *gin.Context, relayMode int, request *model.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
-		return nil, errors.New("amap-poi: request is nil")
+		return nil, errors.New("amap: request is nil")
 	}
 	if relayMode != relaymode.ChatCompletions {
-		return nil, errors.New("amap-poi: only chat completions supported")
+		return nil, errors.New("amap: only chat completions supported")
 	}
 	if request.Stream {
-		return nil, errors.New("amap-poi: streaming is not supported; set stream to false")
+		return nil, errors.New("amap: streaming is not supported; set stream to false")
 	}
 	return request, nil
 }
 
 func (a *Adaptor) ConvertImageRequest(*model.ImageRequest) (any, error) {
-	return nil, errors.New("amap-poi: not supported")
+	return nil, errors.New("amap: not supported")
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Reader) (*http.Response, error) {
 	if meta == nil {
-		return nil, fmt.Errorf("amap-poi: meta is nil")
+		return nil, fmt.Errorf("amap: meta is nil")
 	}
 	if meta.Mode != relaymode.ChatCompletions {
-		return nil, fmt.Errorf("amap-poi: only /v1/chat/completions is supported")
+		return nil, fmt.Errorf("amap: only /v1/chat/completions is supported")
 	}
 	raw, err := io.ReadAll(requestBody)
 	if err != nil {
@@ -150,7 +151,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 	}
 	var openAIReq model.GeneralOpenAIRequest
 	if err = json.Unmarshal(raw, &openAIReq); err != nil {
-		return nil, fmt.Errorf("amap-poi: bad request: %w", err)
+		return nil, fmt.Errorf("amap: bad request: %w", err)
 	}
 	params, err := buildPOIRequest(&openAIReq)
 	if err != nil {
@@ -171,27 +172,29 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 
 	resp, err := httpClient().Do(upstreamReq)
 	if err != nil {
+		requestaudit.SnapUpstreamHTTP(c, upstreamReq, nil)
 		return nil, err
 	}
+	requestaudit.SnapUpstreamHTTP(c, upstreamReq, resp)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return errorResponse(resp.StatusCode, fmt.Sprintf("amap-poi upstream http %d: %s", resp.StatusCode, string(body))), nil
+		return errorResponse(resp.StatusCode, fmt.Sprintf("amap upstream http %d: %s", resp.StatusCode, string(body))), nil
 	}
 
 	var amapResp amapResponse
 	if err = json.Unmarshal(body, &amapResp); err != nil {
-		return nil, fmt.Errorf("amap-poi: parse upstream response: %w", err)
+		return nil, fmt.Errorf("amap: parse upstream response: %w", err)
 	}
 	if amapResp.Status != "1" {
 		msg := strings.TrimSpace(amapResp.Info)
 		if msg == "" {
 			msg = string(body)
 		}
-		return errorResponse(http.StatusBadGateway, fmt.Sprintf("amap-poi upstream error infocode=%s info=%s", amapResp.InfoCode, msg)), nil
+		return errorResponse(http.StatusBadGateway, fmt.Sprintf("amap upstream error infocode=%s info=%s", amapResp.InfoCode, msg)), nil
 	}
 
 	return okResponse(meta, &openAIReq, amapResp)
@@ -199,14 +202,14 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (*model.Usage, *model.ErrorWithStatusCode) {
 	if resp == nil {
-		return nil, openai.ErrorWrapper(errors.New("amap-poi: empty response"), "bad_response", http.StatusInternalServerError)
+		return nil, openai.ErrorWrapper(errors.New("amap: empty response"), "bad_response", http.StatusInternalServerError)
 	}
 	apiErr, usage := openai.Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
 	return usage, apiErr
 }
 
 func (a *Adaptor) GetModelList() []string {
-	return []string{ModelAmapPOI}
+	return []string{ModelAmap}
 }
 
 func (a *Adaptor) GetChannelName() string {
@@ -238,21 +241,21 @@ func TestAround(baseURL, key string) error {
 		return err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("amap-poi test http %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("amap test http %d: %s", resp.StatusCode, string(body))
 	}
 	var parsed amapResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return err
 	}
 	if parsed.Status != "1" {
-		return fmt.Errorf("amap-poi test failed infocode=%s info=%s", parsed.InfoCode, parsed.Info)
+		return fmt.Errorf("amap test failed infocode=%s info=%s", parsed.InfoCode, parsed.Info)
 	}
 	return nil
 }
 
 func newAmapRequest(endpoint, key string, params poiRequest) (*http.Request, error) {
 	if strings.TrimSpace(key) == "" {
-		return nil, fmt.Errorf("amap-poi: channel key is required")
+		return nil, fmt.Errorf("amap: channel key is required")
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil {
@@ -287,7 +290,7 @@ func buildPOIRequest(request *model.GeneralOpenAIRequest) (poiRequest, error) {
 		mergeParams(&params, paramsFromText(text))
 	}
 	if strings.TrimSpace(params.Location) == "" {
-		return params, fmt.Errorf("amap-poi: location is required; pass it in metadata or the last user message, e.g. {\"location\":\"116.473168,39.993015\",\"keywords\":\"咖啡\"}")
+		return params, fmt.Errorf("amap: location is required; pass it in metadata or the last user message, e.g. {\"location\":\"116.473168,39.993015\",\"keywords\":\"咖啡\"}")
 	}
 	return params, nil
 }
@@ -320,6 +323,8 @@ func paramsFromAny(v any) poiRequest {
 		return poiRequest{}
 	}
 	if nested, ok := raw["amap_poi"].(map[string]any); ok {
+		raw = nested
+	} else if nested, ok := raw["amap"].(map[string]any); ok {
 		raw = nested
 	}
 	return poiRequest{
@@ -406,10 +411,10 @@ func okResponse(meta *meta.Meta, request *model.GeneralOpenAIRequest, amapResp a
 		modelName = request.Model
 	}
 	if modelName == "" {
-		modelName = ModelAmapPOI
+		modelName = ModelAmap
 	}
 	out := openai.TextResponse{
-		Id:      "chatcmpl-amap-poi-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		Id:      "chatcmpl-amap-" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		Object:  "chat.completion",
 		Created: time.Now().Unix(),
 		Model:   modelName,
@@ -435,7 +440,7 @@ func errorResponse(status int, message string) *http.Response {
 		"error": model.Error{
 			Message: message,
 			Type:    "upstream_error",
-			Code:    "amap_poi_error",
+			Code:    "amap_error",
 		},
 	})
 	return jsonResponse(status, b)

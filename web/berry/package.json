@@ -40,6 +40,7 @@
     "yup": "^0.32.11"
   },
   "scripts": {
+    "prebuild": "node ../scripts/generate-web-build-meta.js",
     "start": "react-scripts start",
     "build": "react-scripts build && mkdir -p ../build && rm -rf ../build/berry && mv -f build ../build/berry",
     "test": "react-scripts test",

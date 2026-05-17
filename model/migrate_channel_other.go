@@ -130,3 +130,87 @@ func migrateChannelDropOtherColumn() error {
 	logger.SysLog("channels: dropped legacy column other")
 	return nil
 }
+
+// channelsTableHasColumn 判断 channels 表是否包含指定列。
+func channelsTableHasColumn(column string) (bool, error) {
+	var n int64
+	switch {
+	case common.UsingSQLite:
+		if err := DB.Raw(`SELECT COUNT(*) FROM pragma_table_info('channels') WHERE name = ?`, column).Scan(&n).Error; err != nil {
+			return false, err
+		}
+	case common.UsingPostgreSQL:
+		if err := DB.Raw(`
+			SELECT COUNT(*) FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = 'channels' AND column_name = ?`, column).Scan(&n).Error; err != nil {
+			return false, err
+		}
+	case common.UsingMySQL:
+		if err := DB.Raw(`
+			SELECT COUNT(*) FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channels' AND COLUMN_NAME = ?`, column).Scan(&n).Error; err != nil {
+			return false, err
+		}
+	default:
+		return false, nil
+	}
+	return n > 0, nil
+}
+
+// migrateChannelRenameLegacySettingsColumn 将历史列 channel_settings 重命名为 settings（若仅有旧列）；若新旧列并存则合并后删旧列。
+func migrateChannelRenameLegacySettingsColumn() error {
+	hasOld, err := channelsTableHasColumn("channel_settings")
+	if err != nil || !hasOld {
+		return err
+	}
+	hasNew, err := channelsTableHasColumn("settings")
+	if err != nil {
+		return err
+	}
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return err
+	}
+	if !hasNew {
+		switch {
+		case common.UsingSQLite:
+			if _, err := sqlDB.Exec(`ALTER TABLE channels RENAME COLUMN channel_settings TO settings`); err != nil {
+				return fmt.Errorf("channels: rename channel_settings: sqlite: %w", err)
+			}
+		case common.UsingPostgreSQL:
+			if _, err := sqlDB.Exec(`ALTER TABLE channels RENAME COLUMN channel_settings TO settings`); err != nil {
+				return fmt.Errorf("channels: rename channel_settings: postgres: %w", err)
+			}
+		case common.UsingMySQL:
+			if _, err := sqlDB.Exec(`ALTER TABLE channels CHANGE COLUMN channel_settings settings TEXT`); err != nil {
+				return fmt.Errorf("channels: rename channel_settings: mysql: %w", err)
+			}
+		default:
+			return nil
+		}
+		logger.SysLog("channels: renamed column channel_settings -> settings")
+		return nil
+	}
+	q := `UPDATE channels SET settings = channel_settings WHERE (settings IS NULL OR settings = '') AND channel_settings IS NOT NULL AND channel_settings != ''`
+	if err := DB.Exec(q).Error; err != nil {
+		return fmt.Errorf("channels: merge channel_settings into settings: %w", err)
+	}
+	switch {
+	case common.UsingSQLite:
+		if _, err := sqlDB.Exec(`ALTER TABLE channels DROP COLUMN channel_settings`); err != nil {
+			return fmt.Errorf("channels: drop channel_settings: sqlite: %w", err)
+		}
+	case common.UsingPostgreSQL:
+		if _, err := sqlDB.Exec(`ALTER TABLE channels DROP COLUMN IF EXISTS channel_settings`); err != nil {
+			return fmt.Errorf("channels: drop channel_settings: postgres: %w", err)
+		}
+	case common.UsingMySQL:
+		if _, err := sqlDB.Exec(`ALTER TABLE channels DROP COLUMN channel_settings`); err != nil {
+			return fmt.Errorf("channels: drop channel_settings: mysql: %w", err)
+		}
+	default:
+		return nil
+	}
+	logger.SysLog("channels: merged channel_settings into settings and dropped legacy column")
+	return nil
+}

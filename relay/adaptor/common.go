@@ -3,11 +3,16 @@ package adaptor
 import (
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common/client"
-	"github.com/songquanpeng/one-api/relay/meta"
 	"io"
 	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/songquanpeng/one-api/common/client"
+	"github.com/songquanpeng/one-api/common/ctxkey"
+	"github.com/songquanpeng/one-api/common/requestaudit"
+	"github.com/songquanpeng/one-api/relay/meta"
 )
 
 func SetupCommonRequestHeader(c *gin.Context, req *http.Request, meta *meta.Meta) {
@@ -37,6 +42,35 @@ func DoRequestHelper(a Adaptor, c *gin.Context, meta *meta.Meta, requestBody io.
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
+	exclusive := false
+	if v, ok := c.Get(ctxkey.ParamOverrideHeadersExclusive); ok {
+		exclusive, _ = v.(bool)
+	}
+	key := meta.ChannelKey
+	if key == "" {
+		key = meta.APIKey
+	}
+	if exclusive {
+		if raw, ok := c.Get(ctxkey.ParamOverrideRuntimeHeaders); ok {
+			if hdrs, ok := raw.(map[string]string); ok {
+				for k, v := range hdrs {
+					if k == "" {
+						continue
+					}
+					req.Header.Set(k, strings.ReplaceAll(v, "{api_key}", key))
+				}
+			}
+		}
+	} else if raw, ok := c.Get(ctxkey.ChannelHeaderOverride); ok {
+		if hdrs, ok := raw.(map[string]string); ok {
+			for k, v := range hdrs {
+				if k == "" {
+					continue
+				}
+				req.Header.Set(k, strings.ReplaceAll(v, "{api_key}", key))
+			}
+		}
+	}
 	resp, err := DoRequest(c, req)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -47,11 +81,14 @@ func DoRequestHelper(a Adaptor, c *gin.Context, meta *meta.Meta, requestBody io.
 func DoRequest(c *gin.Context, req *http.Request) (*http.Response, error) {
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
+		requestaudit.SnapUpstreamHTTP(c, req, nil)
 		return nil, err
 	}
 	if resp == nil {
+		requestaudit.SnapUpstreamHTTP(c, req, nil)
 		return nil, errors.New("resp is nil")
 	}
+	requestaudit.SnapUpstreamHTTP(c, req, resp)
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()
 	return resp, nil

@@ -14,6 +14,7 @@ import (
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/middleware"
 	"github.com/songquanpeng/one-api/monitor"
 	relayctl "github.com/songquanpeng/one-api/relay/controller"
@@ -57,6 +58,12 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 		logger.Debugf(ctx, "request body: %s", string(requestBody))
 	}
 	startAt := time.Now()
+	requestaudit.Attach(c, startAt)
+	var bizErr *model.ErrorWithStatusCode
+	defer func() {
+		requestaudit.FinalizeRelayErrorIfUnhandled(c, bizErr)
+	}()
+
 	channelId := c.GetInt(ctxkey.ChannelId)
 	userId := c.GetInt(ctxkey.Id)
 	group := c.GetString(ctxkey.Group)
@@ -66,7 +73,7 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 
 	tried := map[int]struct{}{channelId: {}}
 
-	bizErr := exec(c)
+	bizErr = exec(c)
 	recordRelayOutcome(c, originalModel, bizErr, startAt)
 
 	if bizErr != nil && bizErr.StatusCode == -1 {
@@ -79,7 +86,13 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 	}
 	lastFailedChannelId := channelId
 	channelName := c.GetString(ctxkey.ChannelName)
-	go processChannelRelayError(ctx, userId, channelId, channelName, *bizErr)
+	perChAutoBan := true
+	if v, ok := c.Get(ctxkey.ChannelAutoBan); ok {
+		if b, ok2 := v.(bool); ok2 {
+			perChAutoBan = b
+		}
+	}
+	go processChannelRelayError(ctx, userId, channelId, channelName, perChAutoBan, *bizErr)
 	requestId := c.GetString(helper.RequestIdKey)
 	if !shouldRelayRetry(c, bizErr.StatusCode, retryPol) {
 		logger.Errorf(ctx, "relay error happen, status code is %d, won't retry in this case", bizErr.StatusCode)
@@ -132,7 +145,13 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 		}
 		lastFailedChannelId = c.GetInt(ctxkey.ChannelId)
 		channelName = c.GetString(ctxkey.ChannelName)
-		go processChannelRelayError(ctx, userId, lastFailedChannelId, channelName, *bizErr)
+		perChAutoBan := true
+		if v, ok := c.Get(ctxkey.ChannelAutoBan); ok {
+			if b, ok2 := v.(bool); ok2 {
+				perChAutoBan = b
+			}
+		}
+		go processChannelRelayError(ctx, userId, lastFailedChannelId, channelName, perChAutoBan, *bizErr)
 	}
 	if bizErr != nil {
 		if bizErr.StatusCode == http.StatusTooManyRequests {
@@ -217,10 +236,10 @@ func shouldRelayRetry(c *gin.Context, statusCode int, rp routing.RelayRetryPolic
 	return true
 }
 
-func processChannelRelayError(ctx context.Context, userId int, channelId int, channelName string, err model.ErrorWithStatusCode) {
+func processChannelRelayError(ctx context.Context, userId int, channelId int, channelName string, perChannelAutoBan bool, err model.ErrorWithStatusCode) {
 	logger.Errorf(ctx, "relay error (channel id %d, user id: %d): %s", channelId, userId, err.Message)
 	// https://platform.openai.com/docs/guides/error-codes/api-errors
-	if monitor.ShouldDisableChannel(&err.Error, err.StatusCode) {
+	if monitor.ShouldDisableChannel(&err.Error, err.StatusCode, perChannelAutoBan) {
 		monitor.DisableChannel(channelId, channelName, err.Message)
 	} else {
 		monitor.Emit(channelId, false)

@@ -28,6 +28,10 @@ spec:
             - name: http
               containerPort: 3000
               protocol: TCP
+            # Pod 内嵌入式 TLS（secret-config 中 tls_cert_file / https_port）时：取消注释并令名称与探针、Service 一致。
+            # - name: https
+            #   containerPort: 3443
+            #   protocol: TCP
           env:
             - name: TZ
               value: Asia/Shanghai
@@ -40,6 +44,7 @@ spec:
               readOnly: true
             - name: data-logs
               mountPath: /data/logs
+          # 默认 HTTP 探针（与 port=3000、未启用进程内 TLS 一致）。
           readinessProbe:
             httpGet:
               path: /api/status
@@ -54,6 +59,23 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5
+          # 嵌入式 HTTPS 时：删除或注释上方两段探针，换用下方配置（port 须为容器内 HTTPS 端口名，如 https；httpGet 无 insecureSkipVerify 字段，kubelet 对 HTTPS 探针不校验服务端证书）。
+          # readinessProbe:
+          #   httpGet:
+          #     path: /api/status
+          #     port: https
+          #     scheme: HTTPS
+          #   initialDelaySeconds: 15
+          #   periodSeconds: 10
+          #   timeoutSeconds: 5
+          # livenessProbe:
+          #   httpGet:
+          #     path: /api/status
+          #     port: https
+          #     scheme: HTTPS
+          #   initialDelaySeconds: 60
+          #   periodSeconds: 30
+          #   timeoutSeconds: 5
           resources:
             requests:
               cpu: "100m"

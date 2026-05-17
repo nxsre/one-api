@@ -640,7 +640,7 @@ const LoginForm = () => {
 
             {(status.github_oauth ||
               status.wechat_login ||
-              status.lark_client_id) && (
+              (status.lark_oauth && status.lark_client_id)) && (
               <>
                 <Divider
                   horizontal
@@ -676,7 +676,7 @@ const LoginForm = () => {
                       onClick={onWeChatLoginClicked}
                     />
                   )}
-                  {status.lark_client_id && (
+                  {status.lark_oauth && status.lark_client_id && (
                     <div
                       style={{
                         background:

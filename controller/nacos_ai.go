@@ -58,10 +58,8 @@ func nacosNamespace(c *gin.Context) string {
 // --- Skills admin ---
 
 func NacosSkillList(c *gin.Context) {
-	pageNo, _ := strconv.Atoi(c.DefaultQuery("pageNo", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	skillName := c.Query("skillName")
-	data, err := service.NacosAIListSkills(nacosNamespace(c), skillName, pageNo, pageSize)
+	filter, pageNo, pageSize := parseNacosSkillListFilter(c)
+	data, err := service.NacosAIListSkills(nacosNamespace(c), filter, pageNo, pageSize)
 	if err != nil {
 		nacosV3Err(c, 500, err.Error())
 		return

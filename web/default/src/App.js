@@ -15,6 +15,7 @@ import AddUser from './pages/User/AddUser';
 import {
   API,
   fetchSystemStatusOnce,
+  clearSystemStatusFetchCache,
   getLogo,
   getSystemName,
   showError,
@@ -27,6 +28,7 @@ import PasswordResetConfirm from './components/PasswordResetConfirm';
 import { UserContext } from './context/User';
 import { StatusContext } from './context/Status';
 import Channel from './pages/Channel';
+import ModelCatalogPage from './pages/ModelCatalog';
 import RoutingOperations from './pages/Routing';
 import Token from './pages/Token';
 import EditToken from './pages/Token/EditToken';
@@ -170,11 +172,11 @@ function App() {
     loadStatus().then();
   }, []);
 
-  // 登录后重新拉取 status，获取 nacos_enabled、quota 等仅登录可见字段
+  // 登录/注销后会话变化：必须丢弃 fetchSystemStatusOnce 的内存缓存，否则仍返回未登录时的 public
+  // payload（无 nacos_enabled），侧栏 Nacos 菜单会一直隐藏，直到整页刷新。
   useEffect(() => {
-    if (userState.user) {
-      loadStatus().then();
-    }
+    clearSystemStatusFetchCache();
+    loadStatus().then();
   }, [userState.user?.id]);
 
   useEffect(() => {
@@ -224,6 +226,14 @@ function App() {
         element={
           <PrivateRoute>
             <Channel />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/model-catalog'
+        element={
+          <PrivateRoute>
+            <ModelCatalogPage />
           </PrivateRoute>
         }
       />

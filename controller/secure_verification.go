@@ -18,7 +18,7 @@ type universalVerifyRequest struct {
 	Code   string `json:"code,omitempty"`
 }
 
-// validateTwoFactorAuthStepUp 与 new-api 一致：6 位 TOTP 或备用码。
+// validateTwoFactorAuthStepUp 阶梯验证：6 位 TOTP 或备用码。
 func validateTwoFactorAuthStepUp(twoFA *model.TwoFA, code string) bool {
 	if cleanCode, err := common.ValidateNumericCode(code); err == nil {
 		if ok, _ := twoFA.ValidateTOTPAndUpdateUsage(cleanCode); ok {

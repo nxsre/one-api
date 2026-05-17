@@ -31,6 +31,7 @@ func InitOptionMap() {
 	config.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(config.EmailVerificationEnabled)
 	config.OptionMap["Force2FAForAllUsers"] = strconv.FormatBool(common.Force2FAForAllUsers)
 	config.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(config.GitHubOAuthEnabled)
+	config.OptionMap["LarkOAuthEnabled"] = strconv.FormatBool(config.LarkOAuthEnabled)
 	config.OptionMap["OidcEnabled"] = strconv.FormatBool(config.OidcEnabled)
 	config.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(config.WeChatAuthEnabled)
 	config.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(config.TurnstileCheckEnabled)
@@ -84,6 +85,7 @@ func InitOptionMap() {
 	config.OptionMap["OutboundURLWhitelistIPs"] = ""
 	config.OptionMap["S3SiteEnabled"] = strconv.FormatBool(common.S3Enabled)
 	config.OptionMap["NacosEnabled"] = strconv.FormatBool(config.NacosEnabled)
+	config.OptionMap["RelayProtocolBridgeEnabled"] = strconv.FormatBool(config.RelayProtocolBridgeEnabled)
 	config.OptionMap["AmapWebServiceSecret"] = ""
 	config.OptionMap["RoutingPolicy"] = "{}"
 	config.OptionMap["RelayRetryPolicy"] = "{}"
@@ -154,6 +156,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.EmailVerificationEnabled = boolValue
 		case "GitHubOAuthEnabled":
 			config.GitHubOAuthEnabled = boolValue
+		case "LarkOAuthEnabled":
+			config.LarkOAuthEnabled = boolValue
 		case "OidcEnabled":
 			config.OidcEnabled = boolValue
 		case "WeChatAuthEnabled":
@@ -178,6 +182,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.DisplayTokenStatEnabled = boolValue
 		case "NacosEnabled":
 			config.NacosEnabled = boolValue
+		case "RelayProtocolBridgeEnabled":
+			config.RelayProtocolBridgeEnabled = boolValue
 		}
 	}
 	switch key {

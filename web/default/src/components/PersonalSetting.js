@@ -473,7 +473,7 @@ const PersonalSetting = () => {
           {t('setting.personal.binding.buttons.bind_github')}
         </Button>
       )}
-      {status.lark_client_id && (
+      {status.lark_oauth && status.lark_client_id && (
         <Button onClick={() => onLarkOAuthClicked(status.lark_client_id)}>
           {t('setting.personal.binding.buttons.bind_lark')}
         </Button>

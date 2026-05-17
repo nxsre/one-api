@@ -1,7 +1,5 @@
-import React, {useEffect, useRef, useState} from 'react';
-import {useNavigate, useParams} from 'react-router-dom';
-import {API, isMobile, showError, showInfo, showSuccess, verifyJSON, splitModelNameList} from '../../helpers';
-import {CHANNEL_OPTIONS} from '../../constants';
+import React, {useEffect, useState} from 'react';
+import {API, isMobile, showError, showInfo, showSuccess, verifyJSON, splitModelNameList, getChannelModels, setChannelModelsCache} from '../../helpers';
 import Title from "@douyinfe/semi-ui/lib/es/typography/title";
 import {SideSheet, Space, Spin, Button, Input, Typography, Select, TextArea, Checkbox, Banner} from "@douyinfe/semi-ui";
 
@@ -12,23 +10,26 @@ const MODEL_MAPPING_EXAMPLE = {
 };
 
 function type2secretPrompt(type) {
-    // inputs.type === 15 ? '按照如下格式输入：APIKey|SecretKey' : (inputs.type === 18 ? '按照如下格式输入：APPID|APISecret|APIKey' : '请输入渠道对应的鉴权密钥')
     switch (type) {
+        case 43:
+            return '请输入 AiPPT 渠道所需密钥（格式见类型说明）';
+        case 44:
+            return '请输入高德渠道所需密钥（格式见类型说明）';
+        case 45:
+            return '填写深知上游 Bearer Token；Base URL 至 …/deepresearch；客户端须 stream:true，模型 deep-research';
+        case 5:
+        case 46:
+            return '请输入 Anthropic API Key（x-api-key）';
+        case 14:
         case 15:
-            return '按照如下格式输入：APIKey|SecretKey';
-        case 18:
-            return '按照如下格式输入：APPID|APISecret|APIKey';
-        case 22:
-            return '按照如下格式输入：APIKey-AppId，例如：fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041';
-        case 23:
-            return '按照如下格式输入：AppId|SecretId|SecretKey';
+        case 42:
+            return '请输入 Gemini API Key';
         default:
             return '请输入渠道对应的鉴权密钥';
     }
 }
 
 const EditChannel = (props) => {
-    const navigate = useNavigate();
     const channelId = props.editingChannel.id;
     const isEdit = channelId !== undefined;
     const [loading, setLoading] = useState(isEdit);
@@ -37,7 +38,7 @@ const EditChannel = (props) => {
     };
     const originInputs = {
         name: '',
-        type: 1,
+        type: 41,
         key: '',
         openai_organization: '',
         base_url: '',
@@ -48,7 +49,16 @@ const EditChannel = (props) => {
         groups: ['default'],
         routing_provider: '',
         routing_skip_adaptive: false,
-        config: '{}'
+        config: '{}',
+        test_model: '',
+        remark: '',
+        tag: '',
+        status_code_mapping: '',
+        param_override: '',
+        header_override: '',
+        setting: '',
+        settings: '',
+        other_info: '',
     };
     const [batch, setBatch] = useState(false);
     const [autoBan, setAutoBan] = useState(true);
@@ -62,74 +72,37 @@ const EditChannel = (props) => {
     const [originModelOptions, setOriginModelOptions] = useState([]);
     const [modelOptions, setModelOptions] = useState([]);
     const [groupOptions, setGroupOptions] = useState([]);
+    const [channelTypeOptions, setChannelTypeOptions] = useState([]);
+    const [channelTypesLoading, setChannelTypesLoading] = useState(true);
     const [basicModels, setBasicModels] = useState([]);
     const [fullModels, setFullModels] = useState([]);
     const [customModel, setCustomModel] = useState('');
     const handleInputChange = (name, value) => {
         if (name === 'type') {
-            let localModels = [];
-            switch (value) {
-                case 14:
-                    localModels = ["claude-instant-1.2", "claude-2", "claude-2.0", "claude-2.1", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307", "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20240620", "claude-3-5-sonnet-20241022"];
-                    break;
-                case 11:
-                    localModels = ['PaLM-2'];
-                    break;
-                case 15:
-                    localModels = ['ERNIE-Bot', 'ERNIE-Bot-turbo', 'ERNIE-Bot-4', 'Embedding-V1'];
-                    break;
-                case 17:
-                    localModels = ["qwen-turbo", "qwen-plus", "qwen-max", "qwen-max-longcontext", 'text-embedding-v1'];
-                    break;
-                case 16:
-                    localModels = ['chatglm_pro', 'chatglm_std', 'chatglm_lite'];
-                    break;
-                case 18:
-                    localModels = ['SparkDesk', 'SparkDesk-v1.1', 'SparkDesk-v2.1', 'SparkDesk-v3.1', 'SparkDesk-v3.1-128K', 'SparkDesk-v3.5', 'SparkDesk-v3.5-32K', 'SparkDesk-v4.0'];
-                    break;
-                case 19:
-                    localModels = ['360GPT_S2_V9', 'embedding-bert-512-v1', 'embedding_s1_v1', 'semantic_similarity_s1_v1'];
-                    break;
-                case 23:
-                    localModels = ['hunyuan'];
-                    break;
-                case 24:
-                    localModels = ['gemini-pro', 'gemini-pro-vision'];
-                    break;
-                case 25:
-                    localModels = ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'];
-                    break;
-                case 26:
-                    localModels = ['glm-4', 'glm-4v', 'glm-3-turbo'];
-                    break;
-                case 2:
-                    localModels = ['mj_imagine', 'mj_variation', 'mj_reroll', 'mj_blend', 'mj_upscale', 'mj_describe'];
-                    break;
-                case 5:
-                    localModels = [
-                        'swap_face',
-                        'mj_imagine',
-                        'mj_variation',
-                        'mj_reroll',
-                        'mj_blend',
-                        'mj_upscale',
-                        'mj_describe',
-                        'mj_zoom',
-                        'mj_shorten',
-                        'mj_modal',
-                        'mj_inpaint',
-                        'mj_custom_zoom',
-                        'mj_high_variation',
-                        'mj_low_variation',
-                        'mj_pan',
-                    ];
-                    break;
-            }
+            const opt = channelTypeOptions.find((o) => o.value === value);
+            const defaultUrl =
+                opt && opt.default_base_url
+                    ? String(opt.default_base_url).trim()
+                    : '';
+            const localModels = getChannelModels(value);
+            setBasicModels(localModels);
             setInputs((prev) => {
                 const typeChanged = prev.type !== value;
                 const nextModels =
                   typeChanged && prev.models.length === 0 ? localModels : prev.models;
-                return {...prev, type: value, models: nextModels};
+                let base_url = prev.base_url;
+                if (typeChanged && defaultUrl) {
+                  const prevTrim = String(prev.base_url || '').trim();
+                  const prevOpt = channelTypeOptions.find((o) => o.value === prev.type);
+                  const prevDefault =
+                    prevOpt && prevOpt.default_base_url
+                      ? String(prevOpt.default_base_url).trim()
+                      : '';
+                  if (!prevTrim || prevTrim === prevDefault) {
+                    base_url = defaultUrl;
+                  }
+                }
+                return {...prev, type: value, models: nextModels, base_url};
             });
             setConfig({ api_version: '', library_id: '', plugin: '' });
             return;
@@ -173,7 +146,6 @@ const EditChannel = (props) => {
             }
             data.routing_provider = cfg.routing_provider || '';
             data.routing_skip_adaptive = !!cfg.routing_skip_adaptive;
-            setInputs(data);
             if (data.config) {
                 try {
                     const c = JSON.parse(data.config);
@@ -193,7 +165,17 @@ const EditChannel = (props) => {
             } else {
                 setAutoBan(true);
             }
-            // console.log(data);
+            data.test_model = data.test_model || '';
+            data.remark = data.remark || '';
+            data.tag = data.tag || '';
+            data.status_code_mapping = data.status_code_mapping || '';
+            data.param_override = data.param_override || '';
+            data.header_override = data.header_override || '';
+            data.setting = data.setting || '';
+            data.settings = data.settings || '';
+            data.other_info = data.other_info || '';
+            setInputs(data);
+            setBasicModels(getChannelModels(data.type));
         } else {
             showError(message);
         }
@@ -209,9 +191,6 @@ const EditChannel = (props) => {
             }));
             setOriginModelOptions(localModelOptions);
             setFullModels(res.data.data.map((model) => model.id));
-            setBasicModels(res.data.data.filter((model) => {
-                return model.id.startsWith('gpt-3') || model.id.startsWith('text-');
-            }).map((model) => model.id));
         } catch (error) {
             showError(error.message);
         }
@@ -243,18 +222,36 @@ const EditChannel = (props) => {
     }, [originModelOptions, inputs.models]);
 
     useEffect(() => {
-        fetchModels().then();
-        fetchGroups().then();
-        if (isEdit) {
-            loadChannel().then(
-                () => {
-
+        (async () => {
+            try {
+                const res = await API.get('/api/models');
+                if (res.data?.success && res.data?.data) {
+                    setChannelModelsCache(res.data.data);
                 }
-            );
-        } else {
-            setInputs(originInputs);
-            setConfig({ api_version: '', library_id: '', plugin: '' });
-        }
+            } catch (_) {
+                /* ignore */
+            }
+            try {
+                const res = await API.get('/api/model_catalog/editor_options');
+                const opts = res.data?.data?.channel_types;
+                if (Array.isArray(opts) && opts.length) {
+                    setChannelTypeOptions(opts);
+                }
+            } catch (_) {
+                /* ignore */
+            } finally {
+                setChannelTypesLoading(false);
+            }
+            await fetchModels();
+            await fetchGroups();
+            if (isEdit) {
+                await loadChannel();
+            } else {
+                setInputs({ ...originInputs });
+                setConfig({ api_version: '', library_id: '', plugin: '' });
+                setBasicModels(getChannelModels(originInputs.type));
+            }
+        })();
     }, [props.editingChannel.id]);
 
 
@@ -271,18 +268,24 @@ const EditChannel = (props) => {
             showInfo('模型映射必须是合法的 JSON 格式！');
             return;
         }
+        for (const j of [
+            inputs.status_code_mapping,
+            inputs.param_override,
+            inputs.header_override,
+            inputs.setting,
+            inputs.settings,
+        ]) {
+            if (j && String(j).trim() && !verifyJSON(j)) {
+                showInfo('扩展 JSON 配置格式无效');
+                return;
+            }
+        }
         let localInputs = {...inputs};
         if (localInputs.base_url && localInputs.base_url.endsWith('/')) {
             localInputs.base_url = localInputs.base_url.slice(0, localInputs.base_url.length - 1);
         }
         let cfg = { ...config };
-        if (localInputs.type === 3 && !cfg.api_version) {
-            cfg.api_version = '2024-03-01-preview';
-        }
-        if (localInputs.type === 18 && !cfg.api_version) {
-            cfg.api_version = 'v2.1';
-        }
-        if (localInputs.type === 24 && !cfg.api_version) {
+        if ((localInputs.type === 14 || localInputs.type === 42) && !cfg.api_version) {
             cfg.api_version = 'v1';
         }
         cfg.routing_provider = inputs.routing_provider || '';
@@ -298,6 +301,7 @@ const EditChannel = (props) => {
         localInputs.auto_ban = autoBan ? 1 : 0;
         localInputs.models = localInputs.models.join(',');
         localInputs.group = localInputs.groups.join(',');
+        delete localInputs.groups;
         delete localInputs.routing_provider;
         delete localInputs.routing_skip_adaptive;
         if (isEdit) {
@@ -342,6 +346,12 @@ const EditChannel = (props) => {
         handleInputChange('models', localModels);
     };
 
+    const channelTypeSelectList = channelTypeOptions.map((o) => ({
+        label: o.text,
+        value: o.value,
+    }));
+    const channelTypeCur = channelTypeOptions.find((o) => o.value === inputs.type);
+
     return (
         <>
             <SideSheet
@@ -363,78 +373,34 @@ const EditChannel = (props) => {
                 onCancel={() => handleCancel()}
                 width={isMobile() ? '100%' : 600}
             >
-                <Spin spinning={loading}>
+                <Spin spinning={loading || channelTypesLoading}>
                     <div style={{ marginTop: 10 }}>
                         <Typography.Text strong>类型：</Typography.Text>
                     </div>
                     <Select
                       name='type'
                       required
-                      optionList={CHANNEL_OPTIONS}
+                      placeholder={channelTypesLoading ? '加载渠道类型…' : undefined}
+                      optionList={channelTypeSelectList}
                       value={inputs.type}
                       onChange={value => handleInputChange('type', value)}
                       style={{ width: '50%' }}
                     />
                     {
-                      inputs.type === 3 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Banner type={"warning"} description={
-                                    <>
-                                        注意，<strong>模型部署名称必须和模型名称保持一致</strong>，因为 One API 会把请求体中的
-                                        model
-                                        参数替换为你的部署名称（模型名称中的点会被剔除），<a target='_blank'
-                                                                                          href='https://github.com/songquanpeng/one-api/issues/133?notification_referrer_id=NT_kwDOAmJSYrM2NjIwMzI3NDgyOjM5OTk4MDUw#issuecomment-1571602271'>图片演示</a>。
-                                    </>
-                                }>
-                                </Banner>
-                            </div>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>AZURE_OPENAI_ENDPOINT：</Typography.Text>
-                            </div>
-                            <Input
-                              label='AZURE_OPENAI_ENDPOINT'
-                              name='azure_base_url'
-                              placeholder={'请输入 AZURE_OPENAI_ENDPOINT，例如：https://docs-test-001.openai.azure.com'}
-                              onChange={value => {
-                                  handleInputChange('base_url', value)
-                              }}
-                              value={inputs.base_url}
-                              autoComplete='new-password'
-                            />
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>默认 API 版本：</Typography.Text>
-                            </div>
-                            <Input
-                              label='默认 API 版本'
-                              name='azure_api_version'
-                              placeholder={'请输入默认 API 版本，例如：2024-03-01-preview，该配置可以被实际的请求查询参数所覆盖'}
-                              onChange={value => {
-                                  setConfig((c) => ({ ...c, api_version: value }));
-                              }}
-                              value={config.api_version}
-                              autoComplete='new-password'
-                            />
-                        </>
-                      )
+                      channelTypeCur?.tip ? (
+                        <div style={{ marginTop: 10 }}>
+                          <Banner type="info" description={
+                            <span dangerouslySetInnerHTML={{ __html: channelTypeCur.tip }} />
+                          } />
+                        </div>
+                      ) : null
                     }
                     {
-                      inputs.type === 8 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>Base URL：</Typography.Text>
-                            </div>
-                            <Input
-                              name='base_url'
-                              placeholder={'请输入自定义渠道的 Base URL'}
-                              onChange={value => {
-                                  handleInputChange('base_url', value)
-                              }}
-                              value={inputs.base_url}
-                              autoComplete='new-password'
-                            />
-                        </>
-                      )
+                      channelTypeCur?.description ? (
+                        <div style={{ marginTop: 10 }}>
+                          <Banner type="info" description={channelTypeCur.description} />
+                        </div>
+                      ) : null
                     }
                     <div style={{ marginTop: 10 }}>
                         <Typography.Text strong>名称：</Typography.Text>
@@ -468,62 +434,7 @@ const EditChannel = (props) => {
                       optionList={groupOptions}
                     />
                     {
-                      inputs.type === 18 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>模型版本：</Typography.Text>
-                            </div>
-                            <Input
-                              name='api_version'
-                              placeholder={'请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1'}
-                              onChange={value => {
-                                  setConfig((c) => ({ ...c, api_version: value }));
-                              }}
-                              value={config.api_version}
-                              autoComplete='new-password'
-                            />
-                        </>
-                      )
-                    }
-                    {
-                      inputs.type === 21 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>知识库 ID：</Typography.Text>
-                            </div>
-                            <Input
-                              label='知识库 ID'
-                              name='library_id'
-                              placeholder={'请输入知识库 ID，例如：123456'}
-                              onChange={value => {
-                                  setConfig((c) => ({ ...c, library_id: value }));
-                              }}
-                              value={config.library_id}
-                              autoComplete='new-password'
-                            />
-                        </>
-                      )
-                    }
-                    {
-                      inputs.type === 17 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>DashScope 插件参数：</Typography.Text>
-                            </div>
-                            <Input
-                              name='plugin'
-                              placeholder={'请输入插件参数（X-DashScope-Plugin 请求头取值）'}
-                              onChange={value => {
-                                  setConfig((c) => ({ ...c, plugin: value }));
-                              }}
-                              value={config.plugin}
-                              autoComplete='new-password'
-                            />
-                        </>
-                      )
-                    }
-                    {
-                      inputs.type === 24 && (
+                      (inputs.type === 14 || inputs.type === 42) && (
                         <>
                             <div style={{ marginTop: 10 }}>
                                 <Typography.Text strong>Gemini API 版本：</Typography.Text>
@@ -540,6 +451,19 @@ const EditChannel = (props) => {
                         </>
                       )
                     }
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>Base URL / 代理：</Typography.Text>
+                    </div>
+                    <Typography.Paragraph type="tertiary" size="small" style={{ marginTop: 4, marginBottom: 8 }}>
+                      可填上游或自定义兼容地址；留空则使用默认。
+                    </Typography.Paragraph>
+                    <Input
+                      name='base_url'
+                      placeholder={'可选，例如 https://api.openai.com 或通过代理访问的地址'}
+                      onChange={value => handleInputChange('base_url', value)}
+                      value={inputs.base_url}
+                      autoComplete='new-password'
+                    />
                     <div style={{ marginTop: 10 }}>
                         <Typography.Text strong>模型：</Typography.Text>
                     </div>
@@ -693,6 +617,86 @@ const EditChannel = (props) => {
                               strong>是否自动禁用（仅当自动禁用开启时有效），关闭后不会自动禁用该渠道：</Typography.Text>
                         </Space>
                     </div>
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>默认测试模型：</Typography.Text>
+                    </div>
+                    <Input
+                      name='test_model'
+                      placeholder='单渠道测试未带 model 参数时使用'
+                      onChange={value => handleInputChange('test_model', value)}
+                      value={inputs.test_model}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>备注 / 标签：</Typography.Text>
+                    </div>
+                    <Input
+                      name='remark'
+                      placeholder='备注'
+                      onChange={value => handleInputChange('remark', value)}
+                      value={inputs.remark}
+                    />
+                    <Input
+                      style={{ marginTop: 8 }}
+                      name='tag'
+                      placeholder='标签'
+                      onChange={value => handleInputChange('tag', value)}
+                      value={inputs.tag}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>状态码映射 JSON：</Typography.Text>
+                    </div>
+                    <TextArea
+                      placeholder='如 {"429":200}'
+                      onChange={value => handleInputChange('status_code_mapping', value)}
+                      value={inputs.status_code_mapping}
+                      style={{ minHeight: 60, fontFamily: 'JetBrains Mono, Consolas' }}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>请求体覆盖 JSON：</Typography.Text>
+                    </div>
+                    <TextArea
+                      onChange={value => handleInputChange('param_override', value)}
+                      value={inputs.param_override}
+                      style={{ minHeight: 80, fontFamily: 'JetBrains Mono, Consolas' }}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>请求头覆盖 JSON：</Typography.Text>
+                    </div>
+                    <TextArea
+                      onChange={value => handleInputChange('header_override', value)}
+                      value={inputs.header_override}
+                      style={{ minHeight: 60, fontFamily: 'JetBrains Mono, Consolas' }}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>
+                          setting 列（接口字段 setting）— 与下方 settings 为不同字段
+                        </Typography.Text>
+                    </div>
+                    <TextArea
+                      placeholder='库列 setting，JSON，一般可留空'
+                      onChange={value => handleInputChange('setting', value)}
+                      value={inputs.setting}
+                      style={{ minHeight: 50, fontFamily: 'JetBrains Mono, Consolas' }}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>
+                          settings 列（接口字段 settings）
+                        </Typography.Text>
+                    </div>
+                    <TextArea
+                      placeholder='库列 settings，JSON（如 api_version 等）'
+                      onChange={value => handleInputChange('settings', value)}
+                      value={inputs.settings}
+                      style={{ minHeight: 50, fontFamily: 'JetBrains Mono, Consolas' }}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <Typography.Text strong>other_info：</Typography.Text>
+                    </div>
+                    <TextArea
+                      onChange={value => handleInputChange('other_info', value)}
+                      value={inputs.other_info}
+                      style={{ minHeight: 40, fontFamily: 'JetBrains Mono, Consolas' }}
+                    />
 
                     {
                       !isEdit && (
@@ -707,43 +711,6 @@ const EditChannel = (props) => {
                                 <Typography.Text strong>批量创建</Typography.Text>
                             </Space>
                         </div>
-                      )
-                    }
-                    {
-                      inputs.type !== 3 && inputs.type !== 8 && inputs.type !== 22 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>代理：</Typography.Text>
-                            </div>
-                            <Input
-                              label='代理'
-                              name='base_url'
-                              placeholder={'此项可选，用于通过代理站来进行 API 调用'}
-                              onChange={value => {
-                                  handleInputChange('base_url', value)
-                              }}
-                              value={inputs.base_url}
-                              autoComplete='new-password'
-                            />
-                        </>
-                      )
-                    }
-                    {
-                      inputs.type === 22 && (
-                        <>
-                            <div style={{ marginTop: 10 }}>
-                                <Typography.Text strong>私有部署地址：</Typography.Text>
-                            </div>
-                            <Input
-                              name='base_url'
-                              placeholder={'请输入私有部署地址，格式为：https://fastgpt.run/api/openapi'}
-                              onChange={value => {
-                                  handleInputChange('base_url', value)
-                              }}
-                              value={inputs.base_url}
-                              autoComplete='new-password'
-                            />
-                        </>
                       )
                     }
 

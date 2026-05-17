@@ -31,6 +31,12 @@ let headerButtons = [
     admin: true,
   },
   {
+    name: 'header.model_catalog',
+    to: '/model-catalog',
+    icon: 'list alternate outline',
+    admin: true,
+  },
+  {
     name: 'header.routing',
     to: '/routing',
     icon: 'random',

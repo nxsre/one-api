@@ -23,7 +23,7 @@ func setDefaults(v *viper.Viper) {
 	d := func(key string, val any) { v.SetDefault(key, val) }
 
 	d("port", 3000)
-	d("log_dir", "./logs")
+	d("log_dir", "/app/logs")
 	d("gin_mode", "")
 	d("channel_test_frequency", 0)
 	d("batch_update_enabled", false)
@@ -32,6 +32,7 @@ func setDefaults(v *viper.Viper) {
 	d("sqlite_path", "")
 	d("sql_dsn", "")
 	d("log_sql_dsn", "")
+	d("log_shard_by_day", false)
 	d("sqlite_busy_timeout", 3000)
 
 	d("debug", false)
@@ -115,6 +116,12 @@ func setDefaults(v *viper.Viper) {
 	d("nacos_cs_encryption_key", "")
 	d("nacos_cs_encryption_key_previous", "")
 	d("nacos_cs_client_get_return_ciphertext", false)
+
+	d("request_audit_enabled", true)
+	d("request_audit_log_dir", "")
+	d("request_audit_max_body_bytes", 262144)
+
+	d("relay_protocol_bridge_enabled", false)
 }
 
 // Init 解析命令行、加载 TOML、写入默认值。须在整个进程最先调用之一。

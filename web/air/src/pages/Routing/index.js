@@ -107,8 +107,13 @@ export default function Routing() {
         showError(res.data?.message || '加载失败');
         return;
       }
-      setPolicies(res.data.data || {});
-      const alias = res.data.data?.ModelAliasPolicy;
+      const data = res.data.data || {};
+      setPolicies({
+        ...data,
+        RelayProtocolBridgeEnabled:
+          data.RelayProtocolBridgeEnabled === 'true' ? 'true' : 'false',
+      });
+      const alias = data.ModelAliasPolicy;
       if (alias) setAliasRaw(alias);
     } catch (e) {
       showError(e.message);
@@ -207,9 +212,15 @@ export default function Routing() {
       return;
     }
     try {
+      let value;
+      if (key === 'RelayProtocolBridgeEnabled') {
+        value = policies[key] === 'true' ? 'true' : 'false';
+      } else {
+        value = policies[key] ?? '{}';
+      }
       const res = await API.put('/api/option', {
         key,
-        value: policies[key] ?? '{}'
+        value
       });
       if (!res.data?.success) {
         showError(res.data?.message || '保存失败');
@@ -381,6 +392,31 @@ export default function Routing() {
     <div style={{ paddingTop: 12 }}>
       <Banner type="info" description="策略 JSON 保存在运营选项；单项保存需 Root。可先校验别名再写入 ModelAliasPolicy。" />
       <Space vertical align="start" style={{ width: '100%', marginTop: 16 }} spacing="loose">
+        <div style={{ width: '100%' }}>
+          <Typography.Title heading={6}>跨协议转发</Typography.Title>
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+            开启后 Anthropic / Gemini 原生 API 可选用非对应协议渠道，经 OpenAI 语义转发（需模型映射）。关闭则仅允许协议匹配。
+          </Typography.Text>
+          <Checkbox
+            checked={policies.RelayProtocolBridgeEnabled === 'true'}
+            onChange={(e) =>
+              setPolicies((p) => ({
+                ...p,
+                RelayProtocolBridgeEnabled: e.target.checked ? 'true' : 'false',
+              }))
+            }
+          >
+            允许跨协议转发（RelayProtocolBridgeEnabled）
+          </Checkbox>
+          <Button
+            theme="light"
+            disabled={!isRoot()}
+            onClick={() => void saveOption('RelayProtocolBridgeEnabled')}
+            style={{ marginTop: 8 }}
+          >
+            保存此项
+          </Button>
+        </div>
         {POLICY_KEYS.map((k) => (
           <div key={k} style={{ width: '100%' }}>
             <Typography.Title heading={6}>{k}</Typography.Title>

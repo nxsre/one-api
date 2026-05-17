@@ -5,7 +5,7 @@ import "github.com/songquanpeng/one-api/relay/apitype"
 func ToAPIType(channelType int) int {
 	apiType := apitype.OpenAI
 	switch channelType {
-	case Anthropic:
+	case Anthropic, AnthropicCompatible:
 		apiType = apitype.Anthropic
 	case Baidu:
 		apiType = apitype.Baidu
@@ -43,8 +43,8 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.AiPPT
 	case AmapPOI:
 		apiType = apitype.AmapPOI
-	case Bifrost:
-		apiType = apitype.OpenAI
+	case DeepResearch:
+		apiType = apitype.DeepResearch
 	case Proxy:
 		apiType = apitype.Proxy
 	}

@@ -1,6 +1,6 @@
 import { API } from './api';
 
-/** 并发合并：StrictMode 双次 effect、或多组件同时触发时只发一条 HTTP。成功后短路缓存（直至整页刷新）。 */
+/** 并发合并：StrictMode 双次 effect、或多组件同时触发时只发一条 HTTP。成功后短路缓存（直至整页刷新或 clearSystemStatusFetchCache）。 */
 let inflight = null;
 let cachedBody = null;
 

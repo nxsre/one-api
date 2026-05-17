@@ -8,7 +8,10 @@ import (
 	"github.com/songquanpeng/one-api/relay/model"
 )
 
-func ShouldDisableChannel(err *model.Error, statusCode int) bool {
+func ShouldDisableChannel(err *model.Error, statusCode int, perChannelAutoBan bool) bool {
+	if !perChannelAutoBan {
+		return false
+	}
 	if !config.AutomaticDisableChannelEnabled {
 		return false
 	}

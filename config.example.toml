@@ -2,7 +2,7 @@
 # 键名均为 snake_case，与代码中旧环境变量名对应（大写转小写）。
 
 port = 3000
-log_dir = "./logs"
+log_dir = "/app/logs"
 gin_mode = ""            # 设为 "debug" 时等价于原 GIN_MODE=debug
 channel_test_frequency = 0
 batch_update_enabled = false
@@ -47,6 +47,15 @@ relay_proxy = ""
 user_content_request_proxy = ""
 user_content_request_timeout = 30
 enforce_include_usage = false
+
+# Relay 请求审计（JSONL，含请求/响应正文，敏感信息勿在公网路径开启）。默认开启，文件在 log_dir 下的 request_audit/；也可单独指定 request_audit_log_dir。
+request_audit_enabled = true
+request_audit_log_dir = ""       # 留空则用 log_dir 下的 request_audit/
+request_audit_max_body_bytes = 262144
+
+# 进程启动默认：是否允许 Anthropic / Gemini 原生路径在渠道协议不一致时经 OpenAI 语义跨厂商转发。管理端「智能路由」中的选项会覆盖此默认值（需配合模型映射）。
+relay_protocol_bridge_enabled = false
+
 test_prompt = "Output only your specific model name with no additional text."
 
 # S3

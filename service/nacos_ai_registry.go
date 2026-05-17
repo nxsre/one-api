@@ -933,40 +933,103 @@ type NacosSkillListData struct {
 func ptrI64(ms int64) *int64 { return &ms }
 func ptrI(n int) *int       { return &n }
 
-func NacosAIListSkills(namespace, skillNameFilter string, pageNo, pageSize int) (*NacosSkillListData, error) {
-	ns := NormalizeNacosNamespaceID(namespace)
-	q := model.DB.Model(&model.NacosAIArtifact{}).Where("namespace_id = ? AND kind = ?", ns, model.NacosAIKindSkill)
-	if strings.TrimSpace(skillNameFilter) != "" {
-		q = q.Where("name = ?", strings.TrimSpace(skillNameFilter))
-	}
-	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return nil, err
-	}
+// NacosAIListSkillsFilter 与 Nacos console-ui-next skills/list 查询参数对齐。
+type NacosAIListSkillsFilter struct {
+	SkillName     string
+	SearchBlur    bool
+	OrderBy       string // "" 按更新时间；download_count 按下载量
+	Scope         string // PUBLIC | PRIVATE
+	BizTag        string
+	OwnerUsername string // 按创建者用户名筛选 owner_user_id；空表示不限
+}
+
+func NacosAIListSkills(namespace string, filter NacosAIListSkillsFilter, pageNo, pageSize int) (*NacosSkillListData, error) {
 	if pageNo < 1 {
 		pageNo = 1
 	}
 	if pageSize < 1 {
 		pageSize = 10
 	}
+	ns := NormalizeNacosNamespaceID(namespace)
+	q := model.DB.Model(&model.NacosAIArtifact{}).Where("namespace_id = ? AND kind = ?", ns, model.NacosAIKindSkill)
+	if sn := strings.TrimSpace(filter.SkillName); sn != "" {
+		if filter.SearchBlur {
+			q = q.Where("name LIKE ?", "%"+sn+"%")
+		} else {
+			q = q.Where("name = ?", sn)
+		}
+	}
+	if sc := strings.TrimSpace(filter.Scope); sc != "" {
+		q = q.Where("UPPER(scope) = ?", strings.ToUpper(sc))
+	}
+	if bt := strings.TrimSpace(filter.BizTag); bt != "" {
+		q = q.Where("biz_tags LIKE ?", "%"+bt+"%")
+	}
+	if ow := strings.TrimSpace(filter.OwnerUsername); ow != "" {
+		var u model.User
+		if err := model.DB.Select("id").Where("username = ?", ow).First(&u).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return &NacosSkillListData{
+					TotalCount:     0,
+					PageNumber:     pageNo,
+					PagesAvailable: 0,
+					PageItems:      []NacosSkillListItem{},
+				}, nil
+			}
+			return nil, err
+		}
+		q = q.Where("owner_user_id = ?", u.Id)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	orderSQL := "updated_at DESC"
+	if strings.TrimSpace(filter.OrderBy) == "download_count" {
+		orderSQL = "download_count DESC, updated_at DESC"
+	}
 	var arts []model.NacosAIArtifact
 	offset := (pageNo - 1) * pageSize
-	if err := q.Order("updated_at desc").Offset(offset).Limit(pageSize).Find(&arts).Error; err != nil {
+	if err := q.Order(orderSQL).Offset(offset).Limit(pageSize).Find(&arts).Error; err != nil {
 		return nil, err
 	}
 	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
 	if total == 0 {
 		pages = 0
 	}
+	ownerIDs := make([]int, 0, len(arts))
+	seenOwner := map[int]struct{}{}
+	for _, a := range arts {
+		if a.OwnerUserId > 0 {
+			if _, ok := seenOwner[a.OwnerUserId]; !ok {
+				seenOwner[a.OwnerUserId] = struct{}{}
+				ownerIDs = append(ownerIDs, a.OwnerUserId)
+			}
+		}
+	}
+	ownerNames := map[int]string{}
+	if len(ownerIDs) > 0 {
+		var users []model.User
+		if err := model.DB.Select("id", "username").Where("id IN ?", ownerIDs).Find(&users).Error; err == nil {
+			for _, u := range users {
+				ownerNames[u.Id] = u.Username
+			}
+		}
+	}
 	items := make([]NacosSkillListItem, 0, len(arts))
 	for _, a := range arts {
 		vs, _ := listVersions(a.Id)
 		on := countOnline(vs)
 		ut := a.UpdatedAt.UnixMilli()
+		own := ""
+		if a.OwnerUserId > 0 {
+			own = ownerNames[a.OwnerUserId]
+		}
 		item := NacosSkillListItem{
 			NamespaceId:      ns,
 			Name:             a.Name,
 			Description:      a.Description,
+			Owner:            own,
 			Enable:           a.Enable,
 			Scope:            strings.TrimSpace(a.Scope),
 			BizTags:          a.BizTags,
@@ -999,10 +1062,18 @@ func NacosAIDescribeSkill(namespace, skillName string) (*NacosSkillDetail, error
 	}
 	on := countOnline(vs)
 	ut := a.UpdatedAt.UnixMilli()
+	ownerName := ""
+	if a.OwnerUserId > 0 {
+		var ou model.User
+		if err := model.DB.Select("username").Where("id = ?", a.OwnerUserId).First(&ou).Error; err == nil {
+			ownerName = ou.Username
+		}
+	}
 	item := NacosSkillListItem{
 		NamespaceId:      ns,
 		Name:             a.Name,
 		Description:      a.Description,
+		Owner:            ownerName,
 		Enable:           a.Enable,
 		Scope:            strings.TrimSpace(a.Scope),
 		BizTags:          a.BizTags,

@@ -2,6 +2,8 @@
 
 本文描述在 Kubernetes 上**生产可用**的推荐部署方式：配置以 **`config.toml`（viper）** 为准，采用 **「主实例 1 + 从实例 N」**，避免多副本同时跑数据库迁移，并给出清单示例目录 `k8s/example/`。
 
+**多副本、负载均衡、Redis 与路由/限速在集群内如何一致**：请先阅读 **[集群部署说明与注意事项](./cluster-deployment.md)**（适用于 K8s 前置 Ingress/LB 及裸机 NGINX/LVS 等多实例场景）。
+
 ## 1. 架构与角色
 
 | 组件 | 作用 |
@@ -9,7 +11,7 @@
 | **主实例（primary）** | `node_type` **留空**或 **`master`**。启动时执行 **GORM AutoMigrate**（主库结构变更只应发生在这里）。 replicas **固定为 1**。 |
 | **从实例（worker）** | `node_type = "slave"`。**不执行** `migrateDB` / 日志库迁移逻辑，仅做 API 与业务；可按负载 **水平扩容**。 |
 | **数据库** | 多实例 **共用同一 `sql_dsn`**（推荐托管 MySQL/PostgreSQL 或集群内高可用中间件）。 |
-| **Redis** | **共用同一 `redis_conn_string`**，用于会话、限流、缓存等一致性。 |
+| **Redis** | **共用同一 `redis_conn_string`**。集群内 **模型限速计数、熔断/自适应路由状态、会话等** 依赖 Redis；多实例须指向 **同一逻辑 Redis**，详见 **[cluster-deployment.md](./cluster-deployment.md)**。 |
 | **配置** | 进程参数：`/one-api --config /etc/one-api/config.toml`（镜像 `ENTRYPOINT` 已为 `/one-api`）。 |
 
 **不推荐**：一个 Deployment 多副本且全部为「主」语义——每个 Pod 启动都会尝试迁移，数据库上可能出现锁竞争或升级抖动。若暂时只能单 Deployment，请接受该风险，或改为单副本 + HPA 谨慎扩容。
@@ -45,7 +47,7 @@
 
 ### 3.2 敏感信息
 
-- **`sql_dsn`、`session_secret`、Redis 密码** 等须走 **Secret**（或 SealedSecrets / External Secrets / SOPS），**不要**写进 ConfigMap 明文。
+- **`sql_dsn`、`session_secret`、Redis 密码、`login_password_rsa_private_key`** 等须走 **Secret**（或 SealedSecrets / External Secrets / SOPS），**不要**写进 ConfigMap 明文。
 - 示例清单采用 **一个 Secret 内两个键**：`primary.toml`、`worker.toml`，由 Deployment 以 `subPath` 挂成同一路径 `/etc/one-api/config.toml`。你也可以拆成两个 Secret，由 CI 注入。
 
 ### 3.3 时区
@@ -64,7 +66,7 @@ env:
 
 公开发行接口 **`GET /api/status`** 返回 JSON 且 `success: true`，适合作为 **就绪 / 存活探针**（无需鉴权）。
 
-示例：
+**HTTP（默认，与 `port = 3000`、未启用进程内 TLS 一致）**：
 
 ```yaml
 readinessProbe:
@@ -73,15 +75,42 @@ readinessProbe:
     port: http
   initialDelaySeconds: 15
   periodSeconds: 10
+  timeoutSeconds: 5
 livenessProbe:
   httpGet:
     path: /api/status
     port: http
   initialDelaySeconds: 60
   periodSeconds: 30
+  timeoutSeconds: 5
 ```
 
+**HTTPS（Pod 内嵌入式 TLS，例如 `https_port` 监听、容器声明 `name: https` 的端口）**：
+
+```yaml
+readinessProbe:
+  httpGet:
+    path: /api/status
+    port: https
+    scheme: HTTPS
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+livenessProbe:
+  httpGet:
+    path: /api/status
+    port: https
+    scheme: HTTPS
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 5
+```
+
+使用 `scheme: HTTPS` 时，kubelet **不会校验** Pod IP 上的服务端证书（API 无 `insecureSkipVerify` 字段）。
+
 根据冷启动与数据库延迟调整 `initialDelaySeconds`。
+
+仓库内 **`k8s/example/deployment-primary.yaml`** / **`deployment-worker.yaml`** 默认为 HTTP 探针，文末注释中含与上文一致的 HTTPS 片段，启用嵌入式 TLS 时可按需切换。
 
 ---
 
@@ -107,7 +136,7 @@ livenessProbe:
 
 1. 将证书放入 Kubernetes **Secret**（如 `kubernetes.io/tls`），在 Deployment 中 **volumeMount** 到与配置一致的路径（示例中为 `/etc/one-api/tls/`）。
 2. 编辑该 Secret 中的 TOML，取消注释或填入正确的 `tls_cert_file` / `tls_key_file`。
-3. 若 **`https_only = true`** 且 **`port`** 改为 **443**（或仅暴露 HTTPS），需同步修改 Deployment 的 **端口、Service 与探针**（例如 `readinessProbe.httpGet.scheme: HTTPS`）。
+3. 若 **`https_only = true`** 且 **`port`** 改为 **443**（或仅暴露 HTTPS），需同步修改 Deployment 的 **端口、Service 与探针**；就绪/存活探针示例见上文 **§4 HTTPS** 与 **`k8s/example/deployment-*.yaml`** 内注释。
 
 主从两份 TOML 的 TLS 段通常相同；证书卷可同时挂到 primary 与 worker。
 
@@ -125,6 +154,7 @@ livenessProbe:
 
 目录 **`k8s/example/`** 提供：
 
+- `README.md` — 探针 HTTP/HTTPS 切换要点
 - `namespace.yaml`
 - `secret-config.yaml` — **务必替换**占位 DSN、密钥后再应用；内含可选的 **应用内 TLS**（`tls_cert_file` / `tls_key_file` / `https_only` / `https_port`）示例与注释（切勿提交真实秘密到 Git）。
 - `deployment-primary.yaml`
@@ -184,3 +214,13 @@ curl -s http://127.0.0.1:3000/api/status | head
 本地 `docker-compose.yml` 使用 `config.docker.toml` 挂载为 `/app/config.toml`。K8s 中路径可自定义，只要与 **`--config` 路径一致**；示例使用 **`/etc/one-api/config.toml`**。
 
 本文与仓库 **`config.example.toml`**、`config.docker.toml` 及 **`common/cfg`** 行为一致；键名已全部为小写 snake_case。
+
+---
+
+## 12. 多实例一致性与延伸阅读
+
+- **系统选项 JSON**（路由策略、限速规则等）：各 Pod 内存 + 周期 **`SYNC_FREQUENCY`** 从库同步；**在任一 Pod 上保存后，其他 Pod 最长滞后约一个同步周期**。建议生产显式设置 `SYNC_FREQUENCY`（如 60～300 秒），详见 **[cluster-deployment.md](./cluster-deployment.md)**。
+- **渠道列表 / `model_mapping`**：在内存渠道缓存模式下同样按同步周期刷新；变更渠道后全集群对齐时间与此相关。
+- **Ingress / LB**：对 API 一般 **无需** 为模型限速单独配置 sticky；限速计数在 **Redis** 中全局生效。
+
+完整说明（含 NGINX/LVS 前置、Redis 必选项）见 **[集群部署说明](./cluster-deployment.md)**。

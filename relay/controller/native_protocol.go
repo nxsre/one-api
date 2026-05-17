@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/relay"
 	"github.com/songquanpeng/one-api/relay/billing"
 	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
@@ -21,6 +22,7 @@ import (
 	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/songquanpeng/one-api/relay/protocolbridge"
 	"github.com/songquanpeng/one-api/relay/relaymode"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 )
@@ -237,9 +239,6 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 		return openai.ErrorWrapper(fmt.Errorf("method not allowed"), "method_not_allowed", http.StatusMethodNotAllowed)
 	}
 	m := meta.GetByContext(c)
-	if m.ChannelType != channeltype.Anthropic {
-		return openai.ErrorWrapper(fmt.Errorf("使用 Anthropic 原生 Messages API 须选择 Claude（Anthropic）渠道类型；路径示例 /anthropic/v1/messages 或 /v1/messages"), "channel_type_mismatch", http.StatusBadRequest)
-	}
 	body, err := common.GetRequestBody(c)
 	if err != nil {
 		return openai.ErrorWrapper(err, "read_body_failed", http.StatusBadRequest)
@@ -268,14 +267,33 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 
 	m.OriginModelName = originModel
 	m.ActualModelName = mapped
+
+	modelRatio := billingratio.GetModelRatio(mapped, m.ChannelType)
+	groupRatio := billingratio.GetGroupRatio(m.Group)
+	ratio := modelRatio * groupRatio
+
+	if m.ChannelType != channeltype.Anthropic {
+		if !config.IsRelayProtocolBridgeEnabled() {
+			return openai.ErrorWrapper(fmt.Errorf("跨协议转发未开启：请在管理端「智能路由」策略页开启，或在配置中设置 relay_protocol_bridge_enabled；或选用 Anthropic 协议渠道走原生直连"), "protocol_bridge_disabled", http.StatusBadRequest)
+		}
+		g, convErr := protocolbridge.GeneralFromAnthropicRequest(&req)
+		if convErr != nil {
+			return openai.ErrorWrapper(convErr, "protocol_translate_failed", http.StatusBadRequest)
+		}
+		g.Model = mapped
+		pt := getPromptTokens(g, relaymode.ChatCompletions)
+		preConsumed, bizErr := preConsumeQuota(ctx, g, pt, ratio, m)
+		if bizErr != nil {
+			return bizErr
+		}
+		return relayTranslatedChatCompletion(c, m, g, preConsumed, modelRatio, groupRatio, ratio, originModel, nativeClientAnthropic)
+	}
+
 	m.Mode = relaymode.AnthropicMessages
 	m.IsStream = req.Stream
 	m.PromptTokens = estimateAnthropicTokens(&req)
 	m.OverrideRequestURL = ""
 
-	modelRatio := billingratio.GetModelRatio(mapped, m.ChannelType)
-	groupRatio := billingratio.GetGroupRatio(m.Group)
-	ratio := modelRatio * groupRatio
 	fakeReq := &model.GeneralOpenAIRequest{
 		Model:     originModel,
 		MaxTokens: req.MaxTokens,
@@ -308,7 +326,9 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 	if isErrorHappened(m, resp) {
 		billing.ReturnPreConsumedQuota(ctx, preConsumed, m.TokenId)
-		return RelayErrorHandler(resp)
+		e := RelayErrorHandler(resp)
+		ApplyRelayStatusCodeMapping(c, e)
+		return e
 	}
 
 	usage, respErr := relayAnthropicNativeResponse(c, resp, m)
@@ -323,7 +343,7 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 		billing.ReturnPreConsumedQuota(ctx, preConsumed, m.TokenId)
 		return openai.ErrorWrapper(fmt.Errorf("empty usage"), "empty_usage", http.StatusInternalServerError)
 	}
-	go postConsumeQuota(ctx, usage, m, fakeReq, ratio, preConsumed, modelRatio, groupRatio, false)
+	go postConsumeQuota(c, usage, m, fakeReq, ratio, preConsumed, modelRatio, groupRatio, false)
 	return nil
 }
 
@@ -334,9 +354,6 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 		return openai.ErrorWrapper(fmt.Errorf("method not allowed"), "method_not_allowed", http.StatusMethodNotAllowed)
 	}
 	m := meta.GetByContext(c)
-	if m.ChannelType != channeltype.Gemini {
-		return openai.ErrorWrapper(fmt.Errorf("使用 Gemini 原生接口须选择 Google Gemini 渠道类型；路径示例 /gemini/v1beta/models/{model}:generateContent、/gemini/models/{model}:generateContent 或 /v1beta/models/…"), "channel_type_mismatch", http.StatusBadRequest)
-	}
 
 	raw := strings.TrimPrefix(c.Param("geminiAction"), "/")
 	if raw == "" {
@@ -376,14 +393,41 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	if err != nil {
 		return openai.ErrorWrapper(err, "read_body_failed", http.StatusBadRequest)
 	}
+
+	modelRatio := billingratio.GetModelRatio(mapped, m.ChannelType)
+	groupRatio := billingratio.GetGroupRatio(m.Group)
+	ratio := modelRatio * groupRatio
+
+	if m.ChannelType != channeltype.Gemini {
+		if !config.IsRelayProtocolBridgeEnabled() {
+			return openai.ErrorWrapper(fmt.Errorf("跨协议转发未开启：请在管理端「智能路由」策略页开启，或在配置中设置 relay_protocol_bridge_enabled；或选用 Google Gemini 协议渠道走原生直连"), "protocol_bridge_disabled", http.StatusBadRequest)
+		}
+		if !strings.Contains(action, "generateContent") {
+			return openai.ErrorWrapper(fmt.Errorf("跨协议转发当前仅支持 :generateContent / :streamGenerateContent"), "unsupported_gemini_action", http.StatusBadRequest)
+		}
+		var chat gemini.ChatRequest
+		if err := json.Unmarshal(body, &chat); err != nil {
+			return openai.ErrorWrapper(err, "invalid_json", http.StatusBadRequest)
+		}
+		g, convErr := protocolbridge.GeneralFromGeminiChatRequest(&chat, mapped)
+		if convErr != nil {
+			return openai.ErrorWrapper(convErr, "protocol_translate_failed", http.StatusBadRequest)
+		}
+		g.Model = mapped
+		g.Stream = m.IsStream
+		pt := getPromptTokens(g, relaymode.ChatCompletions)
+		preConsumed, bizErr := preConsumeQuota(ctx, g, pt, ratio, m)
+		if bizErr != nil {
+			return bizErr
+		}
+		return relayTranslatedChatCompletion(c, m, g, preConsumed, modelRatio, groupRatio, ratio, originModel, nativeClientGemini)
+	}
+
 	m.PromptTokens = openai.CountTokenText(string(body), mapped)
 	if m.PromptTokens < 8 {
 		m.PromptTokens = 8
 	}
 
-	modelRatio := billingratio.GetModelRatio(mapped, m.ChannelType)
-	groupRatio := billingratio.GetGroupRatio(m.Group)
-	ratio := modelRatio * groupRatio
 	fakeReq := &model.GeneralOpenAIRequest{Model: originModel, MaxTokens: 8192}
 	preConsumed, bizErr := preConsumeQuota(ctx, fakeReq, m.PromptTokens, ratio, m)
 	if bizErr != nil {
@@ -404,7 +448,9 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 	if isErrorHappened(m, resp) {
 		billing.ReturnPreConsumedQuota(ctx, preConsumed, m.TokenId)
-		return RelayErrorHandler(resp)
+		e := RelayErrorHandler(resp)
+		ApplyRelayStatusCodeMapping(c, e)
+		return e
 	}
 
 	usage, respErr := relayGeminiNativeResponse(c, resp, m)
@@ -419,6 +465,6 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 		billing.ReturnPreConsumedQuota(ctx, preConsumed, m.TokenId)
 		return openai.ErrorWrapper(fmt.Errorf("empty usage"), "empty_usage", http.StatusInternalServerError)
 	}
-	go postConsumeQuota(ctx, usage, m, fakeReq, ratio, preConsumed, modelRatio, groupRatio, false)
+	go postConsumeQuota(c, usage, m, fakeReq, ratio, preConsumed, modelRatio, groupRatio, false)
 	return nil
 }

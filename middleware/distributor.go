@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/relayctx"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/routing"
 )
@@ -19,7 +21,8 @@ type ModelRequest struct {
 
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		ctx := relayctx.WithClientIP(c.Request.Context(), c.ClientIP())
+		c.Request = c.Request.WithContext(ctx)
 		userId := c.GetInt(ctxkey.Id)
 		userGroup, _ := model.CacheGetUserGroup(userId)
 		c.Set(ctxkey.Group, userGroup)
@@ -71,6 +74,19 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set(ctxkey.ChannelId, channel.Id)
 	c.Set(ctxkey.ChannelName, channel.Name)
 	c.Set(ctxkey.ChannelRoutingProvider, channel.RoutingProviderTag())
+	c.Set(ctxkey.ChannelAutoBan, channel.AutoBanEnabled())
+	if s := channel.RawStatusCodeMapping(); s != "" && s != "{}" {
+		c.Set(ctxkey.ChannelStatusCodeMapping, s)
+	}
+	if channel.OpenAIOrganization != nil && strings.TrimSpace(*channel.OpenAIOrganization) != "" {
+		c.Set(ctxkey.OpenAIOrganization, strings.TrimSpace(*channel.OpenAIOrganization))
+	}
+	if m := channel.ParamOverrideMap(); len(m) > 0 {
+		c.Set(ctxkey.ChannelParamOverride, m)
+	}
+	if m := channel.HeaderOverrideMap(); len(m) > 0 {
+		c.Set(ctxkey.ChannelHeaderOverride, m)
+	}
 	if channel.SystemPrompt != nil && *channel.SystemPrompt != "" {
 		c.Set(ctxkey.SystemPrompt, *channel.SystemPrompt)
 	}

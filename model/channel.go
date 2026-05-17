@@ -8,6 +8,7 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/relay/channeltype"
 	"gorm.io/gorm"
 )
 
@@ -22,6 +23,8 @@ type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
 	Key                string  `json:"key" gorm:"type:text"`
+	OpenAIOrganization *string `json:"openai_organization" gorm:"type:varchar(128)"`
+	TestModel          *string `json:"test_model" gorm:"type:varchar(255)"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index"`
 	Weight             *uint   `json:"weight" gorm:"default:0"`
@@ -32,10 +35,20 @@ type Channel struct {
 	Balance            float64 `json:"balance"` // in USD
 	BalanceUpdatedTime int64   `json:"balance_updated_time" gorm:"bigint"`
 	Models             string  `json:"models"`
-	Group              string  `json:"group" gorm:"type:varchar(32);default:'default'"`
+	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
+	StatusCodeMapping  *string `json:"status_code_mapping" gorm:"type:varchar(1024)"`
 	Priority           *int64  `json:"priority" gorm:"bigint;default:0"`
+	AutoBan            *int    `json:"auto_ban" gorm:"default:1"`
+	Remark             *string `json:"remark" gorm:"type:varchar(255)"`
+	Tag                *string `json:"tag" gorm:"type:varchar(64);index"`
+	ParamOverride      *string `json:"param_override" gorm:"type:text"`
+	HeaderOverride     *string `json:"header_override" gorm:"type:text"`
+	OtherInfo          string  `json:"other_info" gorm:"type:text"`
+	Setting *string `json:"setting" gorm:"type:text"` // 渠道额外设置，JSON 文本
+	// OtherSettings 其它扩展配置（无需索引），如 Azure API 版本、OpenRouter 等附加参数，JSON 文本；库列名为 settings。
+	OtherSettings string `json:"settings" gorm:"column:settings;type:text"`
 	Config             string  `json:"config"`
 	SystemPrompt       *string `json:"system_prompt" gorm:"type:text"`
 }
@@ -54,24 +67,133 @@ type ChannelConfig struct {
 	RoutingProvider string `json:"routing_provider,omitempty"`
 	// RoutingSkipAdaptive 为 true 时该渠道不参与自动降权/恢复倍率（仍保留手工倍率与熔断）。
 	RoutingSkipAdaptive bool `json:"routing_skip_adaptive,omitempty"`
+	// DeepResearchMode 深知调研模式：general | academic | user_files；空则表示不传（上游默认 general）。
+	DeepResearchMode string `json:"deep_research_mode,omitempty"`
 }
 
 func GetAllChannels(startIdx int, num int, scope string) ([]*Channel, error) {
+	channels, _, err := GetChannelsPage(ChannelPageOptions{
+		Offset:       startIdx,
+		Limit:        num,
+		Scope:        scope,
+		TypeFilter:   -1,
+		StatusFilter: -1,
+		SortBy:       "",
+		SortOrder:    "",
+		IdSort:       false,
+	})
+	return channels, err
+}
+
+// ChannelPageOptions 渠道列表筛选与排序选项。
+type ChannelPageOptions struct {
+	Offset       int
+	Limit        int
+	Scope        string // "all" | "disabled" | 其他为分页 Omit key
+	TypeFilter   int    // -1 忽略；>=0 按类型过滤
+	StatusFilter int    // -1 忽略；1=仅启用；0=非启用（含手动/自动禁用）
+	SortBy       string // id,name,priority,balance,response_time,test_time
+	SortOrder    string // asc|desc
+	IdSort       bool   // true 且 SortBy 为空时按 id 降序（与 air 前端 id_sort 一致）
+}
+
+var channelSortColumns = map[string]string{
+	"id":            "id",
+	"name":          "name",
+	"priority":      "priority",
+	"balance":       "balance",
+	"response_time": "response_time",
+	"test_time":     "test_time",
+}
+
+// GetChannelsPage 分页查询渠道；Scope=all 返回全部（含密钥）；Scope=disabled 仅禁用态。
+func GetChannelsPage(opt ChannelPageOptions) ([]*Channel, int64, error) {
 	var channels []*Channel
-	var err error
-	switch scope {
+	var total int64
+	switch opt.Scope {
 	case "all":
-		err = DB.Order("id desc").Find(&channels).Error
+		err := DB.Order("id desc").Find(&channels).Error
+		return channels, int64(len(channels)), err
 	case "disabled":
-		err = DB.Order("id desc").Where("status = ? or status = ?", ChannelStatusAutoDisabled, ChannelStatusManuallyDisabled).Find(&channels).Error
+		tx := DB.Model(&Channel{}).Where("status = ? or status = ?", ChannelStatusAutoDisabled, ChannelStatusManuallyDisabled)
+		_ = tx.Count(&total).Error
+		err := tx.Order("id desc").Limit(opt.Limit).Offset(opt.Offset).Find(&channels).Error
+		return channels, total, err
 	default:
-		err = DB.Order("id desc").Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+		q := DB.Model(&Channel{}).Omit("key")
+		if opt.TypeFilter >= 0 {
+			q = q.Where("type = ?", opt.TypeFilter)
+		}
+		if opt.StatusFilter == ChannelStatusEnabled {
+			q = q.Where("status = ?", ChannelStatusEnabled)
+		} else if opt.StatusFilter == 0 {
+			q = q.Where("status != ?", ChannelStatusEnabled)
+		}
+		if err := q.Count(&total).Error; err != nil {
+			return nil, 0, err
+		}
+		orderCol := "id"
+		desc := true
+		if col, ok := channelSortColumns[strings.ToLower(strings.TrimSpace(opt.SortBy))]; ok {
+			orderCol = col
+		}
+		if opt.IdSort && strings.TrimSpace(opt.SortBy) == "" {
+			orderCol = "id"
+			desc = true
+		}
+		if strings.ToLower(strings.TrimSpace(opt.SortOrder)) == "asc" {
+			desc = false
+		}
+		dir := "DESC"
+		if !desc {
+			dir = "ASC"
+		}
+		err := q.Order(orderCol + " " + dir).Limit(opt.Limit).Offset(opt.Offset).Find(&channels).Error
+		return channels, total, err
+	}
+}
+
+func SearchChannels(keyword string) (channels []*Channel, err error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return []*Channel{}, nil
+	}
+	pattern := "%" + keyword + "%"
+	idMatch := helper.String2Int(keyword)
+	q := DB.Omit("key")
+	if idMatch > 0 {
+		err = q.Where("id = ? OR name LIKE ? OR COALESCE(remark,'') LIKE ? OR COALESCE(tag,'') LIKE ?", idMatch, pattern, pattern, pattern).Find(&channels).Error
+	} else {
+		err = q.Where("name LIKE ? OR COALESCE(remark,'') LIKE ? OR COALESCE(tag,'') LIKE ?", pattern, pattern, pattern).Find(&channels).Error
 	}
 	return channels, err
 }
 
-func SearchChannels(keyword string) (channels []*Channel, err error) {
-	err = DB.Omit("key").Where("id = ? or name LIKE ?", helper.String2Int(keyword), keyword+"%").Find(&channels).Error
+// SearchChannelsFiltered 支持按分组、模型关键字附加过滤（供 air 等前端使用）。
+func SearchChannelsFiltered(keyword, groupFilter, modelFilter string) (channels []*Channel, err error) {
+	keyword = strings.TrimSpace(keyword)
+	groupFilter = strings.TrimSpace(groupFilter)
+	modelFilter = strings.TrimSpace(modelFilter)
+	if keyword == "" && groupFilter == "" && modelFilter == "" {
+		return []*Channel{}, nil
+	}
+	q := DB.Omit("key")
+	if keyword != "" {
+		pattern := "%" + keyword + "%"
+		idMatch := helper.String2Int(keyword)
+		if idMatch > 0 {
+			q = q.Where("id = ? OR name LIKE ? OR COALESCE(remark,'') LIKE ? OR COALESCE(tag,'') LIKE ?", idMatch, pattern, pattern, pattern)
+		} else {
+			q = q.Where("name LIKE ? OR COALESCE(remark,'') LIKE ? OR COALESCE(tag,'') LIKE ?", pattern, pattern, pattern)
+		}
+	}
+	if groupFilter != "" {
+		q = q.Where("group LIKE ?", "%"+groupFilter+"%")
+	}
+	if modelFilter != "" {
+		q = q.Where("models LIKE ?", "%"+modelFilter+"%")
+	}
+	err = q.Order("id desc").Find(&channels).Error
 	return channels, err
 }
 
@@ -199,6 +321,46 @@ func (channel *Channel) LoadConfig() (ChannelConfig, error) {
 	return cfg, nil
 }
 
+// AutoBanEnabled nil 或非 0 表示允许自动禁用渠道。
+func (channel *Channel) AutoBanEnabled() bool {
+	if channel.AutoBan == nil {
+		return true
+	}
+	return *channel.AutoBan != 0
+}
+
+// ParamOverrideMap 解析 param_override JSON（简单 K-V / 嵌套对象合并用）。
+func (channel *Channel) ParamOverrideMap() map[string]interface{} {
+	if channel.ParamOverride == nil || strings.TrimSpace(*channel.ParamOverride) == "" {
+		return nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(*channel.ParamOverride), &m); err != nil {
+		return nil
+	}
+	return m
+}
+
+// HeaderOverrideMap 解析 header_override（仅支持 string 值）。
+func (channel *Channel) HeaderOverrideMap() map[string]string {
+	if channel.HeaderOverride == nil || strings.TrimSpace(*channel.HeaderOverride) == "" {
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(*channel.HeaderOverride), &m); err != nil {
+		return nil
+	}
+	return m
+}
+
+// RawStatusCodeMapping 返回非空的 status_code_mapping 原文。
+func (channel *Channel) RawStatusCodeMapping() string {
+	if channel.StatusCodeMapping == nil {
+		return ""
+	}
+	return strings.TrimSpace(*channel.StatusCodeMapping)
+}
+
 // RoutingProviderTag Direction 分组标识（默认 default）。
 func (channel *Channel) RoutingProviderTag() string {
 	cfg, err := channel.LoadConfig()
@@ -219,6 +381,23 @@ func (channel *Channel) RoutingAdaptiveEffective() bool {
 		return true
 	}
 	return !cfg.RoutingSkipAdaptive
+}
+
+// PickAmapWebServiceKeyFromEnabledChannel 返回首个启用且密钥非空的高德渠道 Key；
+// 供 POST /amap 高德转发在未配置 AMAP_KEY / AmapWebServiceSecret 时使用（与后台「高德」渠道密钥一致）。
+func PickAmapWebServiceKeyFromEnabledChannel() string {
+	var ch Channel
+	err := DB.Where("type = ? AND status = ?", channeltype.AmapPOI, ChannelStatusEnabled).
+		Order("id asc").
+		First(&ch).Error
+	if err != nil {
+		return ""
+	}
+	k := strings.TrimSpace(ch.Key)
+	if k == "" {
+		return ""
+	}
+	return k
 }
 
 func UpdateChannelStatusById(id int, status int) {

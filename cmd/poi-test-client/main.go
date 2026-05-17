@@ -125,7 +125,7 @@ func main() {
 
 func parseFlags() config {
 	cfg := config{}
-	flag.StringVar(&cfg.endpoint, "endpoint", defaultEndpoint, "高德 POI 周边搜索接口地址")
+	flag.StringVar(&cfg.endpoint, "endpoint", defaultEndpoint, "高德周边搜索接口地址")
 	flag.StringVar(&cfg.key, "key", strings.TrimSpace(os.Getenv("AMAP_KEY")), "高德 Web 服务 API Key，也可用 AMAP_KEY 环境变量")
 	flag.StringVar(&cfg.location, "location", "", "中心点坐标，格式：经度,纬度，例如 116.473168,39.993015")
 	flag.StringVar(&cfg.keywords, "keywords", "", "地点关键字，只支持一个，最长 80 字符")

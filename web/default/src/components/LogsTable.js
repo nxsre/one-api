@@ -4,11 +4,12 @@ import {
   Form,
   Header,
   Label,
+  Loader,
+  Modal,
   Pagination,
   Segment,
   Select,
   Table,
-  Popup,
 } from 'semantic-ui-react';
 import {
   API,
@@ -79,6 +80,18 @@ function renderType(type) {
           测试
         </Label>
       );
+    case 6:
+      return (
+        <Label basic color='red'>
+          错误
+        </Label>
+      );
+    case 7:
+      return (
+        <Label basic color='teal'>
+          退款
+        </Label>
+      );
     default:
       return (
         <Label basic color='black'>
@@ -88,51 +101,98 @@ function renderType(type) {
   }
 }
 
-function getColorByElapsedTime(elapsedTime) {
-  if (elapsedTime === undefined || 0) return 'black';
-  if (elapsedTime < 1000) return 'green';
-  if (elapsedTime < 3000) return 'olive';
-  if (elapsedTime < 5000) return 'yellow';
-  if (elapsedTime < 10000) return 'orange';
-  return 'red';
+/** 日志详情完整文本（用于弹窗与两行预览同源，其它字段不再截断） */
+function buildLogDetailFullText(log) {
+  const parts = [];
+  if (log.content != null && String(log.content).trim() !== '') {
+    parts.push(String(log.content));
+  }
+  const badges = [];
+  if (log.use_time > 0) {
+    badges.push(`${log.use_time}s`);
+  }
+  if (log.elapsed_time != null && log.elapsed_time !== '') {
+    badges.push(`${log.elapsed_time}ms`);
+  }
+  if (log.is_stream) {
+    badges.push('Stream');
+  }
+  if (log.system_prompt_reset) {
+    badges.push('System Prompt Reset');
+  }
+  if (badges.length) {
+    parts.push(badges.join(' · '));
+  }
+  if (log.other != null && String(log.other).trim() !== '') {
+    parts.push(String(log.other));
+  }
+  return parts.join('\n\n');
 }
 
-function renderDetail(log) {
+function renderLogDetailCompact(log, t, onOpenFull) {
+  const full = buildLogDetailFullText(log);
+  if (!full.trim()) {
+    return null;
+  }
   return (
-    <>
-      {log.content}
-      <br />
-      {log.elapsed_time && (
-        <Label
-          basic
-          size={'mini'}
-          color={getColorByElapsedTime(log.elapsed_time)}
-        >
-          {log.elapsed_time} ms
-        </Label>
-      )}
-      {log.is_stream && (
-        <>
-          <Label size={'mini'} color='pink'>
-            Stream
-          </Label>
-        </>
-      )}
-      {log.system_prompt_reset && (
-        <>
-          <Label basic size={'mini'} color='red'>
-            System Prompt Reset
-          </Label>
-        </>
-      )}
-    </>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: '0.9em',
+          lineHeight: 1.45,
+          wordBreak: 'break-word',
+          display: '-webkit-box',
+          WebkitBoxOrient: 'vertical',
+          WebkitLineClamp: 2,
+          overflow: 'hidden',
+          whiteSpace: 'pre-wrap',
+        }}
+        title={full}
+      >
+        {full}
+      </div>
+      <Button
+        type='button'
+        basic
+        compact
+        icon='ellipsis horizontal'
+        aria-label={t('log.table.detail_expand')}
+        title={t('log.table.detail_expand')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenFull(full);
+        }}
+        style={{
+          flexShrink: 0,
+          alignSelf: 'center',
+          margin: 0,
+          padding: '0.35em 0.45em',
+        }}
+      />
+    </div>
   );
+}
+
+function renderNumericCell(v) {
+  if (v === null || v === undefined) {
+    return <span style={{ color: '#999' }}>—</span>;
+  }
+  return v;
 }
 
 const LogsTable = () => {
   const { t } = useTranslation();
   const [logs, setLogs] = useState([]);
-  const [showStat, setShowStat] = useState(false);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState(1);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -144,9 +204,11 @@ const LogsTable = () => {
     username: '',
     token_name: '',
     model_name: '',
-    start_timestamp: timestamp2string(0),
-    end_timestamp: timestamp2string(now.getTime() / 1000 + 3600),
+    start_timestamp: timestamp2string(now.getTime() / 1000 - 300),
+    end_timestamp: timestamp2string(now.getTime() / 1000),
     channel: '',
+    group: '',
+    request_id: '',
   });
   const {
     username,
@@ -155,12 +217,18 @@ const LogsTable = () => {
     start_timestamp,
     end_timestamp,
     channel,
+    group,
+    request_id,
   } = inputs;
 
   const [stat, setStat] = useState({
     quota: 0,
-    token: 0,
+    rpm: 0,
+    tpm: 0,
   });
+  const [statLoading, setStatLoading] = useState(false);
+
+  const [logDetailModal, setLogDetailModal] = useState({ open: false, body: '' });
 
   const LOG_OPTIONS = [
     { key: '0', text: t('log.type.all'), value: 0 },
@@ -169,6 +237,8 @@ const LogsTable = () => {
     { key: '3', text: t('log.type.admin'), value: 3 },
     { key: '4', text: t('log.type.system'), value: 4 },
     { key: '5', text: t('log.type.test'), value: 5 },
+    { key: '6', text: '错误', value: 6 },
+    { key: '7', text: '退款', value: 7 },
   ];
 
   const handleInputChange = (e, { name, value }) => {
@@ -178,8 +248,10 @@ const LogsTable = () => {
   const getLogSelfStat = async () => {
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    const g = encodeURIComponent(group || '');
+    const rid = encodeURIComponent(request_id || '');
     let res = await API.get(
-      `/api/log/self/stat?type=${logType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`
+      `/api/log/self/stat?type=${logType}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${g}&request_id=${rid}`
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -192,8 +264,10 @@ const LogsTable = () => {
   const getLogStat = async () => {
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    const g = encodeURIComponent(group || '');
+    const rid = encodeURIComponent(request_id || '');
     let res = await API.get(
-      `/api/log/stat?type=${logType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}`
+      `/api/log/stat?type=${logType}&username=${encodeURIComponent(username)}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${g}&request_id=${rid}`
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -203,40 +277,42 @@ const LogsTable = () => {
     }
   };
 
-  const handleEyeClick = async () => {
-    if (!showStat) {
+  const fetchUsageStat = async () => {
+    setStatLoading(true);
+    try {
       if (isAdminUser) {
         await getLogStat();
       } else {
         await getLogSelfStat();
       }
+    } finally {
+      setStatLoading(false);
     }
-    setShowStat(!showStat);
   };
 
-  const showUserTokenQuota = () => {
-    return logType !== 5;
-  };
-
-  const loadLogs = async (startIdx) => {
+  const loadLogs = async (page) => {
     let url = '';
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    const g = encodeURIComponent(group || '');
+    const rid = encodeURIComponent(request_id || '');
     if (isAdminUser) {
-      url = `/api/log/?p=${startIdx}&type=${logType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}`;
+      url = `/api/log/?p=${page}&page_size=${ITEMS_PER_PAGE}&type=${logType}&username=${encodeURIComponent(username)}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${g}&request_id=${rid}`;
     } else {
-      url = `/api/log/self/?p=${startIdx}&type=${logType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`;
+      url = `/api/log/self/?p=${page}&page_size=${ITEMS_PER_PAGE}&type=${logType}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${g}&request_id=${rid}`;
     }
     const res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
-      if (startIdx === 0) {
-        setLogs(data);
-      } else {
-        let newLogs = [...logs];
-        newLogs.splice(startIdx * ITEMS_PER_PAGE, data.length, ...data);
-        setLogs(newLogs);
-      }
+      const items = data && data.items !== undefined ? data.items : data;
+      const pageTotal =
+        data && typeof data.total === 'number'
+          ? data.total
+          : Array.isArray(items)
+            ? items.length
+            : 0;
+      setLogs(Array.isArray(items) ? items : []);
+      setTotal(pageTotal);
     } else {
       showError(message);
     }
@@ -245,10 +321,8 @@ const LogsTable = () => {
 
   const onPaginationChange = (e, { activePage }) => {
     (async () => {
-      if (activePage === Math.ceil(logs.length / ITEMS_PER_PAGE) + 1) {
-        // In this case we have to load more data and then append them.
-        await loadLogs(activePage - 1);
-      }
+      setLoading(true);
+      await loadLogs(activePage);
       setActivePage(activePage);
     })();
   };
@@ -256,7 +330,8 @@ const LogsTable = () => {
   const refresh = async () => {
     setLoading(true);
     setActivePage(1);
-    await loadLogs(0);
+    await loadLogs(1);
+    await fetchUsageStat();
   };
 
   useEffect(() => {
@@ -264,21 +339,7 @@ const LogsTable = () => {
   }, [logType]);
 
   const searchLogs = async () => {
-    if (searchKeyword === '') {
-      // if keyword is blank, load files instead.
-      await loadLogs(0);
-      setActivePage(1);
-      return;
-    }
-    setSearching(true);
-    const res = await API.get(`/api/log/self/search?keyword=${searchKeyword}`);
-    const { success, message, data } = res.data;
-    if (success) {
-      setLogs(data);
-      setActivePage(1);
-    } else {
-      showError(message);
-    }
+    showWarning('关键词搜索已废弃，请使用模型名称（支持 % 模糊）、分组、请求 ID 等条件筛选后点击查询。');
     setSearching(false);
   };
 
@@ -310,19 +371,36 @@ const LogsTable = () => {
 
   return (
     <>
-      <Header as='h3'>
-        {t('log.usage_details')}（{t('log.total_quota')}：
-        {showStat && renderQuota(stat.quota, t)}
-        {!showStat && (
-          <span
-            onClick={handleEyeClick}
-            style={{ cursor: 'pointer', color: 'gray' }}
+      <Segment secondary style={{ marginBottom: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '0.75rem 1.25rem',
+          }}
+        >
+          <Header
+            as='h3'
+            style={{ margin: 0, fontWeight: 600, fontSize: '1.05rem' }}
           >
-            {t('log.click_to_view')}
-          </span>
-        )}
-        ）
-      </Header>
+            {t('log.usage_details')}
+          </Header>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ color: 'rgba(0,0,0,0.55)' }}>
+              {t('log.total_quota')}：
+            </span>
+            {statLoading ? (
+              <Loader active inline size='small' />
+            ) : (
+              <strong>{renderQuota(stat.quota, t)}</strong>
+            )}
+            <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.92rem' }}>
+              RPM {stat.rpm ?? 0} · TPM {stat.tpm ?? 0}
+            </span>
+          </div>
+        </div>
+      </Segment>
       <Form>
         <Form.Group>
           <Form.Input
@@ -401,6 +479,28 @@ const LogsTable = () => {
             </Form.Group>
           </>
         )}
+        <Form.Group>
+          <Form.Input
+            fluid
+            label="分组"
+            size={'small'}
+            width={3}
+            value={group}
+            placeholder="user group"
+            name="group"
+            onChange={handleInputChange}
+          />
+          <Form.Input
+            fluid
+            label="请求 ID"
+            size={'small'}
+            width={4}
+            value={request_id}
+            placeholder="request_id 精确匹配"
+            name="request_id"
+            onChange={handleInputChange}
+          />
+        </Form.Group>
         <Form.Input
           icon='search'
           placeholder={t('log.search')}
@@ -408,13 +508,13 @@ const LogsTable = () => {
           onChange={(e, { value }) => setSearchKeyword(value)}
         />
       </Form>
-      <Table basic={'very'} compact size='small'>
+      <Table basic='very' compact celled size='small' stackable>
         <Table.Header>
           <Table.Row>
             <Table.HeaderCell
               style={{ cursor: 'pointer' }}
               onClick={() => {
-                sortLog('created_time');
+                sortLog('created_at');
               }}
               width={3}
             >
@@ -431,6 +531,10 @@ const LogsTable = () => {
                 {t('log.table.channel')}
               </Table.HeaderCell>
             )}
+            {isAdminUser && (
+              <Table.HeaderCell width={2}>渠道名称</Table.HeaderCell>
+            )}
+            <Table.HeaderCell width={2}>分组</Table.HeaderCell>
             <Table.HeaderCell
               style={{ cursor: 'pointer' }}
               onClick={() => {
@@ -449,8 +553,6 @@ const LogsTable = () => {
             >
               {t('log.table.model')}
             </Table.HeaderCell>
-            {showUserTokenQuota() && (
-              <>
                 {isAdminUser && (
                   <Table.HeaderCell
                     style={{ cursor: 'pointer' }}
@@ -474,11 +576,30 @@ const LogsTable = () => {
                 <Table.HeaderCell
                   style={{ cursor: 'pointer' }}
                   onClick={() => {
-                    sortLog('prompt_tokens');
+                    sortLog('token_id');
                   }}
                   width={1}
                 >
-                  {t('log.table.prompt_tokens')}
+                  令牌 ID
+                </Table.HeaderCell>
+                <Table.HeaderCell
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    sortLog('ip');
+                  }}
+                  width={2}
+                >
+                  IP
+                </Table.HeaderCell>
+                <Table.HeaderCell
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    sortLog('prompt_tokens');
+                  }}
+                  width={1}
+                  title={t('log.table.prompt_tokens')}
+                >
+                  {t('log.table.prompt_tokens_short')}
                 </Table.HeaderCell>
                 <Table.HeaderCell
                   style={{ cursor: 'pointer' }}
@@ -486,8 +607,9 @@ const LogsTable = () => {
                     sortLog('completion_tokens');
                   }}
                   width={1}
+                  title={t('log.table.completion_tokens')}
                 >
-                  {t('log.table.completion_tokens')}
+                  {t('log.table.completion_tokens_short')}
                 </Table.HeaderCell>
                 <Table.HeaderCell
                   style={{ cursor: 'pointer' }}
@@ -498,22 +620,26 @@ const LogsTable = () => {
                 >
                   {t('log.table.quota')}
                 </Table.HeaderCell>
-              </>
-            )}
-            <Table.HeaderCell>{t('log.table.detail')}</Table.HeaderCell>
+                <Table.HeaderCell
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    sortLog('use_time');
+                  }}
+                  width={1}
+                >
+                  {t('log.table.use_time')}
+                </Table.HeaderCell>
+            <Table.HeaderCell style={{ minWidth: '14rem' }}>
+              {t('log.table.detail')}
+            </Table.HeaderCell>
           </Table.Row>
         </Table.Header>
 
         <Table.Body>
-          {logs
-            .slice(
-              (activePage - 1) * ITEMS_PER_PAGE,
-              activePage * ITEMS_PER_PAGE
-            )
-            .map((log, idx) => {
+          {logs.map((log, idx) => {
               if (log.deleted) return <></>;
               return (
-                <Table.Row key={log.id}>
+                <Table.Row key={`${log.id}-${idx}`}>
                   <Table.Cell>
                     {renderTimestamp(log.created_at, log.request_id)}
                   </Table.Cell>
@@ -532,12 +658,30 @@ const LogsTable = () => {
                       )}
                     </Table.Cell>
                   )}
+                  {isAdminUser && (
+                    <Table.Cell>
+                      {log.channel_name ? (
+                        <span style={{ wordBreak: 'break-all' }}>
+                          {log.channel_name}
+                        </span>
+                      ) : (
+                        ''
+                      )}
+                    </Table.Cell>
+                  )}
+                  <Table.Cell>
+                    {log.group ? (
+                      <Label basic size="mini">
+                        {log.group}
+                      </Label>
+                    ) : (
+                      ''
+                    )}
+                  </Table.Cell>
                   <Table.Cell>{renderType(log.type)}</Table.Cell>
                   <Table.Cell>
                     {log.model_name ? renderColorLabel(log.model_name) : ''}
                   </Table.Cell>
-                  {showUserTokenQuota() && (
-                    <>
                       {isAdminUser && (
                         <Table.Cell>
                           {log.username ? (
@@ -558,18 +702,42 @@ const LogsTable = () => {
                       </Table.Cell>
 
                       <Table.Cell>
-                        {log.prompt_tokens ? log.prompt_tokens : ''}
+                        {log.token_id ? log.token_id : ''}
                       </Table.Cell>
-                      <Table.Cell>
-                        {log.completion_tokens ? log.completion_tokens : ''}
-                      </Table.Cell>
-                      <Table.Cell>
-                        {log.quota ? renderQuota(log.quota, t, 6) : ''}
-                      </Table.Cell>
-                    </>
-                  )}
 
-                  <Table.Cell>{renderDetail(log)}</Table.Cell>
+                      <Table.Cell>
+                        {log.ip ? (
+                          <code style={{ fontSize: '0.9em' }}>{log.ip}</code>
+                        ) : (
+                          ''
+                        )}
+                      </Table.Cell>
+
+                      <Table.Cell textAlign='right'>
+                        {renderNumericCell(log.prompt_tokens)}
+                      </Table.Cell>
+                      <Table.Cell textAlign='right'>
+                        {renderNumericCell(log.completion_tokens)}
+                      </Table.Cell>
+                      <Table.Cell textAlign='right'>
+                        {log.quota != null
+                          ? renderQuota(log.quota, t, 6)
+                          : renderNumericCell(undefined)}
+                      </Table.Cell>
+                      <Table.Cell textAlign='right'>
+                        {renderNumericCell(log.use_time)}
+                      </Table.Cell>
+
+                  <Table.Cell
+                    style={{
+                      maxWidth: '20rem',
+                      verticalAlign: 'middle',
+                    }}
+                  >
+                    {renderLogDetailCompact(log, t, (body) =>
+                      setLogDetailModal({ open: true, body }),
+                    )}
+                  </Table.Cell>
                 </Table.Row>
               );
             })}
@@ -577,7 +745,7 @@ const LogsTable = () => {
 
         <Table.Footer>
           <Table.Row>
-            <Table.HeaderCell colSpan={'10'}>
+            <Table.HeaderCell colSpan={20}>
               <Select
                 placeholder={t('log.type.select')}
                 options={LOG_OPTIONS}
@@ -597,15 +765,53 @@ const LogsTable = () => {
                 onPageChange={onPaginationChange}
                 size='small'
                 siblingRange={1}
-                totalPages={
-                  Math.ceil(logs.length / ITEMS_PER_PAGE) +
-                  (logs.length % ITEMS_PER_PAGE === 0 ? 1 : 0)
-                }
+                totalPages={Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))}
               />
             </Table.HeaderCell>
           </Table.Row>
         </Table.Footer>
       </Table>
+
+      <Modal
+        open={logDetailModal.open}
+        onClose={() => setLogDetailModal({ open: false, body: '' })}
+        size='large'
+        closeOnDimmerClick
+      >
+        <Modal.Header>{t('log.table.detail')}</Modal.Header>
+        <Modal.Content scrolling>
+          <pre
+            style={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              margin: 0,
+              fontFamily: 'inherit',
+              fontSize: '0.92rem',
+            }}
+          >
+            {logDetailModal.body}
+          </pre>
+        </Modal.Content>
+        <Modal.Actions>
+          <Button
+            onClick={async () => {
+              if (await copy(logDetailModal.body)) {
+                showSuccess(t('log.table.detail_copied'));
+              } else {
+                showWarning(t('log.table.detail_copy_failed'));
+              }
+            }}
+          >
+            {t('log.table.detail_copy')}
+          </Button>
+          <Button
+            primary
+            onClick={() => setLogDetailModal({ open: false, body: '' })}
+          >
+            {t('log.table.detail_close')}
+          </Button>
+        </Modal.Actions>
+      </Modal>
     </>
   );
 };

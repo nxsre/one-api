@@ -1,0 +1,90 @@
+/* 渠道创建/编辑：与智能路由页一致的分区卡片与底部主操作 */
+.channel-edit-page .channel-edit-section {
+  margin-bottom: 1.35rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid rgba(34, 36, 38, 0.12);
+  border-radius: 6px;
+  background: rgba(34, 36, 38, 0.02);
+}
+
+.channel-edit-page .channel-edit-section__title {
+  margin: 0 0 0.85rem !important;
+  padding-bottom: 0.35rem !important;
+  border-bottom: 1px solid rgba(34, 36, 38, 0.1);
+  font-weight: 600 !important;
+  font-size: 1.05rem !important;
+}
+
+.channel-edit-page .channel-edit-section--extended {
+  margin-bottom: 1.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.channel-edit-page .channel-edit-section--extended .channel-edit-section__title {
+  margin: 0 0 1rem !important;
+  padding-bottom: 0 !important;
+  border-bottom: none;
+}
+
+.channel-edit-page .channel-edit-section--extended .channel-edit-field-hint {
+  margin-top: 0.2rem;
+}
+
+.channel-edit-page .channel-edit-section--extended .field > label:first-child {
+  font-weight: 600;
+}
+
+.channel-edit-field-hint {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  margin: 0 0 0.75rem;
+}
+
+.channel-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(34, 36, 38, 0.12);
+}
+
+.channel-model-mapping-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.channel-model-mapping-table .ui.input > input {
+  min-width: 0;
+}
+
+.channel-edit-models-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+/* Base URL 与密钥同一行（窄屏自动折行） */
+.channel-edit-upstream-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  align-items: flex-start;
+}
+
+.channel-edit-upstream-row > .field {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin-bottom: 0 !important;
+}

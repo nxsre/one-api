@@ -26,12 +26,24 @@ function renderType(type) {
 }
 
 export default function LogTableRow({ item, userIsAdmin }) {
+  const otherPreview =
+    item.other && String(item.other).trim() !== ''
+      ? String(item.other).length > 160
+        ? `${String(item.other).slice(0, 160)}…`
+        : String(item.other)
+      : '';
   return (
     <>
       <TableRow tabIndex={item.id}>
         <TableCell>{timestamp2string(item.created_at)}</TableCell>
 
         {userIsAdmin && <TableCell>{item.channel || ''}</TableCell>}
+        {userIsAdmin && (
+          <TableCell>
+            <span style={{ wordBreak: 'break-all' }}>{item.channel_name || ''}</span>
+          </TableCell>
+        )}
+        <TableCell>{item.group || ''}</TableCell>
         {userIsAdmin && (
           <TableCell>
             <Label color="default" variant="outlined">
@@ -46,6 +58,10 @@ export default function LogTableRow({ item, userIsAdmin }) {
             </Label>
           )}
         </TableCell>
+        <TableCell>{item.token_id || ''}</TableCell>
+        <TableCell>
+          {item.ip ? <code style={{ fontSize: '0.85em' }}>{item.ip}</code> : ''}
+        </TableCell>
         <TableCell>{renderType(item.type)}</TableCell>
         <TableCell>
           {item.model_name && (
@@ -57,7 +73,16 @@ export default function LogTableRow({ item, userIsAdmin }) {
         <TableCell>{item.prompt_tokens || ''}</TableCell>
         <TableCell>{item.completion_tokens || ''}</TableCell>
         <TableCell>{item.quota ? renderQuota(item.quota, 6) : ''}</TableCell>
-        <TableCell>{item.content}</TableCell>
+        <TableCell>{item.use_time || ''}</TableCell>
+        <TableCell>
+          {item.content}
+          {otherPreview && (
+            <>
+              <br />
+              <span style={{ fontSize: '0.8em', wordBreak: 'break-all' }}>{otherPreview}</span>
+            </>
+          )}
+        </TableCell>
       </TableRow>
     </>
   );

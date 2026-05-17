@@ -21,28 +21,33 @@ import { IconRefresh, IconSearch } from '@tabler/icons-react';
 
 export default function Log() {
   const originalKeyword = {
-    p: 0,
+    p: 1,
     username: '',
     token_name: '',
     model_name: '',
     start_timestamp: 0,
     end_timestamp: new Date().getTime() / 1000 + 3600,
     type: 0,
-    channel: ''
+    channel: '',
+    group: '',
+    request_id: '',
   };
   const [logs, setLogs] = useState([]);
+  const [total, setTotal] = useState(0);
   const [activePage, setActivePage] = useState(0);
   const [searching, setSearching] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState(originalKeyword);
   const [initPage, setInitPage] = useState(true);
   const userIsAdmin = isAdmin();
 
-  const loadLogs = async (startIdx) => {
+  const loadLogs = async (pageIdx) => {
     setSearching(true);
     const url = userIsAdmin ? '/api/log/' : '/api/log/self/';
-    const query = searchKeyword;
-
-    query.p = startIdx;
+    const query = {
+      ...searchKeyword,
+      p: pageIdx + 1,
+      page_size: ITEMS_PER_PAGE,
+    };
     if (!userIsAdmin) {
       delete query.username;
       delete query.channel;
@@ -50,26 +55,25 @@ export default function Log() {
     const res = await API.get(url, { params: query });
     const { success, message, data } = res.data;
     if (success) {
-      if (startIdx === 0) {
-        setLogs(data);
-      } else {
-        let newLogs = [...logs];
-        newLogs.splice(startIdx * ITEMS_PER_PAGE, data.length, ...data);
-        setLogs(newLogs);
-      }
+      const items = data && data.items !== undefined ? data.items : data;
+      const t =
+        data && typeof data.total === 'number'
+          ? data.total
+          : Array.isArray(items)
+            ? items.length
+            : 0;
+      setLogs(Array.isArray(items) ? items : []);
+      setTotal(t);
     } else {
       showError(message);
     }
     setSearching(false);
   };
 
-  const onPaginationChange = (event, activePage) => {
+  const onPaginationChange = (event, newPage) => {
     (async () => {
-      if (activePage === Math.ceil(logs.length / ITEMS_PER_PAGE)) {
-        // In this case we have to load more data and then append them.
-        await loadLogs(activePage);
-      }
-      setActivePage(activePage);
+      await loadLogs(newPage);
+      setActivePage(newPage);
     })();
   };
 
@@ -84,7 +88,6 @@ export default function Log() {
     setSearchKeyword({ ...searchKeyword, [event.target.name]: event.target.value });
   };
 
-  // 处理刷新
   const handleRefresh = () => {
     setInitPage(true);
   };
@@ -106,7 +109,7 @@ export default function Log() {
         <Typography variant="h4">日志</Typography>
       </Stack>
       <Card>
-        <Box component="form" onSubmit={searchLogs} noValidate sx={{marginTop: 2}}>
+        <Box component="form" onSubmit={searchLogs} noValidate sx={{ marginTop: 2 }}>
           <TableToolBar filterName={searchKeyword} handleFilterName={handleSearchKeyword} userIsAdmin={userIsAdmin} />
         </Box>
         <Toolbar
@@ -115,11 +118,11 @@ export default function Log() {
             height: 50,
             display: 'flex',
             justifyContent: 'space-between',
-            p: (theme) => theme.spacing(0, 1, 0, 3)
+            p: (theme) => theme.spacing(0, 1, 0, 3),
           }}
         >
           <Container>
-            <ButtonGroup variant="outlined" aria-label="outlined small primary button group" sx={{marginBottom: 2}}>
+            <ButtonGroup variant="outlined" aria-label="outlined small primary button group" sx={{ marginBottom: 2 }}>
               <Button onClick={handleRefresh} startIcon={<IconRefresh width={'18px'} />}>
                 刷新/清除搜索条件
               </Button>
@@ -136,7 +139,7 @@ export default function Log() {
             <Table sx={{ minWidth: 800 }}>
               <LogTableHead userIsAdmin={userIsAdmin} />
               <TableBody>
-                {logs.slice(activePage * ITEMS_PER_PAGE, (activePage + 1) * ITEMS_PER_PAGE).map((row, index) => (
+                {logs.map((row, index) => (
                   <LogTableRow item={row} key={`${row.id}_${index}`} userIsAdmin={userIsAdmin} />
                 ))}
               </TableBody>
@@ -146,7 +149,7 @@ export default function Log() {
         <TablePagination
           page={activePage}
           component="div"
-          count={logs.length + (logs.length % ITEMS_PER_PAGE === 0 ? 1 : 0)}
+          count={total}
           rowsPerPage={ITEMS_PER_PAGE}
           onPageChange={onPaginationChange}
           rowsPerPageOptions={[ITEMS_PER_PAGE]}

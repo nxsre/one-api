@@ -7,10 +7,11 @@ import {
   Card,
   Form,
   Header,
+  Icon,
   Message,
+  Popup,
   Tab,
   Table,
-  TextArea,
 } from 'semantic-ui-react';
 import {
   CartesianGrid,
@@ -23,6 +24,11 @@ import {
 } from 'recharts';
 import { API, isAdmin, isRoot, showError, showSuccess } from '../../helpers';
 import { ROUTING_POLICY_JSON_SAMPLES } from './policyExamples';
+import RelayRetryPolicyForm from './forms/RelayRetryPolicyForm';
+import RoutingPolicyForm from './forms/RoutingPolicyForm';
+import ModelAliasPolicyForm from './forms/ModelAliasPolicyForm';
+import ModelRateLimitPolicyForm from './forms/ModelRateLimitPolicyForm';
+import './Routing.css';
 import {
   fetchRoutingChannels,
   fetchRoutingGroups,
@@ -54,12 +60,27 @@ function PolicyJsonExample({ summary, jsonText }) {
   );
 }
 
-const POLICY_KEYS = [
-  'RoutingPolicy',
-  'RelayRetryPolicy',
-  'ModelAliasPolicy',
-  'ModelRateLimitPolicy',
-];
+const POLICY_KEYS_BASIC = ['RoutingPolicy', 'RelayRetryPolicy', 'ModelRateLimitPolicy'];
+
+/** 表头 + 悬停说明（渠道预览表 Direction～Fuse 列） */
+function PreviewColumnHeader({ label, hint }) {
+  return (
+    <Popup
+      wide
+      hoverable
+      position='top center'
+      trigger={
+        <span className='routing-preview-th-popup'>
+          {label}
+          <Icon name='info circle' />
+        </span>
+      }
+      content={
+        <div className='routing-preview-th-popup-body'>{hint}</div>
+      }
+    />
+  );
+}
 
 export default function RoutingOperations() {
   const { t } = useTranslation();
@@ -75,7 +96,6 @@ export default function RoutingOperations() {
   const [tsModel, setTsModel] = useState('');
   const [tsHours, setTsHours] = useState(24);
   const [tsData, setTsData] = useState([]);
-  const [aliasRaw, setAliasRaw] = useState('{}');
   const [mwCh, setMwCh] = useState('');
   const [mwMul, setMwMul] = useState('1');
   const [rwCh, setRwCh] = useState('');
@@ -101,9 +121,12 @@ export default function RoutingOperations() {
         showError(res.data?.message || 'load failed');
         return;
       }
-      setPolicies(res.data.data || {});
-      const alias = res.data.data?.ModelAliasPolicy;
-      if (alias) setAliasRaw(alias);
+      const data = res.data.data || {};
+      setPolicies({
+        ...data,
+        RelayProtocolBridgeEnabled:
+          data.RelayProtocolBridgeEnabled === 'true' ? 'true' : 'false',
+      });
     } catch (e) {
       showError(e.message);
     }
@@ -229,9 +252,15 @@ export default function RoutingOperations() {
       return;
     }
     try {
+      let raw;
+      if (key === 'RelayProtocolBridgeEnabled') {
+        raw = policies[key] === 'true' ? 'true' : 'false';
+      } else {
+        raw = String(policies[key] ?? '').trim() || '{}';
+      }
       const res = await API.put('/api/option', {
         key,
-        value: policies[key] ?? '{}',
+        value: raw,
       });
       if (!res.data?.success) {
         showError(res.data?.message || 'save failed');
@@ -314,7 +343,7 @@ export default function RoutingOperations() {
   const validateAlias = async () => {
     try {
       const res = await API.post('/api/routing/validate-alias-policy', {
-        model_alias_policy_json: aliasRaw,
+        model_alias_policy_json: policies.ModelAliasPolicy ?? '{}',
       });
       if (!res.data?.success) {
         showError(res.data?.message || 'invalid');
@@ -360,9 +389,52 @@ export default function RoutingOperations() {
   const policyPane = (
     <Tab.Pane attached={false}>
       <Message info>{t('routing.policy_hint')}</Message>
-      {POLICY_KEYS.map((k) => (
-        <Form key={k} style={{ marginBottom: '1.5rem' }}>
-          <Header as='h4'>{k}</Header>
+      <div className='routing-policy-card' style={{ marginBottom: '1rem' }}>
+        <Form>
+          <Header as='h4' className='routing-policy-card__title'>
+            {t('routing.protocol_bridge_title')}
+          </Header>
+          <p style={{ marginBottom: '0.75rem', opacity: 0.85 }}>
+            {t('routing.protocol_bridge_hint')}
+          </p>
+          <Form.Checkbox
+            toggle
+            label={t('routing.protocol_bridge_label')}
+            checked={policies.RelayProtocolBridgeEnabled === 'true'}
+            onChange={(e, { checked }) =>
+              setPolicies((p) => ({
+                ...p,
+                RelayProtocolBridgeEnabled: checked ? 'true' : 'false',
+              }))
+            }
+          />
+        </Form>
+        <div className='routing-policy-save-footer' style={{ marginTop: '0.75rem' }}>
+          {!isRoot() ? (
+            <span className='routing-policy-save-footer__hint'>
+              {t('routing.need_root_save')}
+            </span>
+          ) : null}
+          <Button
+            primary
+            type='button'
+            size='small'
+            icon
+            labelPosition='left'
+            disabled={!isRoot()}
+            onClick={() => void saveOption('RelayProtocolBridgeEnabled')}
+          >
+            <Icon name='save' />
+            {t('routing.save')}
+          </Button>
+        </div>
+      </div>
+      {POLICY_KEYS_BASIC.map((k) => (
+        <div key={k} className='routing-policy-card'>
+          <Form>
+            <Header as='h4' className='routing-policy-card__title'>
+              {k}
+            </Header>
           {k === 'RelayRetryPolicy' && (
             <Message size='small' info style={{ marginBottom: '0.75rem' }}>
               {t('routing.policy_example_note_relay')}
@@ -372,38 +444,112 @@ export default function RoutingOperations() {
             summary={t('routing.policy_example_toggle')}
             jsonText={ROUTING_POLICY_JSON_SAMPLES[k]}
           />
-          <TextArea
-            style={{ fontFamily: 'monospace', minHeight: 140 }}
-            value={policies[k] ?? '{}'}
-            onChange={(e, { value }) =>
-              setPolicies((p) => ({ ...p, [k]: value }))
-            }
-          />
-          <Button
-            type='button'
-            size='small'
-            disabled={!isRoot()}
-            onClick={() => void saveOption(k)}
-          >
-            {t('routing.save')}
-          </Button>
-        </Form>
+          {k === 'RoutingPolicy' && (
+            <RoutingPolicyForm
+              value={policies[k] ?? '{}'}
+              onChange={(v) => setPolicies((p) => ({ ...p, [k]: v }))}
+              disabled={false}
+            />
+          )}
+          {k === 'RelayRetryPolicy' && (
+            <RelayRetryPolicyForm
+              value={policies[k] ?? '{}'}
+              onChange={(v) => setPolicies((p) => ({ ...p, [k]: v }))}
+              disabled={false}
+            />
+          )}
+          {k === 'ModelRateLimitPolicy' && (
+            <ModelRateLimitPolicyForm
+              value={policies[k] ?? '{}'}
+              onChange={(v) => setPolicies((p) => ({ ...p, [k]: v }))}
+              disabled={false}
+              modelOpts={modelOpts}
+              groupOpts={groupOpts}
+              onAddModel={(v) => addModelOpt(v)}
+              onAddGroup={(v) => addGroupOpt(v)}
+              lookupReady={lookupReady}
+            />
+          )}
+          </Form>
+          <div className='routing-policy-save-footer'>
+            {!isRoot() ? (
+              <span className='routing-policy-save-footer__hint'>
+                {t('routing.need_root_save')}
+              </span>
+            ) : null}
+            <Button
+              primary
+              type='button'
+              size='small'
+              icon
+              labelPosition='left'
+              disabled={!isRoot()}
+              onClick={() => void saveOption(k)}
+            >
+              <Icon name='save' />
+              {t('routing.save')}
+            </Button>
+          </div>
+        </div>
       ))}
-      <Form style={{ marginBottom: '1.5rem' }}>
-        <Header as='h4'>{t('routing.alias_validate_title')}</Header>
+      <div className='routing-policy-card'>
+        <Form>
+          <Header as='h4' className='routing-policy-card__title'>
+            ModelAliasPolicy
+          </Header>
+        <Message size='small' info>
+          {t('routing.alias_hint')}
+        </Message>
         <PolicyJsonExample
           summary={t('routing.policy_example_toggle')}
           jsonText={ROUTING_POLICY_JSON_SAMPLES.ModelAliasPolicy}
         />
-        <TextArea
-          style={{ fontFamily: 'monospace', minHeight: 140 }}
-          value={aliasRaw}
-          onChange={(e, { value }) => setAliasRaw(value)}
+        <ModelAliasPolicyForm
+          value={policies.ModelAliasPolicy ?? '{}'}
+          onChange={(v) =>
+            setPolicies((p) => ({ ...p, ModelAliasPolicy: v }))
+          }
+          disabled={false}
+          modelOpts={modelOpts}
+          groupOpts={groupOpts}
+          onAddModel={(v) => addModelOpt(v)}
+          onAddGroup={(v) => addGroupOpt(v)}
+          lookupReady={lookupReady}
         />
-        <Button type='button' onClick={() => void validateAlias()}>
-          {t('routing.validate_alias')}
-        </Button>
-      </Form>
+        </Form>
+        <div className='routing-policy-save-footer routing-policy-save-footer--split'>
+          {!isRoot() ? (
+            <span className='routing-policy-save-footer__hint'>
+              {t('routing.need_root_save')}
+            </span>
+          ) : null}
+          <div className='routing-policy-save-footer__buttons'>
+            <Button
+              primary
+              type='button'
+              size='small'
+              icon
+              labelPosition='left'
+              disabled={!isRoot()}
+              onClick={() => void saveOption('ModelAliasPolicy')}
+            >
+              <Icon name='save' />
+              {t('routing.save')}
+            </Button>
+            <Button
+              type='button'
+              basic
+              size='small'
+              icon
+              labelPosition='left'
+              onClick={() => void validateAlias()}
+            >
+              <Icon name='check circle outline' />
+              {t('routing.validate_alias')}
+            </Button>
+          </div>
+        </div>
+      </div>
     </Tab.Pane>
   );
 
@@ -458,15 +604,53 @@ export default function RoutingOperations() {
                 <Table.HeaderCell>ID</Table.HeaderCell>
                 <Table.HeaderCell>{t('routing.col_name')}</Table.HeaderCell>
                 <Table.HeaderCell>
-                  {t('routing.col_provider')}
+                  <PreviewColumnHeader
+                    label={t('routing.col_provider')}
+                    hint={t('routing.preview_hint_direction')}
+                  />
                 </Table.HeaderCell>
-                <Table.HeaderCell>W</Table.HeaderCell>
-                <Table.HeaderCell>×m</Table.HeaderCell>
-                <Table.HeaderCell>×a</Table.HeaderCell>
-                <Table.HeaderCell>{t('routing.adaptive')}</Table.HeaderCell>
-                <Table.HeaderCell>Eff</Table.HeaderCell>
-                <Table.HeaderCell>Pri</Table.HeaderCell>
-                <Table.HeaderCell>Fuse</Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label='W'
+                    hint={t('routing.preview_hint_w')}
+                  />
+                </Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label='×m'
+                    hint={t('routing.preview_hint_mul_m')}
+                  />
+                </Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label='×a'
+                    hint={t('routing.preview_hint_mul_a')}
+                  />
+                </Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label={t('routing.adaptive')}
+                    hint={t('routing.preview_hint_adaptive')}
+                  />
+                </Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label='Eff'
+                    hint={t('routing.preview_hint_eff')}
+                  />
+                </Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label='Pri'
+                    hint={t('routing.preview_hint_pri')}
+                  />
+                </Table.HeaderCell>
+                <Table.HeaderCell>
+                  <PreviewColumnHeader
+                    label='Fuse'
+                    hint={t('routing.preview_hint_fuse')}
+                  />
+                </Table.HeaderCell>
               </Table.Row>
             </Table.Header>
             <Table.Body>
@@ -703,7 +887,7 @@ export default function RoutingOperations() {
   ];
 
   return (
-    <div className='dashboard-container'>
+    <div className='dashboard-container routing-page'>
       <Card fluid className='chart-card'>
         <Card.Content>
           <Card.Header className='header'>{t('routing.title')}</Card.Header>

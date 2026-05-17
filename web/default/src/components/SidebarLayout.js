@@ -111,6 +111,12 @@ const sidebarNavItems = [
   nacosNavGroup,
   { name: 'header.routing', to: '/routing', icon: 'random', admin: true },
   { name: 'header.channel', to: '/channel', icon: 'sitemap', admin: true },
+  {
+    name: 'header.model_catalog',
+    to: '/model-catalog',
+    icon: 'list alternate outline',
+    admin: true,
+  },
   { name: 'header.token', to: '/token', icon: 'key', admin: false },
   { name: 'header.redemption', to: '/redemption', icon: 'dollar sign', admin: true },
   { name: 'header.topup', to: '/topup', icon: 'cart', admin: false },
@@ -164,24 +170,27 @@ const SidebarLayout = ({ children }) => {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('one-api-sidebar-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const nacosMenuEnabled =
     statusState.status?.nacos_enabled !== false &&
     statusState.status?.nacos_enabled !== 'false' &&
     isNacosEnabled();
   const [nacosSectionOpen, setNacosSectionOpen] = useState(() => {
     try {
-      return localStorage.getItem('one-api-sidebar-nacos-open') !== '0';
+      return localStorage.getItem('one-api-sidebar-nacos-open') === '1';
     } catch {
-      return true;
+      return false;
     }
   });
 
   useEffect(() => {
-    if (
-      location.pathname.startsWith('/nacos') ||
-      location.pathname.startsWith('/channel') ||
-      location.pathname.startsWith('/routing')
-    ) {
+    if (location.pathname.startsWith('/nacos')) {
       setNacosSectionOpen(true);
     }
   }, [location.pathname]);
@@ -195,6 +204,18 @@ const SidebarLayout = ({ children }) => {
   const toggleLanguage = async () => {
     await i18n.changeLanguage(isEnglishUI ? 'zh' : 'en');
     window.location.reload();
+  };
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('one-api-sidebar-collapsed', next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   };
 
   async function logout() {
@@ -282,7 +303,7 @@ const SidebarLayout = ({ children }) => {
     );
   }
 
-  const renderNav = (onPick) =>
+  const renderNav = (onPick, navCollapsed) =>
     sidebarNavItems.map((item) => {
       if (item.type === 'group' && !nacosMenuEnabled) {
         return null;
@@ -291,8 +312,10 @@ const SidebarLayout = ({ children }) => {
         if (item.admin && !isAdmin()) return null;
         const groupActive = isNacosGroupChildActive(location.pathname, item);
         const collapsible = !!item.collapsible;
+        const showNacosChildren =
+          !collapsible || nacosSectionOpen || navCollapsed;
         const toggleNacos = () => {
-          if (!collapsible) return;
+          if (!collapsible || navCollapsed) return;
           setNacosSectionOpen((open) => {
             const next = !open;
             try {
@@ -306,24 +329,27 @@ const SidebarLayout = ({ children }) => {
         return (
           <Menu.Item
             key={item.name}
-            className={`app-sidebar-nav-group${groupActive ? ' app-sidebar-nav-group--active' : ''}`}
+            className={`app-sidebar-nav-group${
+              item.name === 'header.nacos_menu' ? ' app-sidebar-nav-group--nacos' : ''
+            }${groupActive ? ' app-sidebar-nav-group--active' : ''}`}
+            title={navCollapsed ? t(item.name) : undefined}
           >
             <Menu.Header
               className={`app-sidebar-nav-group-header${
                 collapsible ? ' app-sidebar-nav-group-header--collapsible' : ''
               }`}
-              onClick={collapsible ? toggleNacos : undefined}
+              onClick={collapsible && !navCollapsed ? toggleNacos : undefined}
             >
-              {collapsible ? (
+              {collapsible && !navCollapsed ? (
                 <Icon
                   name={nacosSectionOpen ? 'angle down' : 'angle right'}
                   className='app-sidebar-nav-group-chevron'
                 />
               ) : null}
               <Icon name={item.icon} />
-              {t(item.name)}
+              <span className='app-sidebar-nav-label'>{t(item.name)}</span>
             </Menu.Header>
-            {collapsible && !nacosSectionOpen ? null : (
+            {showNacosChildren ? (
               <Menu.Menu>
                 {item.children.map((ch) => {
                   const subActive = ch.openNativeConsoleInNewTab
@@ -333,6 +359,7 @@ const SidebarLayout = ({ children }) => {
                     <Menu.Item
                       key={ch.openNativeConsoleInNewTab ? ch.name : ch.to}
                       active={subActive}
+                      title={navCollapsed ? t(ch.name) : undefined}
                       onClick={() => {
                         if (ch.openNativeConsoleInNewTab) {
                           window.open(
@@ -348,12 +375,12 @@ const SidebarLayout = ({ children }) => {
                       }}
                     >
                       <Icon name={ch.icon} />
-                      {t(ch.name)}
+                      <span className='app-sidebar-nav-label'>{t(ch.name)}</span>
                     </Menu.Item>
                   );
                 })}
               </Menu.Menu>
-            )}
+            ) : null}
           </Menu.Item>
         );
       }
@@ -363,13 +390,14 @@ const SidebarLayout = ({ children }) => {
         <Menu.Item
           key={item.to + item.name}
           active={active}
+          title={navCollapsed ? t(item.name) : undefined}
           onClick={() => {
             navigate(item.to);
             if (onPick) onPick();
           }}
         >
           <Icon name={item.icon} />
-          {t(item.name)}
+          <span className='app-sidebar-nav-label'>{t(item.name)}</span>
         </Menu.Item>
       );
     });
@@ -424,7 +452,7 @@ const SidebarLayout = ({ children }) => {
               borderRadius: 0,
             }}
           >
-            {renderNav(() => setMobileOpen(false))}
+            {renderNav(() => setMobileOpen(false), false)}
           </Menu>
         ) : null}
         <div className='app-mobile-main'>
@@ -437,8 +465,18 @@ const SidebarLayout = ({ children }) => {
 
   return (
     <div className='app-sidebar-layout-fill'>
-      <div className='app-shell'>
-      <aside className='app-sidebar'>
+      <div
+        className={
+          sidebarCollapsed
+            ? 'app-shell app-shell--sidebar-collapsed'
+            : 'app-shell'
+        }
+      >
+        <aside
+          className={
+            sidebarCollapsed ? 'app-sidebar app-sidebar--collapsed' : 'app-sidebar'
+          }
+        >
         <div className='app-sidebar-brand'>
           <Link to='/' className='app-sidebar-brand-link'>
             <img src={logo} alt='logo' className='app-sidebar-logo' />
@@ -456,8 +494,32 @@ const SidebarLayout = ({ children }) => {
             margin: 0,
           }}
         >
-          {renderNav(null)}
+          {renderNav(null, sidebarCollapsed)}
         </Menu>
+        <div className='app-sidebar-footer'>
+          <Button
+            type='button'
+            basic
+            fluid
+            icon
+            className='app-sidebar-toggle'
+            onClick={toggleSidebarCollapsed}
+            title={
+              sidebarCollapsed
+                ? t('header.sidebar_expand')
+                : t('header.sidebar_collapse')
+            }
+            aria-label={
+              sidebarCollapsed
+                ? t('header.sidebar_expand')
+                : t('header.sidebar_collapse')
+            }
+          >
+            <Icon
+              name={sidebarCollapsed ? 'angle double right' : 'angle double left'}
+            />
+          </Button>
+        </div>
       </aside>
       <div className='app-main'>
         <header className='app-topbar'>

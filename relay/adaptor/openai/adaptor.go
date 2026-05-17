@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/relay/adaptor"
 	"github.com/songquanpeng/one-api/relay/adaptor/alibailian"
 	"github.com/songquanpeng/one-api/relay/adaptor/baiduv2"
@@ -60,7 +61,7 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 		return baiduv2.GetRequestURL(meta)
 	case channeltype.AliBailian:
 		return alibailian.GetRequestURL(meta)
-	case channeltype.GeminiOpenAICompatible:
+	case channeltype.GeminiCompatible, channeltype.GeminiOpenAICompatible:
 		return geminiv2.GetRequestURL(meta)
 	default:
 		return GetFullRequestURL(meta.BaseURL, meta.RequestURLPath, meta.ChannelType), nil
@@ -74,6 +75,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *me
 		return nil
 	}
 	req.Header.Set("Authorization", "Bearer "+meta.APIKey)
+	if org := strings.TrimSpace(c.GetString(ctxkey.OpenAIOrganization)); org != "" {
+		req.Header.Set("OpenAI-Organization", org)
+	}
 	if meta.ChannelType == channeltype.OpenRouter {
 		req.Header.Set("HTTP-Referer", "https://github.com/songquanpeng/one-api")
 		req.Header.Set("X-Title", "One API")

@@ -7,13 +7,18 @@ const LogTableHead = ({ userIsAdmin }) => {
       <TableRow>
         <TableCell>时间</TableCell>
         {userIsAdmin && <TableCell>渠道</TableCell>}
+        {userIsAdmin && <TableCell>渠道名称</TableCell>}
+        <TableCell>分组</TableCell>
         {userIsAdmin && <TableCell>用户</TableCell>}
         <TableCell>令牌</TableCell>
+        <TableCell>令牌ID</TableCell>
+        <TableCell>IP</TableCell>
         <TableCell>类型</TableCell>
         <TableCell>模型</TableCell>
         <TableCell>提示</TableCell>
         <TableCell>补全</TableCell>
         <TableCell>额度</TableCell>
+        <TableCell>用时(s)</TableCell>
         <TableCell>详情</TableCell>
       </TableRow>
     </TableHead>

@@ -1,6 +1,14 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Button, Card, Form, Header, Message, Modal, Checkbox} from 'semantic-ui-react';
+import {
+  Button,
+  Card,
+  Form,
+  Header,
+  Message,
+  Modal,
+  Checkbox,
+} from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {
   API,
@@ -14,25 +22,10 @@ import {
   verifyStepUp2FA,
   fetchChannelKeyAfterVerify,
 } from '../../helpers';
-import {CHANNEL_OPTIONS} from '../../constants';
+import {setChannelTypeOptionsCache} from '../../helpers/helper';
 import {renderChannelTip} from '../../helpers/render';
-import SettingMonacoField from '../../components/SettingMonacoField';
-
-const buildChannelInputBaseline = (inp, customModelStr) => ({
-  name: String(inp?.name ?? ''),
-  key: String(inp?.key ?? ''),
-  base_url: String(inp?.base_url ?? ''),
-  other: String(inp?.other ?? ''),
-  model_mapping: String(inp?.model_mapping ?? ''),
-  system_prompt: String(inp?.system_prompt ?? ''),
-  customModel: String(customModelStr ?? ''),
-});
-
-const MODEL_MAPPING_EXAMPLE = {
-  'gpt-3.5-turbo-0301': 'gpt-3.5-turbo',
-  'gpt-4-0314': 'gpt-4',
-  'gpt-4-32k-0314': 'gpt-4-32k',
-};
+import ChannelModelMappingEditor from './ChannelModelMappingEditor';
+import './ChannelEdit.css';
 
 const DEFAULT_CHANNEL_CONFIG = {
   region: '',
@@ -46,24 +39,24 @@ const DEFAULT_CHANNEL_CONFIG = {
   plugin: '',
   routing_provider: '',
   routing_skip_adaptive: false,
+  deep_research_mode: '',
 };
 
 function type2secretPrompt(type, t) {
   switch (type) {
-    case 15:
-      return t('channel.edit.key_prompts.zhipu');
-    case 18:
-      return t('channel.edit.key_prompts.spark');
-    case 22:
-      return t('channel.edit.key_prompts.fastgpt');
-    case 23:
-      return t('channel.edit.key_prompts.tencent');
-    case 52:
+    case 43:
       return t('channel.edit.key_prompts.aippt');
-    case 53:
+    case 44:
       return t('channel.edit.key_prompts.amap_poi');
-    case 54:
-      return t('channel.edit.key_prompts.bifrost');
+    case 45:
+      return t('channel.edit.key_prompts.deep_research');
+    case 5:
+    case 46:
+      return t('channel.edit.key_prompts.anthropic');
+    case 14:
+    case 15:
+    case 42:
+      return t('channel.edit.key_prompts.gemini');
     default:
       return t('channel.edit.key_prompts.default');
   }
@@ -116,22 +109,33 @@ const EditChannel = () => {
 
   const defaultChannelInputs = {
     name: '',
-    type: 1,
+    type: 41,
     key: '',
     base_url: '',
     model_mapping: '',
     system_prompt: '',
     models: [],
     groups: ['default'],
+    openai_organization: '',
+    test_model: '',
+    auto_ban: 1,
+    remark: '',
+    tag: '',
+    status_code_mapping: '',
+    param_override: '',
+    header_override: '',
+    setting: '',
+    settings: '',
+    other_info: '',
   };
+  const [channelTypeOptions, setChannelTypeOptions] = useState([]);
+  const [channelTypesLoading, setChannelTypesLoading] = useState(true);
   const [batch, setBatch] = useState(false);
   const [loadKeyOpen, setLoadKeyOpen] = useState(false);
   const [loadKeyCode, setLoadKeyCode] = useState('');
   const [loadKeyBusy, setLoadKeyBusy] = useState(false);
+  const [fetchUpstreamBusy, setFetchUpstreamBusy] = useState(false);
   const [inputs, setInputs] = useState(defaultChannelInputs);
-  const [inputBaseline, setInputBaseline] = useState(() =>
-    buildChannelInputBaseline(defaultChannelInputs, '')
-  );
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
@@ -139,18 +143,32 @@ const EditChannel = () => {
   const [fullModels, setFullModels] = useState([]);
   const [customModel, setCustomModel] = useState('');
   const [config, setConfig] = useState({ ...DEFAULT_CHANNEL_CONFIG });
-  const [configBaseline, setConfigBaseline] = useState({
-    ...DEFAULT_CHANNEL_CONFIG,
-  });
   const handleInputChange = (e, { name, value }) => {
     if (name === 'type') {
+      const opt = channelTypeOptions.find((o) => o.value === value);
+      const defaultUrl =
+        opt && opt.default_base_url
+          ? String(opt.default_base_url).trim()
+          : '';
       const localModels = getChannelModels(value);
       setBasicModels(localModels);
       setInputs((prev) => {
         const typeChanged = prev.type !== value;
         const models =
           typeChanged && prev.models.length === 0 ? localModels : prev.models;
-        return { ...prev, type: value, models };
+        let base_url = prev.base_url;
+        if (typeChanged && defaultUrl) {
+          const prevTrim = String(prev.base_url || '').trim();
+          const prevOpt = channelTypeOptions.find((o) => o.value === prev.type);
+          const prevDefault =
+            prevOpt && prevOpt.default_base_url
+              ? String(prevOpt.default_base_url).trim()
+              : '';
+          if (!prevTrim || prevTrim === prevDefault) {
+            base_url = defaultUrl;
+          }
+        }
+        return { ...prev, type: value, models, base_url };
       });
       return;
     }
@@ -190,17 +208,27 @@ const EditChannel = () => {
         );
       }
       const { other: _legacyOther, ...channelData } = data;
+      if (channelData.auto_ban === undefined || channelData.auto_ban === null) {
+        channelData.auto_ban = 1;
+      }
+      channelData.openai_organization = channelData.openai_organization ?? '';
+      channelData.test_model = channelData.test_model ?? '';
+      channelData.remark = channelData.remark ?? '';
+      channelData.tag = channelData.tag ?? '';
+      channelData.status_code_mapping = channelData.status_code_mapping ?? '';
+      channelData.param_override = channelData.param_override ?? '';
+      channelData.header_override = channelData.header_override ?? '';
+      channelData.setting = channelData.setting ?? '';
+      channelData.settings = channelData.settings ?? '';
+      channelData.other_info = channelData.other_info ?? '';
       setInputs(channelData);
-      setInputBaseline(buildChannelInputBaseline(channelData, ''));
       if (data.config !== '' && data.config != null) {
         const cfg = JSON.parse(data.config);
         const merged = { ...DEFAULT_CHANNEL_CONFIG, ...cfg };
         setConfig(merged);
-        setConfigBaseline(merged);
       } else {
         const empty = { ...DEFAULT_CHANNEL_CONFIG };
         setConfig(empty);
-        setConfigBaseline(empty);
       }
       setBasicModels(getChannelModels(data.type));
     } else {
@@ -254,10 +282,24 @@ const EditChannel = () => {
   }, [originModelOptions, inputs.models]);
 
   useEffect(() => {
+    (async () => {
+      try {
+        const res = await API.get('/api/model_catalog/editor_options');
+        const opts = res.data?.data?.channel_types;
+        if (Array.isArray(opts) && opts.length) {
+          setChannelTypeOptions(opts);
+          setChannelTypeOptionsCache(opts);
+        }
+      } catch (_) {
+        /* 忽略 */
+      } finally {
+        setChannelTypesLoading(false);
+      }
+    })();
     if (isEdit) {
       loadChannel().then();
     } else {
-      let localModels = getChannelModels(inputs.type);
+      const localModels = getChannelModels(inputs.type);
       setBasicModels(localModels);
     }
     fetchModels().then();
@@ -268,25 +310,32 @@ const EditChannel = () => {
     if (inputs.key === '') {
       if (config.ak !== '' && config.sk !== '' && config.region !== '') {
         inputs.key = `${config.ak}|${config.sk}|${config.region}`;
-      } else if (
-        config.region !== '' &&
-        config.vertex_ai_project_id !== '' &&
-        config.vertex_ai_adc !== ''
-      ) {
-        inputs.key = `${config.region}|${config.vertex_ai_project_id}|${config.vertex_ai_adc}`;
       }
     }
     if (!isEdit && (inputs.name === '' || inputs.key === '')) {
       showInfo(t('channel.edit.messages.name_required'));
       return;
     }
-    if (inputs.type !== 43 && inputs.models.length === 0) {
+    if (inputs.models.length === 0) {
       showInfo(t('channel.edit.messages.models_required'));
       return;
     }
     if (inputs.model_mapping !== '' && !verifyJSON(inputs.model_mapping)) {
       showInfo(t('channel.edit.messages.model_mapping_invalid'));
       return;
+    }
+    const jsonFields = [
+      ['status_code_mapping', inputs.status_code_mapping],
+      ['param_override', inputs.param_override],
+      ['header_override', inputs.header_override],
+      ['setting', inputs.setting],
+      ['settings', inputs.settings],
+    ];
+    for (const [label, val] of jsonFields) {
+      if (val && String(val).trim() && !verifyJSON(val)) {
+        showInfo(`${label}: ${t('channel.edit.messages.model_mapping_invalid')}`);
+        return;
+      }
     }
     let localInputs = { ...inputs };
     if (localInputs.key === 'undefined|undefined|undefined') {
@@ -299,13 +348,7 @@ const EditChannel = () => {
       );
     }
     let cfg = { ...config };
-    if (localInputs.type === 3 && !cfg.api_version) {
-      cfg.api_version = '2024-03-01-preview';
-    }
-    if (localInputs.type === 18 && !cfg.api_version) {
-      cfg.api_version = 'v2.1';
-    }
-    if (localInputs.type === 24 && !cfg.api_version) {
+    if ((localInputs.type === 14 || localInputs.type === 42) && !cfg.api_version) {
       cfg.api_version = 'v1';
     }
     let res;
@@ -328,12 +371,8 @@ const EditChannel = () => {
       } else {
         showSuccess(t('channel.edit.messages.create_success'));
         setInputs(defaultChannelInputs);
-        setInputBaseline(
-          buildChannelInputBaseline(defaultChannelInputs, '')
-        );
         setCustomModel('');
         setConfig({ ...DEFAULT_CHANNEL_CONFIG });
-        setConfigBaseline({ ...DEFAULT_CHANNEL_CONFIG });
       }
     } else {
       showError(message);
@@ -359,8 +398,103 @@ const EditChannel = () => {
     handleInputChange(null, { name: 'models', value: localModels });
   };
 
+  const resolveKeyForUpstreamFetch = () => {
+    if (batch) {
+      const first = String(inputs.key || '')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .find(Boolean);
+      return first || '';
+    }
+    let k = String(inputs.key || '').trim();
+    if (!k && config.ak && config.sk && config.region) {
+      k = `${config.ak}|${config.sk}|${config.region}`;
+    }
+    if (
+      !k &&
+      config.region &&
+      config.vertex_ai_project_id &&
+      config.vertex_ai_adc
+    ) {
+      k = `${config.region}|${config.vertex_ai_project_id}|${config.vertex_ai_adc}`;
+    }
+    return k;
+  };
+
+  const mergeFetchedUpstreamModels = (ids) => {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      showInfo(t('channel.edit.messages.upstream_fetch_empty'));
+      return;
+    }
+    const dedup = [
+      ...new Set(ids.map((x) => String(x).trim()).filter(Boolean)),
+    ];
+    const localModels = [...new Set([...inputs.models, ...dedup])];
+    const optKeys = new Set(originModelOptions.map((o) => o.key));
+    const newOpts = [...originModelOptions];
+    for (const id of dedup) {
+      if (!optKeys.has(id)) {
+        optKeys.add(id);
+        newOpts.push({ key: id, text: id, value: id });
+      }
+    }
+    setOriginModelOptions(newOpts);
+    handleInputChange(null, { name: 'models', value: localModels });
+    showSuccess(
+      t('channel.edit.messages.upstream_fetch_success', {
+        count: dedup.length,
+      })
+    );
+  };
+
+  const fetchUpstreamModelsList = async () => {
+    const keyFromForm = resolveKeyForUpstreamFetch();
+    setFetchUpstreamBusy(true);
+    try {
+      let ids;
+      if (keyFromForm) {
+        let cfg = { ...config };
+        if ((inputs.type === 14 || inputs.type === 42) && !cfg.api_version) {
+          cfg.api_version = 'v1';
+        }
+        let baseUrl = String(inputs.base_url || '').trim();
+        if (baseUrl.endsWith('/')) {
+          baseUrl = baseUrl.slice(0, baseUrl.length - 1);
+        }
+        const res = await API.post('/api/channel/fetch_upstream_models_preview', {
+          type: inputs.type,
+          base_url: baseUrl,
+          key: keyFromForm,
+          config: JSON.stringify(cfg),
+        });
+        const { success, message, data } = res.data;
+        if (!success) {
+          showError(message || '请求失败');
+          return;
+        }
+        ids = data;
+      } else if (isEdit && channelId) {
+        const res = await API.get(`/api/channel/fetch_models/${channelId}`);
+        const { success, message, data } = res.data;
+        if (!success) {
+          showError(message || '请求失败');
+          return;
+        }
+        ids = data;
+      } else {
+        showInfo(t('channel.edit.messages.upstream_fetch_need_key'));
+        return;
+      }
+      mergeFetchedUpstreamModels(ids);
+    } catch (e) {
+      showError(e.message || '请求失败');
+    } finally {
+      setFetchUpstreamBusy(false);
+    }
+  };
+
   return (
-    <div className='dashboard-container'>
+    <div className='dashboard-container channel-edit-page'>
       <Card fluid className='chart-card'>
         <Card.Content>
           <Card.Header className='header'>
@@ -368,364 +502,406 @@ const EditChannel = () => {
               ? t('channel.edit.title_edit')
               : t('channel.edit.title_create')}
           </Card.Header>
-          <Form loading={loading} autoComplete='new-password'>
-            <Form.Field>
-              <Form.Select
-                label={t('channel.edit.type')}
-                name='type'
-                required
-                search
-                options={CHANNEL_OPTIONS}
-                value={inputs.type}
-                onChange={handleInputChange}
-              />
-            </Form.Field>
-            <Form.Field>
-              <Form.Input
-                label={t('channel.edit.name')}
-                placeholder={t('channel.edit.name_placeholder')}
-                name='name'
-                required
-                value={inputs.name}
-                onChange={handleInputChange}
-                autoComplete='off'
-              />
-            </Form.Field>
-            <Form.Field>
-              <Form.Dropdown
-                label={t('channel.edit.group')}
-                placeholder={t('channel.edit.group_placeholder')}
-                name='groups'
-                required
-                fluid
-                multiple
-                selection
-                allowAdditions
-                additionLabel={t('channel.edit.group_addition')}
-                onChange={handleInputChange}
-                value={inputs.groups}
-                autoComplete='new-password'
-                options={groupOptions}
-              />
-            </Form.Field>
-            {renderChannelTip(inputs.type)}
+          <Form loading={loading || channelTypesLoading} autoComplete='new-password'>
+            <div className='channel-edit-section'>
+              <Header as='h4' className='channel-edit-section__title'>
+                {t('channel.edit.section_basic')}
+              </Header>
+              <Form.Field>
+                <Form.Select
+                  label={t('channel.edit.type')}
+                  name='type'
+                  required
+                  search
+                  options={channelTypeOptions}
+                  placeholder={
+                    channelTypesLoading
+                      ? t('channel.edit.types_loading')
+                      : undefined
+                  }
+                  value={inputs.type}
+                  onChange={handleInputChange}
+                />
+              </Form.Field>
+              <Form.Field>
+                <Form.Input
+                  label={t('channel.edit.name')}
+                  placeholder={t('channel.edit.name_placeholder')}
+                  name='name'
+                  required
+                  value={inputs.name}
+                  onChange={handleInputChange}
+                  autoComplete='off'
+                />
+              </Form.Field>
+              <Form.Field>
+                <Form.Dropdown
+                  label={t('channel.edit.group')}
+                  placeholder={t('channel.edit.group_placeholder')}
+                  name='groups'
+                  required
+                  fluid
+                  multiple
+                  selection
+                  allowAdditions
+                  additionLabel={t('channel.edit.group_addition')}
+                  onChange={handleInputChange}
+                  value={inputs.groups}
+                  autoComplete='new-password'
+                  options={groupOptions}
+                />
+              </Form.Field>
+              {renderChannelTip(inputs.type)}
+            </div>
 
-            {/* Azure OpenAI specific fields */}
-            {inputs.type === 3 && (
-              <>
-                <Message>
-                  注意，<strong>模型部署名称必须和模型名称保持一致</strong>
-                  ，因为 One API 会把请求体中的 model
-                  参数替换为你的部署名称（模型名称中的点会被剔除），
-                  <a
-                    target='_blank'
-                    href='https://github.com/songquanpeng/one-api/issues/133?notification_referrer_id=NT_kwDOAmJSYrM2NjIwMzI3NDgyOjM5OTk4MDUw#issuecomment-1571602271'
-                  >
-                    图片演示
-                  </a>
-                  。
-                </Message>
+            <div className='channel-edit-section'>
+              <Header as='h4' className='channel-edit-section__title'>
+                {t('channel.edit.section_upstream')}
+              </Header>
+              {(() => {
+                const cur = channelTypeOptions.find(
+                  (o) => o.value === inputs.type
+                );
+                return cur?.description ? (
+                  <Message info size='small'>
+                    {cur.description}
+                  </Message>
+                ) : null;
+              })()}
+              {(inputs.type === 14 || inputs.type === 42) && (
                 <Form.Field>
                   <Form.Input
-                    label='AZURE_OPENAI_ENDPOINT'
-                    name='base_url'
-                    placeholder='请输入 AZURE_OPENAI_ENDPOINT，例如：https://docs-test-001.openai.azure.com'
-                    onChange={handleInputChange}
-                    value={inputs.base_url}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-                <Form.Field>
-                  <Form.Input
-                    label='默认 API 版本'
+                    label='Gemini API 版本'
                     name='api_version'
-                    placeholder='请输入默认 API 版本，例如：2024-03-01-preview，该配置可以被实际的请求查询参数所覆盖'
+                    placeholder='例如：v1'
                     onChange={handleConfigChange}
                     value={config.api_version || ''}
                     autoComplete='new-password'
                   />
                 </Form.Field>
-              </>
-            )}
-
-            {/* Custom base URL field */}
-            {inputs.type === 8 && (
-              <SettingMonacoField
-                label={t('channel.edit.proxy_url')}
-                hint={t('channel.edit.proxy_url_placeholder')}
-                value={inputs.base_url}
-                originValue={inputBaseline.base_url}
-                onChange={(v) =>
-                  handleInputChange(null, { name: 'base_url', value: v })
-                }
-                height={96}
-              />
-            )}
-            {inputs.type === 50 && (
-                <SettingMonacoField
-                  label={t('channel.edit.base_url')}
-                  hint={t('channel.edit.base_url_placeholder')}
-                  value={inputs.base_url}
-                  originValue={inputBaseline.base_url}
-                  onChange={(v) =>
-                    handleInputChange(null, { name: 'base_url', value: v })
-                  }
-                  height={96}
-                />
-            )}
-
-            {inputs.type === 18 && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.spark_version')}
-                  name='api_version'
-                  placeholder={t('channel.edit.spark_version_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.api_version || ''}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 21 && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.knowledge_id')}
-                  name='library_id'
-                  placeholder={t('channel.edit.knowledge_id_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.library_id || ''}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 17 && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.plugin_param')}
-                  name='plugin'
-                  placeholder={t('channel.edit.plugin_param_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.plugin || ''}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 24 && (
-              <Form.Field>
-                <Form.Input
-                  label='Gemini API 版本'
-                  name='api_version'
-                  placeholder='请输入版本号，例如：v1'
-                  onChange={handleConfigChange}
-                  value={config.api_version || ''}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 34 && (
-              <Message>{t('channel.edit.coze_notice')}</Message>
-            )}
-            {inputs.type === 40 && (
-              <Message>
-                {t('channel.edit.douban_notice')}
-                <a
-                  target='_blank'
-                  href='https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint'
-                >
-                  {t('channel.edit.douban_notice_link')}
-                </a>
-                {t('channel.edit.douban_notice_2')}
-              </Message>
-            )}
-            {inputs.type !== 43 && (
-              <Form.Field>
-                <Form.Dropdown
-                  label={t('channel.edit.models')}
-                  placeholder={t('channel.edit.models_placeholder')}
-                  name='models'
-                  required
-                  fluid
-                  multiple
-                  search
-                  onLabelClick={(e, { value }) => {
-                    copy(value).then();
-                  }}
-                  selection
-                  onChange={handleInputChange}
-                  value={inputs.models}
-                  autoComplete='new-password'
-                  options={modelOptions}
-                />
-              </Form.Field>
-            )}
-            {inputs.type !== 43 && (
-              <div style={{ lineHeight: '40px', marginBottom: '12px' }}>
-                <Button
-                  type={'button'}
-                  onClick={() => {
-                    handleInputChange(null, {
-                      name: 'models',
-                      value: basicModels,
-                    });
-                  }}
-                >
-                  {t('channel.edit.buttons.fill_models')}
-                </Button>
-                <Button
-                  type={'button'}
-                  onClick={() => {
-                    handleInputChange(null, {
-                      name: 'models',
-                      value: fullModels,
-                    });
-                  }}
-                >
-                  {t('channel.edit.buttons.fill_all')}
-                </Button>
-                <Button
-                  type={'button'}
-                  onClick={() => {
-                    handleInputChange(null, { name: 'models', value: [] });
-                  }}
-                >
-                  {t('channel.edit.buttons.clear')}
-                </Button>
-                <SettingMonacoField
-                  label={t('channel.edit.models')}
-                  hint={t('channel.edit.buttons.custom_placeholder')}
-                  value={customModel}
-                  originValue={inputBaseline.customModel}
-                  onChange={setCustomModel}
-                  height={156}
-                />
-                <Button type={'button'} onClick={addCustomModel} style={{ marginTop: 8 }}>
-                  {t('channel.edit.buttons.add_custom')}
-                </Button>
+              )}
+              <div className='channel-edit-upstream-row'>
+                <Form.Field>
+                  <label>{t('channel.edit.base_url')}</label>
+                  <p className='channel-edit-field-hint'>
+                    {t('channel.edit.base_url_all_hint')}
+                  </p>
+                  <Form.Input
+                    name='base_url'
+                    value={inputs.base_url}
+                    onChange={handleInputChange}
+                    autoComplete='new-password'
+                  />
+                </Form.Field>
+                {!batch ? (
+                  <Form.Field>
+                    <label>{t('channel.edit.key')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {type2secretPrompt(inputs.type, t)}
+                    </p>
+                    <Form.Input
+                      name='key'
+                      required
+                      placeholder={type2secretPrompt(inputs.type, t)}
+                      onChange={handleInputChange}
+                      value={inputs.key}
+                      autoComplete='new-password'
+                    />
+                  </Form.Field>
+                ) : null}
               </div>
-            )}
-            {inputs.type !== 43 && (
-              <>
-                <SettingMonacoField
-                  label={t('channel.edit.model_mapping')}
-                  hint={`${t(
-                    'channel.edit.model_mapping_placeholder'
-                  )}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
-                  language='json'
-                  enableJsonFormat
-                  value={inputs.model_mapping}
-                  originValue={inputBaseline.model_mapping}
-                  onChange={(v) =>
-                    handleInputChange(null, { name: 'model_mapping', value: v })
-                  }
-                  height={272}
-                  minimap
+              {batch ? (
+                <Form.Field>
+                  <label>{t('channel.edit.key')}</label>
+                  <p className='channel-edit-field-hint'>
+                    {t('channel.edit.batch_placeholder')}
+                  </p>
+                  <Form.TextArea
+                    name='key'
+                    rows={10}
+                    value={inputs.key}
+                    onChange={handleInputChange}
+                    autoComplete='new-password'
+                  />
+                </Form.Field>
+              ) : null}
+              {!isEdit && (
+                <Form.Checkbox
+                  checked={batch}
+                  label={t('channel.edit.batch')}
+                  name='batch'
+                  onChange={() => setBatch(!batch)}
                 />
-                <SettingMonacoField
-                  label={t('channel.edit.system_prompt')}
-                  hint={t('channel.edit.system_prompt_placeholder')}
-                  language='plaintext'
-                  value={inputs.system_prompt}
-                  originValue={inputBaseline.system_prompt}
-                  onChange={(v) =>
-                    handleInputChange(null, { name: 'system_prompt', value: v })
-                  }
-                  height={272}
-                  minimap
-                />
-              </>
-            )}
-            {inputs.type === 33 && (
-              <Form.Field>
-                <SettingMonacoField
-                  label='Region'
-                  hint={t('channel.edit.aws_region_placeholder')}
-                  value={config.region}
-                  originValue={configBaseline.region}
-                  onChange={(v) =>
-                    handleConfigChange(null, { name: 'region', value: v })
-                  }
-                  height={88}
-                />
-                <SettingMonacoField
-                  label='AK'
-                  hint={t('channel.edit.aws_ak_placeholder')}
-                  value={config.ak}
-                  originValue={configBaseline.ak}
-                  onChange={(v) =>
-                    handleConfigChange(null, { name: 'ak', value: v })
-                  }
-                  height={88}
-                />
-                <Form.Input
-                  label='SK'
-                  name='sk'
-                  required
-                  placeholder={t('channel.edit.aws_sk_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.sk}
-                  type='password'
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 42 && (
-              <Form.Field>
-                <SettingMonacoField
-                  label='Region'
-                  hint={t('channel.edit.vertex_region_placeholder')}
-                  value={config.region}
-                  originValue={configBaseline.region}
-                  onChange={(v) =>
-                    handleConfigChange(null, { name: 'region', value: v })
-                  }
-                  height={88}
-                />
-                <SettingMonacoField
-                  label={t('channel.edit.vertex_project_id')}
-                  hint={t('channel.edit.vertex_project_id_placeholder')}
-                  value={config.vertex_ai_project_id}
-                  originValue={configBaseline.vertex_ai_project_id}
-                  onChange={(v) =>
-                    handleConfigChange(null, {
-                      name: 'vertex_ai_project_id',
-                      value: v,
-                    })
-                  }
-                  height={88}
-                />
-                <SettingMonacoField
-                  label={t('channel.edit.vertex_credentials')}
-                  hint={t('channel.edit.vertex_credentials_placeholder')}
-                  language='json'
-                  enableJsonFormat
-                  minimap
-                  value={config.vertex_ai_adc}
-                  originValue={configBaseline.vertex_ai_adc}
-                  onChange={(v) =>
-                    handleConfigChange(null, {
-                      name: 'vertex_ai_adc',
-                      value: v,
-                    })
-                  }
-                  height={280}
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 34 && (
-              <SettingMonacoField
-                label={t('channel.edit.user_id')}
-                hint={t('channel.edit.user_id_placeholder')}
-                value={config.user_id}
-                originValue={configBaseline.user_id}
-                onChange={(v) =>
-                  handleConfigChange(null, { name: 'user_id', value: v })
-                }
-                height={88}
-              />
-            )}
-            {inputs.type !== 33 && inputs.type !== 42 && (
-              <>
-                <Header as='h4' dividing>
+              )}
+            </div>
+
+            <div className='channel-edit-section'>
+                <Header as='h4' className='channel-edit-section__title'>
+                  {t('channel.edit.section_models')}
+                </Header>
+                <Form.Field>
+                  <Form.Dropdown
+                    label={t('channel.edit.models')}
+                    placeholder={t('channel.edit.models_placeholder')}
+                    name='models'
+                    required
+                    fluid
+                    multiple
+                    search
+                    onLabelClick={(e, { value }) => {
+                      copy(value).then();
+                    }}
+                    selection
+                    onChange={handleInputChange}
+                    value={inputs.models}
+                    autoComplete='new-password'
+                    options={modelOptions}
+                  />
+                </Form.Field>
+                <div className='channel-edit-models-toolbar'>
+                  <Button
+                    type='button'
+                    loading={fetchUpstreamBusy}
+                    disabled={fetchUpstreamBusy}
+                    onClick={() => void fetchUpstreamModelsList()}
+                  >
+                    {t('channel.edit.buttons.fetch_upstream_models')}
+                  </Button>
+                  <Button
+                    type='button'
+                    onClick={() => {
+                      handleInputChange(null, {
+                        name: 'models',
+                        value: basicModels,
+                      });
+                    }}
+                  >
+                    {t('channel.edit.buttons.fill_models')}
+                  </Button>
+                  <Button
+                    type='button'
+                    onClick={() => {
+                      handleInputChange(null, {
+                        name: 'models',
+                        value: fullModels,
+                      });
+                    }}
+                  >
+                    {t('channel.edit.buttons.fill_all')}
+                  </Button>
+                  <Button
+                    type='button'
+                    onClick={() => {
+                      handleInputChange(null, { name: 'models', value: [] });
+                    }}
+                  >
+                    {t('channel.edit.buttons.clear')}
+                  </Button>
+                </div>
+                <Form.Field>
+                  <label>{t('channel.edit.custom_models_bulk')}</label>
+                  <p className='channel-edit-field-hint'>
+                    {t('channel.edit.buttons.custom_placeholder')}
+                  </p>
+                  <Form.TextArea
+                    rows={4}
+                    value={customModel}
+                    onChange={(e, { value }) => setCustomModel(value)}
+                  />
+                  <Button
+                    type='button'
+                    onClick={addCustomModel}
+                    style={{ marginTop: 8 }}
+                  >
+                    {t('channel.edit.buttons.add_custom')}
+                  </Button>
+                </Form.Field>
+                <Form.Field>
+                  <label>{t('channel.edit.model_mapping')}</label>
+                  <ChannelModelMappingEditor
+                    value={inputs.model_mapping}
+                    onChange={(v) =>
+                      handleInputChange(null, {
+                        name: 'model_mapping',
+                        value: v,
+                      })
+                    }
+                  />
+                </Form.Field>
+                <Form.Field>
+                  <label>{t('channel.edit.system_prompt')}</label>
+                  <p className='channel-edit-field-hint'>
+                    {t('channel.edit.system_prompt_placeholder')}
+                  </p>
+                  <Form.TextArea
+                    name='system_prompt'
+                    rows={10}
+                    value={inputs.system_prompt}
+                    onChange={handleInputChange}
+                  />
+                </Form.Field>
+                <div className='channel-edit-section channel-edit-section--extended'>
+                  <Header as='h4' className='channel-edit-section__title'>
+                    {t('channel.edit.newapi_section')}
+                  </Header>
+                  <Form.Field>
+                    <label>{t('channel.edit.openai_organization')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.openai_organization_hint')}
+                    </p>
+                    <Form.Input
+                      name='openai_organization'
+                      placeholder={t(
+                        'channel.edit.openai_organization_placeholder'
+                      )}
+                      value={inputs.openai_organization}
+                      onChange={handleInputChange}
+                      autoComplete='off'
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.test_model')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.test_model_hint')}
+                    </p>
+                    <Form.Input
+                      name='test_model'
+                      placeholder={t('channel.edit.test_model_placeholder')}
+                      value={inputs.test_model}
+                      onChange={handleInputChange}
+                      autoComplete='off'
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.auto_ban_hint')}
+                    </p>
+                    <Checkbox
+                      toggle
+                      label={t('channel.edit.auto_ban')}
+                      checked={inputs.auto_ban !== 0}
+                      onChange={() =>
+                        setInputs((prev) => ({
+                          ...prev,
+                          auto_ban: prev.auto_ban === 0 ? 1 : 0,
+                        }))
+                      }
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.remark')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.remark_hint')}
+                    </p>
+                    <Form.Input
+                      name='remark'
+                      placeholder={t('channel.edit.remark_placeholder')}
+                      value={inputs.remark}
+                      onChange={handleInputChange}
+                      autoComplete='off'
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.tag')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.tag_hint')}
+                    </p>
+                    <Form.Input
+                      name='tag'
+                      placeholder={t('channel.edit.tag_placeholder')}
+                      value={inputs.tag}
+                      onChange={handleInputChange}
+                      autoComplete='off'
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.status_code_mapping')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.status_code_mapping_hint')}
+                    </p>
+                    <Form.TextArea
+                      name='status_code_mapping'
+                      rows={4}
+                      placeholder={t(
+                        'channel.edit.status_code_mapping_placeholder'
+                      )}
+                      value={inputs.status_code_mapping}
+                      onChange={handleInputChange}
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.param_override')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.param_override_hint')}
+                    </p>
+                    <Form.TextArea
+                      name='param_override'
+                      rows={6}
+                      placeholder={t(
+                        'channel.edit.param_override_placeholder'
+                      )}
+                      value={inputs.param_override}
+                      onChange={handleInputChange}
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.header_override')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.header_override_hint')}
+                    </p>
+                    <Form.TextArea
+                      name='header_override'
+                      rows={4}
+                      placeholder={t(
+                        'channel.edit.header_override_placeholder'
+                      )}
+                      value={inputs.header_override}
+                      onChange={handleInputChange}
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.setting_json')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.setting_json_hint')}
+                    </p>
+                    <Form.TextArea
+                      name='setting'
+                      rows={4}
+                      placeholder={t('channel.edit.setting_json_placeholder')}
+                      value={inputs.setting}
+                      onChange={handleInputChange}
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.settings_json')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.settings_json_hint')}
+                    </p>
+                    <Form.TextArea
+                      name='settings'
+                      rows={4}
+                      placeholder={t('channel.edit.settings_json_placeholder')}
+                      value={inputs.settings}
+                      onChange={handleInputChange}
+                    />
+                  </Form.Field>
+                  <Form.Field>
+                    <label>{t('channel.edit.other_info')}</label>
+                    <p className='channel-edit-field-hint'>
+                      {t('channel.edit.other_info_hint')}
+                    </p>
+                    <Form.TextArea
+                      name='other_info'
+                      rows={3}
+                      placeholder={t('channel.edit.other_info_placeholder')}
+                      value={inputs.other_info}
+                      onChange={handleInputChange}
+                    />
+                  </Form.Field>
+                </div>
+              </div>
+            <div className='channel-edit-section'>
+                <Header as='h4' className='channel-edit-section__title'>
                   {t('channel.edit.routing_advanced')}
                 </Header>
                 <Form.Field>
@@ -757,12 +933,8 @@ const EditChannel = () => {
                     }
                   />
                 </Form.Field>
-              </>
-            )}
-            {isEdit &&
-              !batch &&
-              inputs.type !== 33 &&
-              inputs.type !== 42 && (
+              </div>
+            {isEdit && !batch && (
                 <Message info>
                   <p>{t('channel.edit.load_key_hint')}</p>
                   <Button
@@ -774,91 +946,18 @@ const EditChannel = () => {
                   </Button>
                 </Message>
               )}
-            {inputs.type !== 33 &&
-              inputs.type !== 42 &&
-              (batch ? (
-                <SettingMonacoField
-                  label={t('channel.edit.key')}
-                  hint={t('channel.edit.batch_placeholder')}
-                  value={inputs.key}
-                  originValue={inputBaseline.key}
-                  onChange={(v) =>
-                    handleInputChange(null, { name: 'key', value: v })
-                  }
-                  height={220}
-                  minimap
-                />
-              ) : (
-                <Form.Field>
-                  <Form.Input
-                    label={t('channel.edit.key')}
-                    name='key'
-                    required
-                    placeholder={type2secretPrompt(inputs.type, t)}
-                    onChange={handleInputChange}
-                    value={inputs.key}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-              ))}
-            {inputs.type === 37 && (
-              <SettingMonacoField
-                label='Account ID'
-                hint='请输入 Account ID，例如：d8d7c61dbc334c32d3ced580e4bf42b4'
-                value={config.user_id}
-                originValue={configBaseline.user_id}
-                onChange={(v) =>
-                  handleConfigChange(null, { name: 'user_id', value: v })
-                }
-                height={88}
-              />
-            )}
-            {inputs.type !== 33 && !isEdit && (
-              <Form.Checkbox
-                checked={batch}
-                label={t('channel.edit.batch')}
-                name='batch'
-                onChange={() => setBatch(!batch)}
-              />
-            )}
-            {inputs.type !== 3 &&
-              inputs.type !== 33 &&
-              inputs.type !== 8 &&
-                inputs.type !== 50 &&
-              inputs.type !== 22 && (
-                <SettingMonacoField
-                  label={t('channel.edit.proxy_url')}
-                  hint={t('channel.edit.proxy_url_placeholder')}
-                  value={inputs.base_url}
-                  originValue={inputBaseline.base_url}
-                  onChange={(v) =>
-                    handleInputChange(null, { name: 'base_url', value: v })
-                  }
-                  height={96}
-                />
-              )}
-            {inputs.type === 22 && (
-              <SettingMonacoField
-                label='私有部署地址'
-                hint='请输入私有部署地址，格式为：https://fastgpt.run/api/openapi'
-                value={inputs.base_url}
-                originValue={inputBaseline.base_url}
-                onChange={(v) =>
-                  handleInputChange(null, { name: 'base_url', value: v })
-                }
-                height={96}
-              />
-            )}
-            <Button onClick={handleCancel}>
-              {t('channel.edit.buttons.cancel')}
-            </Button>
-            <Button
-              type={isEdit ? 'button' : 'submit'}
-              positive
-              onClick={submit}
-            >
-              {t('channel.edit.buttons.submit')}
-            </Button>
+            <div className='channel-edit-actions'>
+              <Button type='button' onClick={handleCancel}>
+                {t('channel.edit.buttons.cancel')}
+              </Button>
+              <Button
+                type={isEdit ? 'button' : 'submit'}
+                positive
+                onClick={submit}
+              >
+                {t('channel.edit.buttons.submit')}
+              </Button>
+            </div>
           </Form>
         </Card.Content>
       </Card>

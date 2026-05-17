@@ -18,6 +18,7 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
@@ -121,25 +122,34 @@ func preConsumeQuota(ctx context.Context, textRequest *relaymodel.GeneralOpenAIR
 	return preConsumedQuota, nil
 }
 
-func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.Meta, textRequest *relaymodel.GeneralOpenAIRequest, ratio float64, preConsumedQuota int64, modelRatio float64, groupRatio float64, systemPromptReset bool) {
+// ComputeRelayConsumedQuota 与 postConsumeQuota 中扣费额度计算一致（未减去预扣）。
+func ComputeRelayConsumedQuota(usage *relaymodel.Usage, textRequest *relaymodel.GeneralOpenAIRequest, meta *meta.Meta, ratio float64) int64 {
+	if usage == nil || textRequest == nil || meta == nil {
+		return 0
+	}
+	completionRatio := billingratio.GetCompletionRatio(textRequest.Model, meta.ChannelType)
+	promptTokens := usage.PromptTokens
+	completionTokens := usage.CompletionTokens
+	quota := int64(math.Ceil((float64(promptTokens) + float64(completionTokens)*completionRatio) * ratio))
+	if ratio != 0 && quota <= 0 {
+		quota = 1
+	}
+	if promptTokens+completionTokens == 0 {
+		quota = 0
+	}
+	return quota
+}
+
+func postConsumeQuota(c *gin.Context, usage *relaymodel.Usage, meta *meta.Meta, textRequest *relaymodel.GeneralOpenAIRequest, ratio float64, preConsumedQuota int64, modelRatio float64, groupRatio float64, systemPromptReset bool) {
+	ctx := c.Request.Context()
 	if usage == nil {
 		logger.Error(ctx, "usage is nil, which is unexpected")
 		return
 	}
-	var quota int64
-	completionRatio := billingratio.GetCompletionRatio(textRequest.Model, meta.ChannelType)
 	promptTokens := usage.PromptTokens
 	completionTokens := usage.CompletionTokens
-	quota = int64(math.Ceil((float64(promptTokens) + float64(completionTokens)*completionRatio) * ratio))
-	if ratio != 0 && quota <= 0 {
-		quota = 1
-	}
-	totalTokens := promptTokens + completionTokens
-	if totalTokens == 0 {
-		// in this case, must be some error happened
-		// we cannot just return, because we may have to return the pre-consumed quota
-		quota = 0
-	}
+	completionRatio := billingratio.GetCompletionRatio(textRequest.Model, meta.ChannelType)
+	quota := ComputeRelayConsumedQuota(usage, textRequest, meta, ratio)
 	quotaDelta := quota - preConsumedQuota
 	err := model.PostConsumeTokenQuota(meta.TokenId, quotaDelta)
 	if err != nil {
@@ -150,15 +160,19 @@ func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.M
 		logger.Error(ctx, "error update user quota cache: "+err.Error())
 	}
 	logContent := fmt.Sprintf("倍率：%.2f × %.2f × %.2f", modelRatio, groupRatio, completionRatio)
+	other := requestaudit.UpstreamHeadersJSONForLog(c)
 	model.RecordConsumeLog(ctx, &model.Log{
 		UserId:            meta.UserId,
 		ChannelId:         meta.ChannelId,
+		TokenId:           meta.TokenId,
+		Group:             meta.Group,
 		PromptTokens:      promptTokens,
 		CompletionTokens:  completionTokens,
 		ModelName:         textRequest.Model,
 		TokenName:         meta.TokenName,
 		Quota:             int(quota),
 		Content:           logContent,
+		Other:             other,
 		IsStream:          meta.IsStream,
 		ElapsedTime:       helper.CalcElapsedTime(meta.StartTime),
 		SystemPromptReset: systemPromptReset,

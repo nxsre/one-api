@@ -9,7 +9,7 @@ import (
 // Force2FAForAllUsers 为 true 时，未启用 TOTP 的用户无法使用控制台与 API Key 转发。
 var Force2FAForAllUsers bool
 
-// LoginMathCaptchaEnabled 为 true 且未启用 Turnstile 时，登录需点击验证码（与 new-api 一致）。
+// LoginMathCaptchaEnabled 为 true 且未启用 Turnstile 时，登录需点击验证码。
 var LoginMathCaptchaEnabled bool
 
 // LoginBruteTrustXForwardedFor 为 true 时，登录爆破计数优先取 X-Forwarded-For 最左一跳（仅可信代理后开启）。
@@ -17,7 +17,7 @@ var LoginBruteTrustXForwardedFor bool
 
 func InitSecurityEnv() {
 	Force2FAForAllUsers = env.BoolAlways("force_2fa_for_all_users")
-	// 与 new-api 一致：未显式关闭时默认开启（与 Turnstile 互斥，由 GetStatus 的 login_math_captcha 综合位控制展示）
+	// 未显式关闭时默认开启（与 Turnstile 互斥，由 GetStatus 的 login_math_captcha 综合位控制展示）
 	LoginMathCaptchaEnabled = env.BoolAlways("login_math_captcha_enabled")
 	LoginBruteTrustXForwardedFor = env.BoolAlways("login_brute_trust_x_forwarded_for")
 

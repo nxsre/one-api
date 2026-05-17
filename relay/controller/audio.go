@@ -17,6 +17,7 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/billing"
@@ -115,7 +116,7 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		audioModel = modelMapping[audioModel]
 	}
 
-	baseURL := channeltype.ChannelBaseURLs[channelType]
+	baseURL := channeltype.DefaultBaseURL(channelType)
 	requestURL := c.Request.URL.String()
 	if c.GetString(ctxkey.BaseURL) != "" {
 		baseURL = c.GetString(ctxkey.BaseURL)
@@ -160,8 +161,10 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
+		requestaudit.SnapUpstreamHTTP(c, req, nil)
 		return openai.ErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
+	requestaudit.SnapUpstreamHTTP(c, req, resp)
 
 	err = req.Body.Close()
 	if err != nil {
@@ -211,12 +214,14 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		resp.Body = io.NopCloser(bytes.NewBuffer(responseBody))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return RelayErrorHandler(resp)
+		e := RelayErrorHandler(resp)
+		ApplyRelayStatusCodeMapping(c, e)
+		return e
 	}
 	succeed = true
 	quotaDelta := quota - preConsumedQuota
 	defer func(ctx context.Context) {
-		go billing.PostConsumeQuota(ctx, tokenId, quotaDelta, quota, userId, channelId, modelRatio, groupRatio, audioModel, tokenName)
+		go billing.PostConsumeQuota(c, ctx, tokenId, quotaDelta, quota, userId, channelId, modelRatio, groupRatio, audioModel, tokenName)
 	}(c.Request.Context())
 
 	for k, v := range resp.Header {

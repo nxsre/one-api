@@ -18,12 +18,7 @@ import { renderQuotaWithPrompt } from '../../helpers/render';
 import SettingMonacoField from '../../components/SettingMonacoField';
 
 const buildTokenBaseline = (d) => ({
-  name: String(d?.name ?? ''),
   subnet: String(d?.subnet ?? ''),
-  remain_quota:
-    d?.remain_quota === undefined || d?.remain_quota === null
-      ? ''
-      : String(d.remain_quota),
 });
 
 const EditToken = () => {
@@ -172,17 +167,17 @@ const EditToken = () => {
           <Card.Header className='header'>
             {isEdit ? t('token.edit.title_edit') : t('token.edit.title_create')}
           </Card.Header>
-          <Form loading={loading} autoComplete='new-password'>
-            <SettingMonacoField
-              label={t('token.edit.name')}
-              hint={t('token.edit.name_placeholder')}
-              value={name}
-              originValue={inputBaseline.name}
-              onChange={(v) =>
-                setInputs((prev) => ({ ...prev, name: v }))
-              }
-              height={96}
-            />
+          <Form loading={loading} autoComplete='off'>
+            <Form.Field>
+              <Form.Input
+                label={t('token.edit.name')}
+                placeholder={t('token.edit.name_placeholder')}
+                name='name'
+                value={name}
+                onChange={handleInputChange}
+                autoComplete='off'
+              />
+            </Form.Field>
             <Form.Field>
               <Form.Dropdown
                 label={t('token.edit.models')}
@@ -265,25 +260,26 @@ const EditToken = () => {
               </Button>
             </div>
             <Message>{t('token.edit.quota_notice')}</Message>
-            <SettingMonacoField
-              label={`${t('token.edit.quota')}${renderQuotaWithPrompt(
-                remain_quota,
-                t
-              )}`}
-              hint={t('token.edit.quota_placeholder')}
-              value={String(remain_quota ?? '')}
-              originValue={inputBaseline.remain_quota}
-              onChange={(v) => {
-                if (unlimited_quota) return;
-                const n = v.trim() === '' ? 0 : parseInt(v, 10);
-                setInputs((prev) => ({
-                  ...prev,
-                  remain_quota: Number.isNaN(n) ? prev.remain_quota : n,
-                }));
-              }}
-              height={88}
-              readOnly={unlimited_quota}
-            />
+            <Form.Field>
+              <Form.Input
+                label={`${t('token.edit.quota')}${renderQuotaWithPrompt(
+                  remain_quota,
+                  t
+                )}`}
+                placeholder={t('token.edit.quota_placeholder')}
+                value={String(remain_quota ?? '')}
+                readOnly={unlimited_quota}
+                autoComplete='off'
+                onChange={(e, { value: v }) => {
+                  if (unlimited_quota) return;
+                  const n = v.trim() === '' ? 0 : parseInt(v, 10);
+                  setInputs((prev) => ({
+                    ...prev,
+                    remain_quota: Number.isNaN(n) ? prev.remain_quota : n,
+                  }));
+                }}
+              />
+            </Form.Field>
             <Button
               type={'button'}
               onClick={() => {

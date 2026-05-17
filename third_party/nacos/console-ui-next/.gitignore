@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+# postinstall 从 node_modules/monaco-editor 拷贝，勿提交
+public/monaco-editor
 dist
 dist-ssr
 *.local

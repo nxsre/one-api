@@ -63,6 +63,32 @@ func TestBuildPOIRequestFromMetadataAndText(t *testing.T) {
 	}
 }
 
+func TestBuildPOIRequestFromMetadataAmapKey(t *testing.T) {
+	req := &model.GeneralOpenAIRequest{
+		Metadata: map[string]any{
+			"amap": map[string]any{
+				"location": "116.473168,39.993015",
+				"radius":   float64(2000),
+			},
+		},
+		Messages: []model.Message{{
+			Role:    "user",
+			Content: "肯德基",
+		}},
+	}
+
+	params, err := buildPOIRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params.Location != "116.473168,39.993015" {
+		t.Fatalf("unexpected location: %s", params.Location)
+	}
+	if params.Keywords != "肯德基" {
+		t.Fatalf("unexpected keywords: %s", params.Keywords)
+	}
+}
+
 func TestBuildPOIRequestRequiresLocation(t *testing.T) {
 	req := &model.GeneralOpenAIRequest{
 		Messages: []model.Message{{

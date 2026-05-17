@@ -17,7 +17,7 @@ func ResponseText2Usage(responseText string, modelName string, promptTokens int)
 }
 
 func GetFullRequestURL(baseURL string, requestURL string, channelType int) string {
-	if channelType == channeltype.OpenAICompatible || channelType == channeltype.Bifrost {
+	if channelType == channeltype.OpenAICompatible {
 		return fmt.Sprintf("%s%s", strings.TrimSuffix(baseURL, "/"), strings.TrimPrefix(requestURL, "/v1"))
 	}
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)

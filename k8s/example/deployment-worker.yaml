@@ -28,6 +28,10 @@ spec:
             - name: http
               containerPort: 3000
               protocol: TCP
+            # Pod 内嵌入式 TLS 时：取消注释并与 primary、secret-config 中 https_port 对齐。
+            # - name: https
+            #   containerPort: 3443
+            #   protocol: TCP
           env:
             - name: TZ
               value: Asia/Shanghai
@@ -54,6 +58,23 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5
+          # 嵌入式 HTTPS 时参见 deployment-primary.yaml 同位置注释（port: https、scheme: HTTPS）。
+          # readinessProbe:
+          #   httpGet:
+          #     path: /api/status
+          #     port: https
+          #     scheme: HTTPS
+          #   initialDelaySeconds: 15
+          #   periodSeconds: 10
+          #   timeoutSeconds: 5
+          # livenessProbe:
+          #   httpGet:
+          #     path: /api/status
+          #     port: https
+          #     scheme: HTTPS
+          #   initialDelaySeconds: 60
+          #   periodSeconds: 30
+          #   timeoutSeconds: 5
           resources:
             requests:
               cpu: "100m"

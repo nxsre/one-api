@@ -64,7 +64,7 @@ func GetByContext(c *gin.Context) *Meta {
 		meta.Config = cfg.(model.ChannelConfig)
 	}
 	if meta.BaseURL == "" {
-		meta.BaseURL = channeltype.ChannelBaseURLs[meta.ChannelType]
+		meta.BaseURL = channeltype.DefaultBaseURL(meta.ChannelType)
 	}
 	meta.APIType = channeltype.ToAPIType(meta.ChannelType)
 	return &meta

@@ -1,0 +1,198 @@
+.routing-page .ui.accordion .title {
+  font-weight: 600;
+}
+
+.routing-form-hint {
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 0.92rem;
+  margin: 0 0 0.65rem;
+  line-height: 1.45;
+}
+
+.routing-preview-th-popup {
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  white-space: nowrap;
+  border-bottom: 1px dotted rgba(0, 0, 0, 0.35);
+}
+
+.routing-preview-th-popup .icon {
+  margin: 0 !important;
+  opacity: 0.55;
+  font-size: 0.9em !important;
+}
+
+.routing-preview-th-popup-body {
+  max-width: 22rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.routing-policy-form-segment {
+  margin-top: 0.5rem !important;
+}
+
+.routing-policy-card {
+  margin-bottom: 1.75rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid rgba(34, 36, 38, 0.12);
+  border-radius: 6px;
+  background: rgba(34, 36, 38, 0.02);
+}
+
+.routing-policy-card__title {
+  margin-bottom: 0.85rem !important;
+  padding-bottom: 0.35rem !important;
+  border-bottom: 1px solid rgba(34, 36, 38, 0.1);
+  font-weight: 600 !important;
+}
+
+.routing-policy-save-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem 1rem;
+  margin-top: 1rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid rgba(34, 36, 38, 0.12);
+}
+
+.routing-policy-save-footer--split {
+  justify-content: space-between;
+}
+
+.routing-policy-save-footer__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.routing-policy-save-footer__hint {
+  font-size: 0.88rem;
+  color: rgba(0, 0, 0, 0.52);
+  margin-right: auto;
+}
+
+.routing-policy-form-reset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(34, 36, 38, 0.15);
+}
+
+.routing-policy-btn-reset.ui.basic.button {
+  border-color: rgba(140, 90, 0, 0.45) !important;
+  color: rgba(120, 70, 0, 0.92) !important;
+  box-shadow: none !important;
+}
+
+.routing-policy-btn-reset.ui.basic.button:hover {
+  background: rgba(255, 200, 100, 0.12) !important;
+}
+
+.routing-policy-reset-hint {
+  font-size: 0.85rem;
+  color: rgba(0, 0, 0, 0.48);
+  line-height: 1.45;
+  max-width: 36rem;
+}
+
+/* 模型限速：colgroup + fixed 布局，兼容 Edge/Chromium 下列宽分配 */
+.routing-page table.ui.table.model-rate-limit-policy-table {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+.routing-page .model-rate-limit-policy-table col.mrl-col-key {
+  width: 40%;
+}
+
+.routing-page .model-rate-limit-policy-table col.mrl-col-num {
+  width: 11%;
+}
+
+.routing-page .model-rate-limit-policy-table col.mrl-col-action {
+  width: 3.25rem;
+}
+
+.routing-page .model-rate-limit-policy-table thead th:first-child,
+.routing-page .model-rate-limit-policy-table tbody td:first-child {
+  min-width: 280px;
+  width: auto;
+  max-width: none;
+  word-break: normal;
+}
+
+.routing-page .model-rate-limit-policy-table thead th:first-child {
+  white-space: nowrap;
+}
+
+.routing-page .model-rate-limit-policy-table tbody td:first-child {
+  vertical-align: middle;
+}
+
+/* 第 2–5 列：QPS / 突发 / 并发 / 日配额 */
+.routing-page .model-rate-limit-policy-table thead th:nth-child(2),
+.routing-page .model-rate-limit-policy-table thead th:nth-child(3),
+.routing-page .model-rate-limit-policy-table thead th:nth-child(4),
+.routing-page .model-rate-limit-policy-table thead th:nth-child(5),
+.routing-page .model-rate-limit-policy-table tbody td:nth-child(2),
+.routing-page .model-rate-limit-policy-table tbody td:nth-child(3),
+.routing-page .model-rate-limit-policy-table tbody td:nth-child(4),
+.routing-page .model-rate-limit-policy-table tbody td:nth-child(5) {
+  width: 6.25rem;
+  min-width: 6.25rem;
+  max-width: 6.25rem;
+  padding-left: 0.35rem !important;
+  padding-right: 0.35rem !important;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+/* 第 6 列：删除，极窄 */
+.routing-page .model-rate-limit-policy-table thead th:last-child,
+.routing-page .model-rate-limit-policy-table tbody td:last-child {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  padding-left: 0.15rem !important;
+  padding-right: 0.15rem !important;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.routing-page .model-rate-limit-policy-table .ui.input > input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding-left: 0.2em !important;
+  padding-right: 0.2em !important;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.routing-page .model-rate-limit-policy-table td:first-child .ui.selection.dropdown {
+  min-width: 240px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.routing-page .model-rate-limit-policy-table td:first-child .ui.selection.dropdown .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 下拉展开时菜单可读长模型名 */
+.routing-page .model-rate-limit-policy-table td:first-child .ui.selection.dropdown .menu {
+  min-width: 100%;
+  max-width: min(42rem, calc(100vw - 2rem));
+}

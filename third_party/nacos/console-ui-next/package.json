@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/copy-monaco-vs.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build && rm -rf ../console/src/main/resources/static/next && cp -r dist ../console/src/main/resources/static/next",
+    "build": "tsc -b && node scripts/copy-monaco-vs.mjs && vite build && rm -rf ../console/src/main/resources/static/next && cp -r dist ../console/src/main/resources/static/next",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest --run",

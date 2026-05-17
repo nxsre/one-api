@@ -12,6 +12,7 @@ import (
 	"github.com/songquanpeng/one-api/relay/adaptor/cloudflare"
 	"github.com/songquanpeng/one-api/relay/adaptor/cohere"
 	"github.com/songquanpeng/one-api/relay/adaptor/coze"
+	"github.com/songquanpeng/one-api/relay/adaptor/deepresearch"
 	"github.com/songquanpeng/one-api/relay/adaptor/deepl"
 	"github.com/songquanpeng/one-api/relay/adaptor/gemini"
 	"github.com/songquanpeng/one-api/relay/adaptor/ollama"
@@ -70,6 +71,8 @@ func GetAdaptor(apiType int) adaptor.Adaptor {
 		return &aippt.Adaptor{}
 	case apitype.AmapPOI:
 		return &amap.Adaptor{}
+	case apitype.DeepResearch:
+		return &deepresearch.Adaptor{}
 	}
 	return nil
 }

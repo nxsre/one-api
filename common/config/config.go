@@ -41,6 +41,20 @@ func IsNacosEnabled() bool {
 	return v == "true"
 }
 
+// IsRelayProtocolBridgeEnabled 是否允许 Anthropic / Gemini 原生路由在渠道协议不一致时经 OpenAI 语义跨厂商转发；无库内选项时用 LoadRuntime 的进程默认。
+func IsRelayProtocolBridgeEnabled() bool {
+	OptionMapRWMutex.RLock()
+	defer OptionMapRWMutex.RUnlock()
+	if OptionMap == nil {
+		return RelayProtocolBridgeEnabled
+	}
+	v, ok := OptionMap["RelayProtocolBridgeEnabled"]
+	if !ok {
+		return RelayProtocolBridgeEnabled
+	}
+	return v == "true"
+}
+
 var ItemsPerPage = 10
 var MaxRecentItems = 100
 
@@ -50,6 +64,7 @@ var SecurePasswordLoginEnabled = false
 var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
 var GitHubOAuthEnabled = false
+var LarkOAuthEnabled = false
 var OidcEnabled = false
 var WeChatAuthEnabled = false
 var TurnstileCheckEnabled = false
@@ -76,6 +91,9 @@ var DebugSQLEnabled bool
 var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
+
+// LogShardByDay 为 true 时日志写入按 UTC 日历日分物理表 logs_YYYYMMDD（需配合日志库迁移）；默认 false 保持单表 logs。
+var LogShardByDay bool
 
 var SMTPServer = ""
 var SMTPPort = 587
@@ -192,6 +210,14 @@ var NacosCsEncryptionKeyPrevious string
 // NacosCsClientGetReturnCiphertext 为 true 时，GET /nacos/v3/client/cs/config 对已加密落库的配置返回密文 content + encryptedDataKey（与 SDK 拉取形态一致）；控制台/管理端仍返回明文。
 var NacosCsClientGetReturnCiphertext bool
 
+// RequestAuditEnabled 为 true 时，将 Token 用户的 Relay 请求/响应以 request_id 为键写入独立 JSONL 审计文件（含流式首 token、扣费等）。默认开启，注意日志内含用户提示词与模型输出；可通过配置关闭。
+var RequestAuditEnabled bool
+var RequestAuditLogDir string
+var RequestAuditMaxBodyBytes int
+
+// RelayProtocolBridgeEnabled 为 true 时，允许 Anthropic / Gemini 原生路由在与渠道协议不一致时自动经 OpenAI 通用语义转发（跨厂商互调）。默认关闭以防误用。
+var RelayProtocolBridgeEnabled bool
+
 // LoadRuntime 须在 cfg.Init 与 env.BindViper 之后调用，从 TOML / 命令行填充运行时项。
 func LoadRuntime() {
 	DebugEnabled = env.Bool("DEBUG", false)
@@ -241,4 +267,15 @@ func LoadRuntime() {
 	NacosCsEncryptionKey = env.StringAlways("nacos_cs_encryption_key")
 	NacosCsEncryptionKeyPrevious = env.StringAlways("nacos_cs_encryption_key_previous")
 	NacosCsClientGetReturnCiphertext = env.BoolAlways("nacos_cs_client_get_return_ciphertext")
+
+	RequestAuditEnabled = env.BoolAlways("request_audit_enabled")
+	RequestAuditLogDir = env.StringAlways("request_audit_log_dir")
+	RequestAuditMaxBodyBytes = env.IntAlways("request_audit_max_body_bytes")
+	if RequestAuditMaxBodyBytes <= 0 {
+		RequestAuditMaxBodyBytes = 262144
+	}
+
+	RelayProtocolBridgeEnabled = env.BoolAlways("relay_protocol_bridge_enabled")
+
+	LogShardByDay = env.BoolAlways("log_shard_by_day")
 }

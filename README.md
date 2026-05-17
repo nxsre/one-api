@@ -220,16 +220,21 @@ docker-compose ps
 
 更加详细的部署教程[参见此处](https://iamazing.cn/page/how-to-deploy-a-website)。
 
-### 多机部署
-1. 所有服务器 `SESSION_SECRET` 设置一样的值。
-2. 必须设置 `SQL_DSN`，使用 MySQL 数据库而非 SQLite，所有服务器连接同一个数据库。
-3. 所有从服务器必须设置 `NODE_TYPE` 为 `slave`，不设置则默认为主服务器。
-4. 设置 `SYNC_FREQUENCY` 后服务器将定期从数据库同步配置，在使用远程数据库的情况下，推荐设置该项并启用 Redis，无论主从。
-5. 从服务器可以选择设置 `FRONTEND_BASE_URL`，以重定向页面请求到主服务器。
-6. 从服务器上**分别**装好 Redis，设置好 `REDIS_CONN_STRING`，这样可以做到在缓存未过期的情况下数据库零访问，可以减少延迟（Redis 集群或者哨兵模式的支持请参考环境变量说明）。
-7. 如果主服务器访问数据库延迟也比较高，则也需要启用 Redis，并设置 `SYNC_FREQUENCY`，以定期从数据库同步配置。
+### 多机部署与集群
 
-环境变量的具体使用方法详见[此处](#环境变量)。
+完整说明（**共用数据库与 Redis、`SYNC_FREQUENCY`、智能路由与模型限速、NGINX/LVS 前置注意事项**）见 **`docs/cluster-deployment.md`**；Kubernetes 示例见 **`docs/kubernetes-deployment.md`** 与 **`k8s/example/`**。
+
+简要清单：
+
+1. 所有服务器 **`SESSION_SECRET`** 设置相同。
+2. 必须设置 **`SQL_DSN`**，使用 MySQL / PostgreSQL 等，**所有实例连接同一数据库**（勿在多副本场景使用 SQLite）。
+3. 从服务器设置 **`NODE_TYPE=slave`**；至少保留一台主语义实例负责数据库迁移（见 K8s 文档）。
+4. 设置 **`SYNC_FREQUENCY`**（秒），便于从数据库周期同步系统选项与渠道缓存；生产建议 **60～300** 按延迟与库压平衡。
+5. **强烈建议** 所有实例配置 **相同的 `REDIS_CONN_STRING` 指向同一逻辑 Redis**；**模型限速（ModelRateLimitPolicy）、熔断/自适应路由相关状态、会话等跨实例一致依赖 Redis**；勿为每台机器各用一套互不相通的 Redis。
+6. 可选：从服务器设置 **`FRONTEND_BASE_URL`**，将页面请求指向统一前端域名。
+7. 若仅个别从机延迟较高，可结合 Redis 与 `SYNC_FREQUENCY` 减轻对主库的频繁读取（仍以同一 Redis 为准）。
+
+环境变量详见下文 **[环境变量](#环境变量)** 与 **`config.example.toml`**。
 
 ### 宝塔部署教程
 

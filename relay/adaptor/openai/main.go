@@ -14,6 +14,7 @@ import (
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/conv"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
 )
@@ -62,9 +63,19 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 			render.StringData(c, data)
 			for _, choice := range streamResponse.Choices {
 				responseText += conv.AsString(choice.Delta.Content)
+				piece := choice.Delta.StringContent()
+				if choice.Delta.ReasoningContent != nil {
+					piece += conv.AsString(choice.Delta.ReasoningContent)
+				}
+				if piece != "" {
+					rec := requestaudit.FromContext(c)
+					requestaudit.MarkStreamFirstToken(rec)
+					requestaudit.AppendStreamText(rec, piece)
+				}
 			}
 			if streamResponse.Usage != nil {
 				usage = streamResponse.Usage
+				requestaudit.SetUsage(requestaudit.FromContext(c), usage)
 			}
 		case relaymode.Completions:
 			render.StringData(c, data)
@@ -76,6 +87,11 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 			}
 			for _, choice := range streamResponse.Choices {
 				responseText += choice.Text
+				if choice.Text != "" {
+					rec := requestaudit.FromContext(c)
+					requestaudit.MarkStreamFirstToken(rec)
+					requestaudit.AppendStreamText(rec, choice.Text)
+				}
 			}
 		}
 	}
@@ -116,6 +132,11 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 			StatusCode: resp.StatusCode,
 		}, nil
 	}
+	rec := requestaudit.FromContext(c)
+	if rec != nil {
+		requestaudit.SetNonStreamResponse(rec, string(responseBody))
+	}
+
 	// Reset response body
 	resp.Body = io.NopCloser(bytes.NewBuffer(responseBody))
 
@@ -146,6 +167,9 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 			CompletionTokens: completionTokens,
 			TotalTokens:      promptTokens + completionTokens,
 		}
+	}
+	if rec != nil {
+		requestaudit.SetUsage(rec, &textResponse.Usage)
 	}
 	return nil, &textResponse.Usage
 }

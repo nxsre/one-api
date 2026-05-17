@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/relay/model"
 	"io"
@@ -23,6 +24,10 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 	err = json.Unmarshal(responseBody, &imageResponse)
 	if err != nil {
 		return ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError), nil
+	}
+
+	if rec := requestaudit.FromContext(c); rec != nil {
+		requestaudit.SetNonStreamResponse(rec, string(responseBody))
 	}
 
 	resp.Body = io.NopCloser(bytes.NewBuffer(responseBody))

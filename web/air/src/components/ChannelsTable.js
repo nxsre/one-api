@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API, isMobile, shouldShowPrompt, showError, showInfo, showSuccess, timestamp2string } from '../helpers';
 
-import { CHANNEL_OPTIONS, ITEMS_PER_PAGE } from '../constants';
+import { ITEMS_PER_PAGE } from '../constants';
 import { renderGroup, renderNumberWithPoint, renderQuota } from '../helpers/render';
 import {
   Button,
@@ -28,208 +28,19 @@ function renderTimestamp(timestamp) {
   );
 }
 
-let type2label = undefined;
-
-function renderType(type) {
-  if (!type2label) {
-    type2label = new Map();
-    for (let i = 0; i < CHANNEL_OPTIONS.length; i++) {
-      type2label[CHANNEL_OPTIONS[i].value] = CHANNEL_OPTIONS[i];
-    }
-    type2label[0] = { value: 0, text: '未知类型', color: 'grey' };
-  }
-  return <Tag size="large" color={type2label[type]?.color}>{type2label[type]?.text}</Tag>;
+function semiChannelTagColor(apiColor) {
+  const m = {
+    success: 'green',
+    primary: 'blue',
+    warning: 'orange',
+    info: 'light-blue',
+    error: 'red',
+    secondary: 'violet',
+  };
+  return m[apiColor] || 'grey';
 }
 
 const ChannelsTable = () => {
-  const columns = [
-    // {
-    //     title: '',
-    //     dataIndex: 'checkbox',
-    //     className: 'checkbox',
-    // },
-    {
-      title: 'ID',
-      dataIndex: 'id'
-    },
-    {
-      title: '名称',
-      dataIndex: 'name'
-    },
-    // {
-    //   title: '分组',
-    //   dataIndex: 'group',
-    //   render: (text, record, index) => {
-    //     return (
-    //       <div>
-    //         <Space spacing={2}>
-    //           {
-    //             text.split(',').map((item, index) => {
-    //               return (renderGroup(item));
-    //             })
-    //           }
-    //         </Space>
-    //       </div>
-    //     );
-    //   }
-    // },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      render: (text, record, index) => {
-        return (
-          <div>
-            {renderType(text)}
-          </div>
-        );
-      }
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (text, record, index) => {
-        return (
-          <div>
-            {renderStatus(text)}
-          </div>
-        );
-      }
-    },
-    {
-      title: '响应时间',
-      dataIndex: 'response_time',
-      render: (text, record, index) => {
-        return (
-          <div>
-            {renderResponseTime(text)}
-          </div>
-        );
-      }
-    },
-    {
-      title: '已用/剩余',
-      dataIndex: 'expired_time',
-      render: (text, record, index) => {
-        return (
-          <div>
-            <Space spacing={1}>
-              <Tooltip content={'已用额度'}>
-                <Tag color="white" type="ghost" size="large">{renderQuota(record.used_quota)}</Tag>
-              </Tooltip>
-              <Tooltip content={'剩余额度' + record.balance + '，点击更新'}>
-                <Tag color="white" type="ghost" size="large" onClick={() => {
-                  updateChannelBalance(record);
-                }}>${renderNumberWithPoint(record.balance)}</Tag>
-              </Tooltip>
-            </Space>
-          </div>
-        );
-      }
-    },
-    {
-      title: '优先级',
-      dataIndex: 'priority',
-      render: (text, record, index) => {
-        return (
-          <div>
-            <InputNumber
-              style={{ width: 70 }}
-              name="priority"
-              onBlur={e => {
-                manageChannel(record.id, 'priority', record, e.target.value);
-              }}
-              keepFocus={true}
-              innerButtons
-              defaultValue={record.priority}
-              min={-999}
-            />
-          </div>
-        );
-      }
-    },
-    // {
-    //   title: '权重',
-    //   dataIndex: 'weight',
-    //   render: (text, record, index) => {
-    //     return (
-    //       <div>
-    //         <InputNumber
-    //           style={{ width: 70 }}
-    //           name="weight"
-    //           onBlur={e => {
-    //             manageChannel(record.id, 'weight', record, e.target.value);
-    //           }}
-    //           keepFocus={true}
-    //           innerButtons
-    //           defaultValue={record.weight}
-    //           min={0}
-    //         />
-    //       </div>
-    //     );
-    //   }
-    // },
-    {
-      title: '',
-      dataIndex: 'operate',
-      render: (text, record, index) => (
-        <div>
-          {/* <SplitButtonGroup style={{ marginRight: 1 }} aria-label="测试操作项目组">
-            <Button theme="light" onClick={() => {
-              testChannel(record, '');
-            }}>测试</Button>
-            <Dropdown trigger="click" position="bottomRight" menu={record.test_models}
-            >
-              <Button style={{ padding: '8px 4px' }} type="primary" icon={<IconTreeTriangleDown />}></Button>
-            </Dropdown>
-          </SplitButtonGroup> */}
-          <Button theme='light' type='primary' style={{ marginRight: 1 }} onClick={() => testChannel(record)}>测试</Button>
-          <Popconfirm
-            title="确定是否要删除此渠道？"
-            content="此修改将不可逆"
-            okType={'danger'}
-            position={'left'}
-            onConfirm={() => {
-              manageChannel(record.id, 'delete', record).then(
-                () => {
-                  removeRecord(record.id);
-                }
-              );
-            }}
-          >
-            <Button theme="light" type="danger" style={{ marginRight: 1 }}>删除</Button>
-          </Popconfirm>
-          {
-            record.status === 1 ?
-              <Button theme="light" type="warning" style={{ marginRight: 1 }} onClick={
-                async () => {
-                  manageChannel(
-                    record.id,
-                    'disable',
-                    record
-                  );
-                }
-              }>禁用</Button> :
-              <Button theme="light" type="secondary" style={{ marginRight: 1 }} onClick={
-                async () => {
-                  manageChannel(
-                    record.id,
-                    'enable',
-                    record
-                  );
-                }
-              }>启用</Button>
-          }
-          <Button theme="light" type="tertiary" style={{ marginRight: 1 }} onClick={
-            () => {
-              setEditingChannel(record);
-              setShowEdit(true);
-            }
-          }>编辑</Button>
-        </div>
-      )
-    }
-  ];
-
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState(1);
@@ -249,6 +60,7 @@ const ChannelsTable = () => {
     id: undefined
   });
   const [selectedChannels, setSelectedChannels] = useState([]);
+  const [channelTypeOpts, setChannelTypeOpts] = useState([]);
 
   const removeRecord = id => {
     let newDataSource = [...channels];
@@ -320,6 +132,15 @@ const ChannelsTable = () => {
         showError(reason);
       });
     fetchGroups().then();
+    (async () => {
+      try {
+        const res = await API.get('/api/model_catalog/editor_options');
+        const list = res.data?.data?.channel_types || [];
+        setChannelTypeOpts(list);
+      } catch (_) {
+        /* 忽略 */
+      }
+    })();
   }, []);
 
   const manageChannel = async (id, action, record, value) => {
@@ -475,6 +296,159 @@ const ChannelsTable = () => {
       showError(message);
     }
   };
+
+  const renderType = (type) => {
+    if (type === 0 || type === '0') {
+      return (
+        <Tag size="large" color="grey">
+          未知类型
+        </Tag>
+      );
+    }
+    const opt = channelTypeOpts.find((o) => o.value === type);
+    const label = opt ? opt.text : type;
+    return (
+      <Tag size="large" color={semiChannelTagColor(opt?.color)}>
+        {label}
+      </Tag>
+    );
+  };
+
+  const columns = [
+    {
+      title: 'ID',
+      dataIndex: 'id'
+    },
+    {
+      title: '名称',
+      dataIndex: 'name'
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      render: (text, record, index) => {
+        return (
+          <div>
+            {renderType(text)}
+          </div>
+        );
+      }
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (text, record, index) => {
+        return (
+          <div>
+            {renderStatus(text)}
+          </div>
+        );
+      }
+    },
+    {
+      title: '响应时间',
+      dataIndex: 'response_time',
+      render: (text, record, index) => {
+        return (
+          <div>
+            {renderResponseTime(text)}
+          </div>
+        );
+      }
+    },
+    {
+      title: '已用/剩余',
+      dataIndex: 'expired_time',
+      render: (text, record, index) => {
+        return (
+          <div>
+            <Space spacing={1}>
+              <Tooltip content={'已用额度'}>
+                <Tag color="white" type="ghost" size="large">{renderQuota(record.used_quota)}</Tag>
+              </Tooltip>
+              <Tooltip content={'剩余额度' + record.balance + '，点击更新'}>
+                <Tag color="white" type="ghost" size="large" onClick={() => {
+                  updateChannelBalance(record);
+                }}>${renderNumberWithPoint(record.balance)}</Tag>
+              </Tooltip>
+            </Space>
+          </div>
+        );
+      }
+    },
+    {
+      title: '优先级',
+      dataIndex: 'priority',
+      render: (text, record, index) => {
+        return (
+          <div>
+            <InputNumber
+              style={{ width: 70 }}
+              name="priority"
+              onBlur={e => {
+                manageChannel(record.id, 'priority', record, e.target.value);
+              }}
+              keepFocus={true}
+              innerButtons
+              defaultValue={record.priority}
+              min={-999}
+            />
+          </div>
+        );
+      }
+    },
+    {
+      title: '',
+      dataIndex: 'operate',
+      render: (text, record, index) => (
+        <div>
+          <Button theme='light' type='primary' style={{ marginRight: 1 }} onClick={() => testChannel(record)}>测试</Button>
+          <Popconfirm
+            title="确定是否要删除此渠道？"
+            content="此修改将不可逆"
+            okType={'danger'}
+            position={'left'}
+            onConfirm={() => {
+              manageChannel(record.id, 'delete', record).then(
+                () => {
+                  removeRecord(record.id);
+                }
+              );
+            }}
+          >
+            <Button theme="light" type="danger" style={{ marginRight: 1 }}>删除</Button>
+          </Popconfirm>
+          {
+            record.status === 1 ?
+              <Button theme="light" type="warning" style={{ marginRight: 1 }} onClick={
+                async () => {
+                  manageChannel(
+                    record.id,
+                    'disable',
+                    record
+                  );
+                }
+              }>禁用</Button> :
+              <Button theme="light" type="secondary" style={{ marginRight: 1 }} onClick={
+                async () => {
+                  manageChannel(
+                    record.id,
+                    'enable',
+                    record
+                  );
+                }
+              }>启用</Button>
+          }
+          <Button theme="light" type="tertiary" style={{ marginRight: 1 }} onClick={
+            () => {
+              setEditingChannel(record);
+              setShowEdit(true);
+            }
+          }>编辑</Button>
+        </div>
+      )
+    }
+  ];
 
   const updateAllChannelsBalance = async () => {
     setUpdatingBalance(true);

@@ -48,4 +48,7 @@ func TestGetStatusPublicHidesInternalFields(t *testing.T) {
 	if _, ok := body.Data["login_math_captcha"]; !ok {
 		t.Fatal("missing login_math_captcha")
 	}
+	if _, ok := body.Data["build_id"]; !ok {
+		t.Fatal("missing build_id")
+	}
 }

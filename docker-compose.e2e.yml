@@ -1,0 +1,73 @@
+# 本地 E2E：Mock 上游 + MySQL + Redis + one-api（单机副本）
+# 用法：
+#   docker compose -f docker-compose.e2e.yml build
+#   docker compose -f docker-compose.e2e.yml up -d
+#   go test -tags=e2e -v ./tests/e2e/ -timeout 15m
+# Mock 直达：http://127.0.0.1:18080/health ，统计：/__debug/stats
+
+name: one-api-e2e
+
+services:
+  mock-upstream:
+    build:
+      context: ./tests/e2e/mock_upstream
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  mysql-e2e:
+    image: mysql:8.2.0
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: OneAPI@e2e
+      MYSQL_USER: oneapi
+      MYSQL_PASSWORD: "123456"
+      MYSQL_DATABASE: one-api
+    volumes:
+      - e2e_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 25s
+
+  redis-e2e:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  one-api-e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: one-api:e2e-local
+    ports:
+      - "13000:3000"
+    environment:
+      TZ: Asia/Shanghai
+      TIKTOKEN_CACHE_DIR: /tiktoken-cache
+    volumes:
+      - ./tests/e2e/config.e2e.toml:/app/config.toml:ro
+      - e2e_tiktoken:/tiktoken-cache
+      - e2e_logs:/data/logs
+    command: ["--config", "/app/config.toml"]
+    depends_on:
+      mysql-e2e:
+        condition: service_healthy
+      redis-e2e:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+
+volumes:
+  e2e_mysql_data:
+  e2e_tiktoken:
+  e2e_logs:

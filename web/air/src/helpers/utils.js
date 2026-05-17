@@ -245,3 +245,38 @@ export function splitModelNameList(raw) {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+let channelModels = undefined;
+
+/** 与 GET /api/models 返回的 data（按渠道 type 分组的模型列表）对齐，供编辑页填入默认模型。 */
+export function setChannelModelsCache(data) {
+  channelModels = data;
+  try {
+    localStorage.setItem('channel_models', JSON.stringify(data));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getChannelModels(type) {
+  const pick = (map) => {
+    if (!map || typeof map !== 'object') return [];
+    if (type in map) return map[type];
+    const s = String(type);
+    if (s in map) return map[s];
+    return [];
+  };
+  if (channelModels !== undefined) {
+    return pick(channelModels);
+  }
+  const raw = localStorage.getItem('channel_models');
+  if (!raw) {
+    return [];
+  }
+  try {
+    channelModels = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  return pick(channelModels);
+}

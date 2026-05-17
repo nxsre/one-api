@@ -13,62 +13,25 @@ import {
   timestamp2string,
 } from '../helpers';
 
-import {CHANNEL_OPTIONS, ITEMS_PER_PAGE} from '../constants';
-import {renderGroup, renderNumber} from '../helpers/render';
+import {setChannelTypeOptionsCache} from '../helpers/helper';
+import {ITEMS_PER_PAGE} from '../constants';
+import {renderGroup} from '../helpers/render';
 
 function renderTimestamp(timestamp) {
   return <>{timestamp2string(timestamp)}</>;
 }
 
-let type2label = undefined;
-
-function renderType(type, t) {
-  if (!type2label) {
-    type2label = new Map();
-    for (let i = 0; i < CHANNEL_OPTIONS.length; i++) {
-      type2label[CHANNEL_OPTIONS[i].value] = CHANNEL_OPTIONS[i];
-    }
-    type2label[0] = {
-      value: 0,
-      text: t('channel.table.status_unknown'),
-      color: 'grey',
-    };
-  }
-  return (
-    <Label basic color={type2label[type]?.color}>
-      {type2label[type] ? type2label[type].text : type}
-    </Label>
-  );
-}
-
-function renderBalance(type, balance, t) {
-  switch (type) {
-    case 1: // OpenAI
-        if (balance === 0) {
-            return <span>{t('channel.table.balance_not_supported')}</span>;
-        }
-      return <span>${balance.toFixed(2)}</span>;
-    case 4: // CloseAI
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 8: // 自定义
-      return <span>${balance.toFixed(2)}</span>;
-    case 5: // OpenAI-SB
-      return <span>¥{(balance / 10000).toFixed(2)}</span>;
-    case 10: // AI Proxy
-      return <span>{renderNumber(balance)}</span>;
-    case 12: // API2GPT
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 13: // AIGC2D
-      return <span>{renderNumber(balance)}</span>;
-    case 20: // OpenRouter
-      return <span>${balance.toFixed(2)}</span>;
-    case 36: // DeepSeek
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 44: // SiliconFlow
-      return <span>¥{balance.toFixed(2)}</span>;
-    default:
-      return <span>{t('channel.table.balance_not_supported')}</span>;
-  }
+/** API / 库表使用 MUI 系 color 名，Semantic Label 需映射 */
+function semanticChannelLabelColor(apiColor) {
+  const m = {
+    success: 'green',
+    primary: 'blue',
+    warning: 'orange',
+    info: 'teal',
+    error: 'red',
+    secondary: 'violet',
+  };
+  return m[apiColor] || apiColor || 'grey';
 }
 
 function isShowDetail() {
@@ -79,6 +42,27 @@ const promptID = 'detail';
 
 const ChannelsTable = () => {
   const { t } = useTranslation();
+  const [channelTypeOpts, setChannelTypeOpts] = useState([]);
+
+  const renderType = (type) => {
+    if (type === 0 || type === '0') {
+      return (
+        <Label basic color='grey'>
+          {t('channel.table.status_unknown')}
+        </Label>
+      );
+    }
+    const opt = channelTypeOpts.find((o) => o.value === type);
+    return (
+      <Label basic color={semanticChannelLabelColor(opt?.color)}>
+        {opt ? opt.text : type}
+      </Label>
+    );
+  };
+
+  const renderBalance = (_type, _balance) => {
+    return <span>{t('channel.table.balance_not_supported')}</span>;
+  };
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState(1);
@@ -104,7 +88,12 @@ const ChannelsTable = () => {
           value: model,
         };
       });
-      console.log('channel', channel);
+      const tm =
+        channel.test_model && String(channel.test_model).trim()
+          ? String(channel.test_model).trim()
+          : '';
+      channel.test_model =
+        tm || (channel.models.length > 0 ? channel.models[0] : '');
     }
     return channel;
   };
@@ -158,6 +147,18 @@ const ChannelsTable = () => {
         showError(reason);
       });
     loadChannelModels().then();
+    (async () => {
+      try {
+        const res = await API.get('/api/model_catalog/editor_options');
+        const opts = res.data?.data?.channel_types;
+        if (Array.isArray(opts)) {
+          setChannelTypeOpts(opts);
+          setChannelTypeOptionsCache(opts);
+        }
+      } catch (_) {
+        /* 未登录或非管理员时任由类型显示为数字 */
+      }
+    })();
   }, []);
 
   const manageChannel = async (id, action, idx, value) => {
@@ -527,7 +528,7 @@ const ChannelsTable = () => {
                     {channel.name ? channel.name : t('channel.table.no_name')}
                   </Table.Cell>
                   <Table.Cell>{renderGroup(channel.group)}</Table.Cell>
-                  <Table.Cell>{renderType(channel.type, t)}</Table.Cell>
+                  <Table.Cell>{renderType(channel.type)}</Table.Cell>
                   <Table.Cell>{renderStatus(channel.status, t)}</Table.Cell>
                   <Table.Cell>
                     <Popup
@@ -550,7 +551,7 @@ const ChannelsTable = () => {
                           }}
                           style={{ cursor: 'pointer' }}
                         >
-                          {renderBalance(channel.type, channel.balance, t)}
+                          {renderBalance(channel.type, channel.balance)}
                         </span>
                       }
                       content={t('channel.table.click_to_update')}

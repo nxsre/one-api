@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { API, copy, isAdmin, showError, showSuccess, timestamp2string } from '../helpers';
+import { API, copy, isAdmin, showError, showSuccess, showWarning, timestamp2string } from '../helpers';
 
 import { Avatar, Button, Form, Layout, Modal, Select, Space, Spin, Table, Tag } from '@douyinfe/semi-ui';
 import { ITEMS_PER_PAGE } from '../constants';
@@ -30,6 +30,10 @@ function renderType(type) {
       return <Tag color="purple" size="large"> 系统 </Tag>;
     case 5:
       return <Tag color="violet" size="large"> 测试 </Tag>;
+    case 6:
+      return <Tag color="red" size="large"> 错误 </Tag>;
+    case 7:
+      return <Tag color="cyan" size="large"> 退款 </Tag>;
     default:
       return <Tag color="black" size="large"> 未知 </Tag>;
   }
@@ -144,26 +148,28 @@ const LogsTable = () => {
   const [loading, setLoading] = useState(false);
   const [loadingStat, setLoadingStat] = useState(false);
   const [activePage, setActivePage] = useState(1);
-  const [logCount, setLogCount] = useState(ITEMS_PER_PAGE);
+  const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searching, setSearching] = useState(false);
   const [logType, setLogType] = useState(0);
   const isAdminUser = isAdmin();
   let now = new Date();
-  // 初始化start_timestamp为前一天
+  // 默认展示最近 5 分钟
   const [inputs, setInputs] = useState({
     username: '',
     token_name: '',
     model_name: '',
-    start_timestamp: timestamp2string(now.getTime() / 1000 - 86400),
-    end_timestamp: timestamp2string(now.getTime() / 1000 + 3600),
-    channel: ''
+    start_timestamp: timestamp2string(now.getTime() / 1000 - 300),
+    end_timestamp: timestamp2string(now.getTime() / 1000),
+    channel: '',
+    group: '',
+    request_id: '',
   });
-  const { username, token_name, model_name, start_timestamp, end_timestamp, channel } = inputs;
+  const { username, token_name, model_name, start_timestamp, end_timestamp, channel, group, request_id } = inputs;
 
   const [stat, setStat] = useState({
-    quota: 0, token: 0
+    quota: 0, rpm: 0, tpm: 0,
   });
 
   const handleInputChange = (value, name) => {
@@ -173,7 +179,7 @@ const LogsTable = () => {
   const getLogSelfStat = async () => {
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let res = await API.get(`/api/log/self/stat?type=${logType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`);
+    let res = await API.get(`/api/log/self/stat?type=${logType}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${encodeURIComponent(group || '')}&request_id=${encodeURIComponent(request_id || '')}`);
     const { success, message, data } = res.data;
     if (success) {
       setStat(data);
@@ -185,7 +191,7 @@ const LogsTable = () => {
   const getLogStat = async () => {
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let res = await API.get(`/api/log/stat?type=${logType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}`);
+    let res = await API.get(`/api/log/stat?type=${logType}&username=${encodeURIComponent(username)}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${encodeURIComponent(group || '')}&request_id=${encodeURIComponent(request_id || '')}`);
     const { success, message, data } = res.data;
     if (success) {
       setStat(data);
@@ -225,60 +231,58 @@ const LogsTable = () => {
     }
   };
 
-  const setLogsFormat = (logs) => {
-    for (let i = 0; i < logs.length; i++) {
-      logs[i].timestamp2string = timestamp2string(logs[i].created_at);
-      logs[i].key = '' + logs[i].id;
+  const setLogsFormat = (items) => {
+    const arr = Array.isArray(items) ? items : [];
+    for (let i = 0; i < arr.length; i++) {
+      arr[i].timestamp2string = timestamp2string(arr[i].created_at);
+      arr[i].key = '' + arr[i].id;
     }
-    // data.key = '' + data.id
-    setLogs(logs);
-    setLogCount(logs.length + ITEMS_PER_PAGE);
-    // console.log(logCount);
+    setLogs(arr);
   };
 
-  const loadLogs = async (startIdx, pageSize, logType = 0) => {
+  const loadLogs = async (page, pageSize, logTypeParam) => {
     setLoading(true);
-
-    let url = '';
+    const lt = logTypeParam !== undefined ? logTypeParam : logType;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    const g = encodeURIComponent(group || '');
+    const rid = encodeURIComponent(request_id || '');
+    let url = '';
     if (isAdminUser) {
-      url = `/api/log/?p=${startIdx}&page_size=${pageSize}&type=${logType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}`;
+      url = `/api/log/?p=${page}&page_size=${pageSize}&type=${lt}&username=${encodeURIComponent(username)}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${g}&request_id=${rid}`;
     } else {
-      url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${logType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`;
+      url = `/api/log/self/?p=${page}&page_size=${pageSize}&type=${lt}&token_name=${encodeURIComponent(token_name)}&model_name=${encodeURIComponent(model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${g}&request_id=${rid}`;
     }
     const res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
-      if (startIdx === 0) {
-        setLogsFormat(data);
-      } else {
-        let newLogs = [...logs];
-        newLogs.splice(startIdx * pageSize, data.length, ...data);
-        setLogsFormat(newLogs);
-      }
+      const items = data && data.items !== undefined ? data.items : data;
+      const t =
+        data && typeof data.total === 'number'
+          ? data.total
+          : Array.isArray(items)
+            ? items.length
+            : 0;
+      setTotal(t);
+      setLogsFormat(items);
     } else {
       showError(message);
     }
     setLoading(false);
   };
 
-  const pageData = logs.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const pageData = logs;
 
   const handlePageChange = page => {
     setActivePage(page);
-    if (page === Math.ceil(logs.length / pageSize) + 1) {
-      // In this case we have to load more data and then append them.
-      loadLogs(page - 1, pageSize).then(r => {
-      });
-    }
+    loadLogs(page, pageSize).then();
   };
 
   const handlePageSizeChange = async (size) => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadLogs(0, size)
+    loadLogs(1, size)
       .then()
       .catch((reason) => {
         showError(reason);
@@ -286,25 +290,14 @@ const LogsTable = () => {
   };
 
   const refresh = async (localLogType) => {
-    // setLoading(true);
     setActivePage(1);
-    await loadLogs(0, pageSize, localLogType);
-  };
-
-  const copyText = async (text) => {
-    if (await copy(text)) {
-      showSuccess('已复制：' + text);
-    } else {
-      // setSearchKeyword(text);
-      Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
-    }
+    await loadLogs(1, pageSize, localLogType);
   };
 
   useEffect(() => {
-    // console.log('default effect')
     const localPageSize = parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
-    loadLogs(0, localPageSize)
+    loadLogs(1, localPageSize)
       .then()
       .catch((reason) => {
         showError(reason);
@@ -312,22 +305,16 @@ const LogsTable = () => {
   }, []);
 
   const searchLogs = async () => {
-    if (searchKeyword === '') {
-      // if keyword is blank, load files instead.
-      await loadLogs(0, pageSize);
-      setActivePage(1);
-      return;
-    }
-    setSearching(true);
-    const res = await API.get(`/api/log/self/search?keyword=${searchKeyword}`);
-    const { success, message, data } = res.data;
-    if (success) {
-      setLogs(data);
-      setActivePage(1);
-    } else {
-      showError(message);
-    }
+    showWarning('关键词搜索已废弃，请使用模型名称（支持 % 模糊）、分组、请求 ID 等条件筛选。');
     setSearching(false);
+  };
+
+  const copyText = async (text) => {
+    if (await copy(text)) {
+      showSuccess('已复制：' + text);
+    } else {
+      Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
+    }
   };
 
   return (<>
@@ -337,7 +324,7 @@ const LogsTable = () => {
           <h3>使用明细（总消耗额度：
             <span onClick={handleEyeClick} style={{
               cursor: 'pointer', color: 'gray'
-            }}>{showStat ? renderQuota(stat.quota) : '点击查看'}</span>
+            }}>{showStat ? (<>{renderQuota(stat.quota)} · RPM {stat.rpm ?? 0} · TPM {stat.tpm ?? 0}</>) : '点击查看'}</span>
             ）
           </h3>
         </Spin>
@@ -369,6 +356,12 @@ const LogsTable = () => {
               placeholder={'可选值'} name="username"
               onChange={value => handleInputChange(value, 'username')} />
           </>}
+          <Form.Input field="group" label="分组" style={{ width: 176 }} value={group}
+            placeholder="可选值" name="group"
+            onChange={value => handleInputChange(value, 'group')} />
+          <Form.Input field="request_id" label="请求 ID" style={{ width: 220 }} value={request_id}
+            placeholder="精确匹配" name="request_id"
+            onChange={value => handleInputChange(value, 'request_id')} />
           <Form.Section>
             <Button label="查询" type="primary" htmlType="submit" className="btn-margin-right"
               onClick={refresh} loading={loading}>查询</Button>
@@ -378,7 +371,7 @@ const LogsTable = () => {
       <Table style={{ marginTop: 5 }} columns={columns} dataSource={pageData} pagination={{
         currentPage: activePage,
         pageSize: pageSize,
-        total: logCount,
+        total: total,
         pageSizeOpts: [10, 20, 50, 100],
         showSizeChanger: true,
         onPageSizeChange: (size) => {
@@ -395,6 +388,9 @@ const LogsTable = () => {
         <Select.Option value="2">消费</Select.Option>
         <Select.Option value="3">管理</Select.Option>
         <Select.Option value="4">系统</Select.Option>
+        <Select.Option value="5">测试</Select.Option>
+        <Select.Option value="6">错误</Select.Option>
+        <Select.Option value="7">退款</Select.Option>
       </Select>
     </Layout>
   </>);

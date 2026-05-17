@@ -4,7 +4,10 @@ import {
   Card,
   Checkbox,
   Confirm,
+  Dropdown,
   Form,
+  Icon,
+  Input,
   Loader,
   Message,
   Modal,
@@ -15,6 +18,7 @@ import {
   API,
   getStoredNacosNamespace,
   setStoredNacosNamespace,
+  isRoot,
   showError,
   showSuccess,
 } from '../../helpers';
@@ -34,7 +38,27 @@ const NacosSkillsRegistry = () => {
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState(null);
   const [rows, setRows] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageNo, setPageNo] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const [namespace, setNamespace] = useState(() => getStoredNacosNamespace());
+
+  const [searchInput, setSearchInput] = useState('');
+  const [bizTagInput, setBizTagInput] = useState('');
+  const [ownerInput, setOwnerInput] = useState('');
+  const [filterScope, setFilterScope] = useState('');
+  const [orderBy, setOrderBy] = useState('');
+  const [filterOnlyMine, setFilterOnlyMine] = useState(false);
+  const [query, setQuery] = useState({
+    name: '',
+    biz: '',
+    scope: '',
+    order: '',
+    owner: '',
+    onlyMine: false,
+  });
+  const [selected, setSelected] = useState({});
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -77,6 +101,9 @@ const NacosSkillsRegistry = () => {
   const [labelsReplace, setLabelsReplace] = useState(false);
   const [labelsBaseline, setLabelsBaseline] = useState('{}');
 
+  /** 详情内版本上线/下线：{ name, version, op: 'on' | 'off' } */
+  const [versionOpBusy, setVersionOpBusy] = useState(null);
+
   const openPublish = async (name, reviewingFromList) => {
     setPublishName(name);
     setPublishUpdateLatest(true);
@@ -107,6 +134,97 @@ const NacosSkillsRegistry = () => {
     setPublishOpen(true);
   };
 
+  const localUser = () => {
+    try {
+      const raw = localStorage.getItem('user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const applyFilters = () => {
+    const u = localUser();
+    setQuery({
+      name: searchInput.trim(),
+      biz: bizTagInput.trim(),
+      scope: filterScope,
+      order: orderBy,
+      owner: isRoot() ? ownerInput.trim() : '',
+      onlyMine: !isRoot() && filterOnlyMine && !!u?.username,
+    });
+    setPageNo(1);
+  };
+
+  const resetFilters = () => {
+    setSearchInput('');
+    setBizTagInput('');
+    setOwnerInput('');
+    setFilterScope('');
+    setOrderBy('');
+    setFilterOnlyMine(false);
+    setQuery({
+      name: '',
+      biz: '',
+      scope: '',
+      order: '',
+      owner: '',
+      onlyMine: false,
+    });
+    setPageNo(1);
+  };
+
+  const setScopeFilter = (v) => {
+    const scope = !v || v === '_all' ? '' : v;
+    setFilterScope(scope);
+    setQuery((q) => ({ ...q, scope }));
+    setPageNo(1);
+  };
+
+  const setSortOrder = (v) => {
+    const order = !v || v === '_' ? '' : v;
+    setOrderBy(order);
+    setQuery((q) => ({ ...q, order }));
+    setPageNo(1);
+  };
+
+  const toggleFilterOnlyMine = () => {
+    const u = localUser();
+    const next = !filterOnlyMine;
+    setFilterOnlyMine(next);
+    setQuery((q) => ({
+      ...q,
+      onlyMine: next && !isRoot() && !!u?.username,
+    }));
+    setPageNo(1);
+  };
+
+  const selectedNames = () =>
+    Object.keys(selected).filter((k) => selected[k]);
+
+  const toggleSelect = (name) => {
+    setSelected((s) => ({ ...s, [name]: !s[name] }));
+  };
+
+  const toggleSelectAllPage = () => {
+    const names = rows.map((r) => r.name);
+    const allOn =
+      names.length > 0 && names.every((n) => selected[n]);
+    const next = { ...selected };
+    if (allOn) {
+      names.forEach((n) => {
+        delete next[n];
+      });
+    } else {
+      names.forEach((n) => {
+        next[n] = true;
+      });
+    }
+    setSelected(next);
+  };
+
+  const clearSelection = () => setSelected({});
+
   const load = async () => {
     setLoading(true);
     try {
@@ -116,14 +234,45 @@ const NacosSkillsRegistry = () => {
         return;
       }
       setInfo(ir.data.data);
-      const sr = await API.get('/api/nacos/skills', {
-        params: { namespace, page: 1, size: 100 },
-      });
+      const u = localUser();
+      const params = {
+        namespace,
+        page: pageNo,
+        size: pageSize,
+      };
+      if (query.name) {
+        params.skillName = query.name;
+        params.search = 'blur';
+      }
+      if (query.biz) {
+        params.bizTag = query.biz;
+      }
+      if (query.scope) {
+        params.scope = query.scope;
+      }
+      if (query.order) {
+        params.orderBy = query.order;
+      }
+      if (isRoot() && query.owner) {
+        params.owner = query.owner;
+      } else if (query.onlyMine && u?.username) {
+        params.owner = u.username;
+      }
+      const sr = await API.get('/api/nacos/skills', { params });
       if (!sr.data?.success) {
         showError(sr.data?.message || 'load skills failed');
         return;
       }
       setRows(sr.data.data?.pageItems || []);
+      setTotalCount(sr.data.data?.totalCount ?? 0);
+      setSelected((prev) => {
+        const next = { ...prev };
+        const nameSet = new Set((sr.data.data?.pageItems || []).map((r) => r.name));
+        Object.keys(next).forEach((k) => {
+          if (!nameSet.has(k)) delete next[k];
+        });
+        return next;
+      });
     } catch (e) {
       showError(e.message);
     } finally {
@@ -133,9 +282,13 @@ const NacosSkillsRegistry = () => {
 
   useEffect(() => {
     setStoredNacosNamespace(namespace);
+    setPageNo(1);
+  }, [namespace]);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [namespace]);
+  }, [namespace, pageNo, pageSize, query]);
 
   const openDetail = async (name) => {
     setDetailOpen(true);
@@ -171,6 +324,60 @@ const NacosSkillsRegistry = () => {
     setEditBaseline({ desc, biz, scope });
     setEditOpen(true);
   };
+
+  const postSkillVersionOnline = async (skillName, version) => {
+    setVersionOpBusy({ name: skillName, version, op: 'on' });
+    try {
+      const res = await API.post('/api/nacos/skills/version/online', {
+        namespace,
+        name: skillName,
+        version,
+        updateLatestLabel: true,
+      });
+      if (!res.data?.success) {
+        showError(res.data?.message || 'online failed');
+        return;
+      }
+      showSuccess(t('nacos.skills_version_online_ok'));
+      load();
+      if (detailOpen && detail?.name === skillName) {
+        openDetail(skillName);
+      }
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setVersionOpBusy(null);
+    }
+  };
+
+  const postSkillVersionOffline = async (skillName, version) => {
+    setVersionOpBusy({ name: skillName, version, op: 'off' });
+    try {
+      const res = await API.post('/api/nacos/skills/version/offline', {
+        namespace,
+        name: skillName,
+        version,
+      });
+      if (!res.data?.success) {
+        showError(res.data?.message || 'offline failed');
+        return;
+      }
+      showSuccess(t('nacos.skills_version_offline_ok'));
+      load();
+      if (detailOpen && detail?.name === skillName) {
+        openDetail(skillName);
+      }
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setVersionOpBusy(null);
+    }
+  };
+
+  const isVersionOpBusy = (skillName, version, op) =>
+    versionOpBusy?.name === skillName &&
+    versionOpBusy?.version === version &&
+    versionOpBusy?.op === op;
 
   const saveMetadata = async () => {
     try {
@@ -231,6 +438,29 @@ const NacosSkillsRegistry = () => {
       showSuccess(t('nacos.skills_deleted'));
       setDeleteOpen(false);
       setDeleteName('');
+      clearSelection();
+      load();
+    } catch (e) {
+      showError(e.message);
+    }
+  };
+
+  const doBatchDelete = async () => {
+    const names = selectedNames();
+    if (names.length === 0) return;
+    try {
+      for (const name of names) {
+        const res = await API.delete('/api/nacos/skills/item', {
+          params: { namespace, name },
+        });
+        if (!res.data?.success) {
+          showError(res.data?.message || `${name}`);
+          return;
+        }
+      }
+      showSuccess(t('nacos.skills_batch_deleted'));
+      clearSelection();
+      setBatchDeleteOpen(false);
       load();
     } catch (e) {
       showError(e.message);
@@ -338,9 +568,28 @@ const NacosSkillsRegistry = () => {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize) || 1);
+
+  const skillVersionStatusLabel = (status) => {
+    switch (status) {
+      case 'draft':
+        return t('nacos.skills_ver_draft');
+      case 'reviewing':
+        return t('nacos.skills_ver_reviewing');
+      case 'reviewed':
+        return t('nacos.skills_ver_reviewed');
+      case 'online':
+        return t('nacos.skills_ver_online');
+      case 'offline':
+        return t('nacos.skills_ver_offline');
+      default:
+        return status || '—';
+    }
+  };
+
   return (
     <div className='dashboard-container'>
-      <Card fluid className='chart-card'>
+      <Card fluid className='chart-card nacos-registry-table-card'>
         <Card.Content>
           <Card.Header className='header'>
             {t('nacos.skills_title')}
@@ -357,6 +606,9 @@ const NacosSkillsRegistry = () => {
                 : ''}
             </Message>
           )}
+          <div style={{ marginBottom: 8, color: '#666', fontSize: 13 }}>
+            {t('nacos.skills_total', { total: totalCount })}
+          </div>
           <div
             style={{
               display: 'flex',
@@ -391,97 +643,440 @@ const NacosSkillsRegistry = () => {
               {t('nacos.skills_upload')}
             </Button>
           </div>
+          <div
+            className='nacos-skills-filter-row'
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'flex-end',
+              columnGap: 22,
+              rowGap: 14,
+              marginBottom: 16,
+              paddingTop: 2,
+            }}
+          >
+            <Form.Field style={{ margin: 0, minWidth: 168, flex: '0 1 auto' }}>
+              <label
+                style={{
+                  fontSize: 12,
+                  color: '#666',
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                }}
+              >
+                {t('nacos.skills_search_name')}
+              </label>
+              <Input
+                size='small'
+                placeholder={t('nacos.skills_search_placeholder')}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+              />
+            </Form.Field>
+            <Form.Field style={{ margin: 0, minWidth: 168, flex: '0 1 auto' }}>
+              <label
+                style={{
+                  fontSize: 12,
+                  color: '#666',
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                }}
+              >
+                {t('nacos.skills_filter_biztag')}
+              </label>
+              <Input
+                size='small'
+                placeholder={t('nacos.skills_filter_biztag_ph')}
+                value={bizTagInput}
+                onChange={(e) => setBizTagInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+              />
+            </Form.Field>
+            {isRoot() ? (
+              <Form.Field style={{ margin: 0, minWidth: 168, flex: '0 1 auto' }}>
+                <label
+                  style={{
+                    fontSize: 12,
+                    color: '#666',
+                    display: 'block',
+                    marginBottom: 8,
+                    fontWeight: 500,
+                  }}
+                >
+                  {t('nacos.skills_filter_owner')}
+                </label>
+                <Input
+                  size='small'
+                  placeholder={t('nacos.skills_filter_owner_ph')}
+                  value={ownerInput}
+                  onChange={(e) => setOwnerInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+                />
+              </Form.Field>
+            ) : (
+              <Button
+                size='small'
+                toggle
+                active={filterOnlyMine}
+                type='button'
+                style={{ alignSelf: 'flex-end', marginBottom: 2 }}
+                onClick={toggleFilterOnlyMine}
+              >
+                {t('nacos.skills_filter_only_mine')}
+              </Button>
+            )}
+            <Form.Field style={{ margin: 0, minWidth: 140, flex: '0 1 auto' }}>
+              <label
+                style={{
+                  fontSize: 12,
+                  color: '#666',
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                }}
+              >
+                {t('nacos.skills_filter_scope')}
+              </label>
+              <select
+                style={{
+                  minHeight: 32,
+                  padding: '6px 10px',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+                value={filterScope || '_all'}
+                onChange={(e) => setScopeFilter(e.target.value)}
+              >
+                <option value='_all'>
+                  {t('nacos.skills_filter_scope_all')}
+                </option>
+                <option value='PUBLIC'>PUBLIC</option>
+                <option value='PRIVATE'>PRIVATE</option>
+              </select>
+            </Form.Field>
+            <Form.Field style={{ margin: 0, minWidth: 168, flex: '0 1 auto' }}>
+              <label
+                style={{
+                  fontSize: 12,
+                  color: '#666',
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                }}
+              >
+                {t('nacos.skills_sort')}
+              </label>
+              <select
+                style={{
+                  minHeight: 32,
+                  padding: '6px 10px',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+                value={orderBy || '_'}
+                onChange={(e) => setSortOrder(e.target.value)}
+              >
+                <option value='_'>{t('nacos.skills_sort_default')}</option>
+                <option value='download_count'>
+                  {t('nacos.skills_sort_downloads')}
+                </option>
+              </select>
+            </Form.Field>
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                marginLeft: 4,
+                alignSelf: 'flex-end',
+                marginBottom: 2,
+              }}
+            >
+              <Button size='small' primary type='button' onClick={applyFilters}>
+                {t('nacos.skills_search_btn')}
+              </Button>
+              <Button size='small' type='button' onClick={resetFilters}>
+                {t('nacos.skills_reset_filters')}
+              </Button>
+            </div>
+            {selectedNames().length > 0 ? (
+              <div
+                style={{
+                  marginLeft: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontSize: 12, color: '#666' }}>
+                  {t('nacos.skills_selected', { n: selectedNames().length })}
+                </span>
+                <Button
+                  negative
+                  size='small'
+                  type='button'
+                  onClick={() => setBatchDeleteOpen(true)}
+                >
+                  {t('nacos.skills_batch_delete')}
+                </Button>
+                <Button size='small' type='button' onClick={clearSelection}>
+                  {t('nacos.skills_clear_selection')}
+                </Button>
+              </div>
+            ) : null}
+          </div>
           {loading ? (
             <Loader active />
           ) : (
-            <Table celled compact>
-              <Table.Header>
-                <Table.Row>
-                  <Table.HeaderCell>
-                    {t('nacos.skills_col_name')}
-                  </Table.HeaderCell>
-                  <Table.HeaderCell>
-                    {t('nacos.skills_col_desc')}
-                  </Table.HeaderCell>
-                  <Table.HeaderCell>
-                    {t('nacos.skills_col_enable')}
-                  </Table.HeaderCell>
-                  <Table.HeaderCell>{t('nacos.skills_col_scope')}</Table.HeaderCell>
-                  <Table.HeaderCell>editing</Table.HeaderCell>
-                  <Table.HeaderCell>reviewing</Table.HeaderCell>
-                  <Table.HeaderCell>online</Table.HeaderCell>
-                  <Table.HeaderCell>
-                    {t('nacos.skills_col_actions')}
-                  </Table.HeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {rows.map((r) => (
-                  <Table.Row key={r.name}>
-                    <Table.Cell>{r.name}</Table.Cell>
-                    <Table.Cell>{r.description}</Table.Cell>
-                    <Table.Cell>{r.enable ? '✓' : '—'}</Table.Cell>
-                    <Table.Cell>{r.scope || 'PUBLIC'}</Table.Cell>
-                    <Table.Cell>{r.editingVersion}</Table.Cell>
-                    <Table.Cell>{r.reviewingVersion}</Table.Cell>
-                    <Table.Cell>
-                      {r.onlineCnt != null ? r.onlineCnt : '-'}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Button
-                        size='mini'
-                        onClick={() => openDetail(r.name)}
-                      >
-                        {t('nacos.skills_action_detail')}
-                      </Button>
-                      <Button size='mini' onClick={() => openEdit(r)}>
-                        {t('nacos.skills_action_edit')}
-                      </Button>
-                      <Button
-                        size='mini'
-                        onClick={() => {
-                          setSubmitName(r.name);
-                          setSubmitVersion('');
-                          setSubmitVersionBaseline('');
-                          setSubmitOpen(true);
-                        }}
-                      >
-                        {t('nacos.skills_action_submit')}
-                      </Button>
-                      <Button
-                        size='mini'
-                        onClick={() => openPublish(r.name, r.reviewingVersion)}
-                      >
-                        {t('nacos.skills_action_publish')}
-                      </Button>
-                      <Button
-                        size='mini'
-                        onClick={() => {
-                          const lt = JSON.stringify(r.labels || {}, null, 2);
-                          setLabelsName(r.name);
-                          setLabelsText(lt);
-                          setLabelsBaseline(lt);
-                          setLabelsReplace(false);
-                          setLabelsOpen(true);
-                        }}
-                      >
-                        {t('nacos.skills_action_labels')}
-                      </Button>
-                      <Button
-                        size='mini'
-                        negative
-                        onClick={() => {
-                          setDeleteName(r.name);
-                          setDeleteOpen(true);
-                        }}
-                      >
-                        {t('nacos.skills_action_delete')}
-                      </Button>
-                    </Table.Cell>
+            <>
+              <Table
+                celled
+                compact
+                stackable
+                className='nacos-skills-table'
+                style={{ overflow: 'visible' }}
+              >
+                <Table.Header>
+                  <Table.Row>
+                    <Table.HeaderCell collapsing>
+                      <Checkbox
+                        checked={
+                          rows.length > 0 &&
+                          rows.every((r) => selected[r.name])
+                        }
+                        indeterminate={
+                          selectedNames().length > 0 &&
+                          !rows.every((r) => selected[r.name])
+                        }
+                        onChange={toggleSelectAllPage}
+                      />
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_name')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_desc')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_owner')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_enable')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_scope')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_draft_review')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_online_cnt')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_downloads')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_actions')}
+                    </Table.HeaderCell>
                   </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
+                </Table.Header>
+                <Table.Body>
+                  {rows.map((r) => (
+                    <Table.Row key={r.name}>
+                      <Table.Cell collapsing>
+                        <Checkbox
+                          checked={!!selected[r.name]}
+                          onChange={() => toggleSelect(r.name)}
+                        />
+                      </Table.Cell>
+                      <Table.Cell>
+                        <span style={{ wordBreak: 'break-word' }}>{r.name}</span>
+                      </Table.Cell>
+                      <Table.Cell
+                        title={r.description || ''}
+                        style={{
+                          maxWidth: 280,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {r.description || '—'}
+                      </Table.Cell>
+                      <Table.Cell>{r.owner || '—'}</Table.Cell>
+                      <Table.Cell collapsing textAlign='center'>
+                        {r.enable ? (
+                          <Icon name='check circle' color='green' />
+                        ) : (
+                          <span style={{ color: '#999' }}>—</span>
+                        )}
+                      </Table.Cell>
+                      <Table.Cell collapsing>{r.scope || 'PUBLIC'}</Table.Cell>
+                      <Table.Cell>
+                        <div style={{ fontSize: 12, lineHeight: 1.45 }}>
+                          <div>
+                            <span style={{ color: '#888' }}>
+                              {t('nacos.skills_col_draft_short')}
+                            </span>{' '}
+                            {r.editingVersion || '—'}
+                          </div>
+                          <div>
+                            <span style={{ color: '#888' }}>
+                              {t('nacos.skills_col_reviewing_short')}
+                            </span>{' '}
+                            {r.reviewingVersion || '—'}
+                          </div>
+                        </div>
+                      </Table.Cell>
+                      <Table.Cell>
+                        {r.onlineCnt != null ? r.onlineCnt : '—'}
+                      </Table.Cell>
+                      <Table.Cell>
+                        {r.downloadCount != null ? r.downloadCount : '—'}
+                      </Table.Cell>
+                      <Table.Cell
+                        collapsing
+                        style={{ overflow: 'visible', verticalAlign: 'middle' }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 6,
+                            alignItems: 'center',
+                            maxWidth: 340,
+                            position: 'relative',
+                            overflow: 'visible',
+                            zIndex: 1,
+                          }}
+                        >
+                          <Button.Group size='mini'>
+                            <Button
+                              type='button'
+                              onClick={() => openDetail(r.name)}
+                            >
+                              {t('nacos.skills_action_detail')}
+                            </Button>
+                            <Button
+                              type='button'
+                              onClick={() => openEdit(r)}
+                            >
+                              {t('nacos.skills_action_edit')}
+                            </Button>
+                          </Button.Group>
+                          <Dropdown
+                            button
+                            floating
+                            upward
+                            direction='left'
+                            className='mini nacos-skills-actions-dropdown'
+                            icon='dropdown'
+                            text={t('nacos.skills_more_actions')}
+                          >
+                            <Dropdown.Menu>
+                              <Dropdown.Item
+                                text={t('nacos.skills_action_submit')}
+                                onClick={() => {
+                                  setSubmitName(r.name);
+                                  setSubmitVersion('');
+                                  setSubmitVersionBaseline('');
+                                  setSubmitOpen(true);
+                                }}
+                              />
+                              <Dropdown.Item
+                                text={t('nacos.skills_action_publish')}
+                                onClick={() =>
+                                  openPublish(r.name, r.reviewingVersion)
+                                }
+                              />
+                              <Dropdown.Item
+                                text={t('nacos.skills_action_labels')}
+                                onClick={() => {
+                                  const lt = JSON.stringify(
+                                    r.labels || {},
+                                    null,
+                                    2
+                                  );
+                                  setLabelsName(r.name);
+                                  setLabelsText(lt);
+                                  setLabelsBaseline(lt);
+                                  setLabelsReplace(false);
+                                  setLabelsOpen(true);
+                                }}
+                              />
+                              <Dropdown.Divider />
+                              <Dropdown.Item
+                                text={t('nacos.skills_action_delete')}
+                                onClick={() => {
+                                  setDeleteName(r.name);
+                                  setDeleteOpen(true);
+                                }}
+                                style={{ color: '#db2828' }}
+                              />
+                            </Dropdown.Menu>
+                          </Dropdown>
+                        </div>
+                      </Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table>
+              {totalCount > pageSize ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 8,
+                    marginTop: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: '#666' }}>
+                    {t('nacos.skills_page_summary', {
+                      pageNo,
+                      totalPages,
+                      total: totalCount,
+                    })}
+                  </span>
+                  <select
+                    value={pageSize}
+                    style={{ minHeight: 32, padding: '0 8px' }}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setPageNo(1);
+                    }}
+                  >
+                    <option value={12}>12 / {t('nacos.skills_page')}</option>
+                    <option value={24}>24 / {t('nacos.skills_page')}</option>
+                    <option value={48}>48 / {t('nacos.skills_page')}</option>
+                  </select>
+                  <Button
+                    size='small'
+                    disabled={pageNo <= 1}
+                    type='button'
+                    onClick={() => setPageNo((p) => Math.max(1, p - 1))}
+                  >
+                    {t('nacos.skills_prev_page')}
+                  </Button>
+                  <Button
+                    size='small'
+                    disabled={pageNo >= totalPages}
+                    type='button'
+                    onClick={() =>
+                      setPageNo((p) => Math.min(totalPages, p + 1))
+                    }
+                  >
+                    {t('nacos.skills_next_page')}
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
         </Card.Content>
       </Card>
@@ -497,8 +1092,11 @@ const NacosSkillsRegistry = () => {
                 <strong>{detail.name}</strong> — {detail.description}
               </p>
               <p>
-                enable: {detail.enable ? 'yes' : 'no'} | scope:{' '}
-                {detail.scope || 'PUBLIC'} | bizTags: {detail.bizTags || '—'}
+                {t('nacos.skills_detail_owner')}: {detail.owner || '—'} |{' '}
+                {t('nacos.skills_col_enable')}:{' '}
+                {detail.enable ? t('nacos.skills_yes') : t('nacos.skills_no')}{' '}
+                | {t('nacos.skills_col_scope')}: {detail.scope || 'PUBLIC'} |
+                bizTags: {detail.bizTags || '—'}
               </p>
               {detail.labels && Object.keys(detail.labels).length > 0 ? (
                 <p>
@@ -508,9 +1106,15 @@ const NacosSkillsRegistry = () => {
               <Table celled compact size='small'>
                 <Table.Header>
                   <Table.Row>
-                    <Table.HeaderCell>version</Table.HeaderCell>
-                    <Table.HeaderCell>status</Table.HeaderCell>
-                    <Table.HeaderCell>commit</Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_version')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_status')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell>
+                      {t('nacos.skills_col_commit')}
+                    </Table.HeaderCell>
                     <Table.HeaderCell>
                       {t('nacos.skills_col_actions')}
                     </Table.HeaderCell>
@@ -520,18 +1124,84 @@ const NacosSkillsRegistry = () => {
                   {(detail.versions || []).map((v) => (
                     <Table.Row key={v.version}>
                       <Table.Cell>{v.version}</Table.Cell>
-                      <Table.Cell>{v.status}</Table.Cell>
+                      <Table.Cell>
+                        {skillVersionStatusLabel(v.status)}
+                      </Table.Cell>
                       <Table.Cell>{v.commitMsg || '—'}</Table.Cell>
                       <Table.Cell>
-                        <Button
-                          size='mini'
-                          type='button'
-                          onClick={() =>
-                            downloadVersionZip(detail.name, v.version)
-                          }
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 6,
+                            alignItems: 'center',
+                          }}
                         >
-                          {t('nacos.skills_download')}
-                        </Button>
+                          {v.status === 'online' ? (
+                            <Button
+                              size='mini'
+                              type='button'
+                              onClick={() =>
+                                downloadVersionZip(detail.name, v.version)
+                              }
+                            >
+                              {t('nacos.skills_download')}
+                            </Button>
+                          ) : (
+                            <span style={{ color: '#999', fontSize: 12 }}>
+                              {t('nacos.skills_download_online_only')}
+                            </span>
+                          )}
+                          {v.status === 'online' ? (
+                            <Button
+                              size='mini'
+                              type='button'
+                              loading={isVersionOpBusy(
+                                detail.name,
+                                v.version,
+                                'off'
+                              )}
+                              disabled={
+                                !!versionOpBusy &&
+                                !isVersionOpBusy(
+                                  detail.name,
+                                  v.version,
+                                  'off'
+                                )
+                              }
+                              onClick={() =>
+                                postSkillVersionOffline(detail.name, v.version)
+                              }
+                            >
+                              {t('nacos.skills_action_offline')}
+                            </Button>
+                          ) : null}
+                          {v.status === 'offline' ? (
+                            <Button
+                              positive
+                              size='mini'
+                              type='button'
+                              loading={isVersionOpBusy(
+                                detail.name,
+                                v.version,
+                                'on'
+                              )}
+                              disabled={
+                                !!versionOpBusy &&
+                                !isVersionOpBusy(
+                                  detail.name,
+                                  v.version,
+                                  'on'
+                                )
+                              }
+                              onClick={() =>
+                                postSkillVersionOnline(detail.name, v.version)
+                              }
+                            >
+                              {t('nacos.skills_action_online')}
+                            </Button>
+                          ) : null}
+                        </div>
                       </Table.Cell>
                     </Table.Row>
                   ))}
@@ -722,6 +1392,16 @@ const NacosSkillsRegistry = () => {
           </Button>
         </Modal.Actions>
       </Modal>
+
+      <Confirm
+        open={batchDeleteOpen}
+        header={t('nacos.skills_batch_delete')}
+        content={t('nacos.skills_batch_delete_confirm', {
+          n: selectedNames().length,
+        })}
+        onCancel={() => setBatchDeleteOpen(false)}
+        onConfirm={doBatchDelete}
+      />
 
       <Confirm
         open={deleteOpen}

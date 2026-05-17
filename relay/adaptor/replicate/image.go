@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
@@ -167,6 +168,12 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 				logger.Error(c, fmt.Sprintf("some images failed to download: %+v", err))
 			}
 
+			out, mErr := json.Marshal(respBody)
+			if mErr == nil {
+				if rec := requestaudit.FromContext(c); rec != nil {
+					requestaudit.SetNonStreamResponse(rec, string(out))
+				}
+			}
 			c.JSON(http.StatusOK, respBody)
 			return nil
 		}()

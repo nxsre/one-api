@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/model"
 )
 
@@ -20,7 +23,7 @@ func ReturnPreConsumedQuota(ctx context.Context, preConsumedQuota int64, tokenId
 	}
 }
 
-func PostConsumeQuota(ctx context.Context, tokenId int, quotaDelta int64, totalQuota int64, userId int, channelId int, modelRatio float64, groupRatio float64, modelName string, tokenName string) {
+func PostConsumeQuota(c *gin.Context, ctx context.Context, tokenId int, quotaDelta int64, totalQuota int64, userId int, channelId int, modelRatio float64, groupRatio float64, modelName string, tokenName string) {
 	// quotaDelta is remaining quota to be consumed
 	err := model.PostConsumeTokenQuota(tokenId, quotaDelta)
 	if err != nil {
@@ -33,15 +36,19 @@ func PostConsumeQuota(ctx context.Context, tokenId int, quotaDelta int64, totalQ
 	// totalQuota is total quota consumed
 	if totalQuota != 0 {
 		logContent := fmt.Sprintf("倍率：%.2f × %.2f", modelRatio, groupRatio)
+		userGroup, _ := model.CacheGetUserGroup(userId)
 		model.RecordConsumeLog(ctx, &model.Log{
 			UserId:           userId,
 			ChannelId:        channelId,
+			TokenId:          tokenId,
+			Group:            userGroup,
 			PromptTokens:     int(totalQuota),
 			CompletionTokens: 0,
 			ModelName:        modelName,
 			TokenName:        tokenName,
 			Quota:            int(totalQuota),
 			Content:          logContent,
+			Other:            requestaudit.UpstreamHeadersJSONForLog(c),
 		})
 		model.UpdateUserUsedQuotaAndRequestCount(userId, totalQuota)
 		model.UpdateChannelUsedQuota(channelId, totalQuota)

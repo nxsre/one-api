@@ -45,13 +45,15 @@ jobs:
       - name: Build Backend (amd64)
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'github.com/songquanpeng/one-api/common.Version=$(git describe --tags)' -extldflags '-static'" -o one-api
+          BUILD_TS=$(date -u +%Y%m%d%H%M%S)
+          go build -ldflags "-s -w -X github.com/songquanpeng/one-api/common.Version=$(git describe --tags) -X github.com/songquanpeng/one-api/common.BuildID=${BUILD_TS} -extldflags '-static'" -o one-api
 
       - name: Build Backend (arm64)
         run: |
           sudo apt-get update
           sudo apt-get install gcc-aarch64-linux-gnu
-          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'one-api/common.Version=$(git describe --tags)' -extldflags '-static'" -o one-api-arm64
+          BUILD_TS=$(date -u +%Y%m%d%H%M%S)
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X github.com/songquanpeng/one-api/common.Version=$(git describe --tags) -X github.com/songquanpeng/one-api/common.BuildID=${BUILD_TS} -extldflags '-static'" -o one-api-arm64
 
       - name: Release
         uses: softprops/action-gh-release@v1

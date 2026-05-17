@@ -83,13 +83,11 @@ func SetRelayRouter(router *gin.Engine) {
 	modelsOpenAI.Use(middleware.TokenAuth())
 	registerOpenAIV1ModelsRoutes(modelsOpenAI)
 
-	amapLegacy := router.Group("/v1/amap")
-	amapLegacy.Use(middleware.RelayPanicRecover(), middleware.TokenAuth())
-	amapLegacy.POST("/poi", controller.RelayAmapPOI)
-
-	amapOpenAI := router.Group("/openai/v1/amap")
-	amapOpenAI.Use(middleware.RelayPanicRecover(), middleware.TokenAuth())
-	amapOpenAI.POST("/poi", controller.RelayAmapPOI)
+	router.POST("/amap",
+		middleware.RelayPanicRecover(),
+		middleware.TokenAuth(),
+		controller.RelayAmapProxy,
+	)
 
 	stack := func(g *gin.RouterGroup) {
 		g.Use(middleware.RelayPanicRecover(), middleware.ResponsesRealtimeFormatBridge(), middleware.TokenAuth(), middleware.RoutingPrep(), middleware.Distribute())

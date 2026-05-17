@@ -1,0 +1,106 @@
+# 双 one-api + Nginx 轮询，用于验证经 LB 访问时 Redis 限速等跨实例策略
+# 请先构建镜像：docker compose -f docker-compose.e2e.yml build one-api-e2e
+# 启动：
+#   docker compose -f docker-compose.e2e.cluster.yml up -d
+# 测试：
+#   E2E_ONE_API_URL=http://127.0.0.1:28080 go test -tags=e2e -v ./tests/e2e/ -timeout 15m
+#
+# 与单机 compose 使用相同的 Mock / MySQL / Redis 服务名，勿与单机组同时占用宿主机端口。
+
+name: one-api-e2e-cluster
+
+services:
+  mock-upstream:
+    build:
+      context: ./tests/e2e/mock_upstream
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  mysql-e2e:
+    image: mysql:8.2.0
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: OneAPI@e2e
+      MYSQL_USER: oneapi
+      MYSQL_PASSWORD: "123456"
+      MYSQL_DATABASE: one-api
+    volumes:
+      - e2e_cluster_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 25s
+
+  redis-e2e:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  one-api-e2e-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: one-api:e2e-local
+    environment:
+      TZ: Asia/Shanghai
+      TIKTOKEN_CACHE_DIR: /tiktoken-cache
+    volumes:
+      - ./tests/e2e/config.e2e.toml:/app/config.toml:ro
+      - e2e_cluster_tiktoken_a:/tiktoken-cache
+      - e2e_cluster_logs_a:/data/logs
+    command: ["--config", "/app/config.toml"]
+    depends_on:
+      mysql-e2e:
+        condition: service_healthy
+      redis-e2e:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+
+  one-api-e2e-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: one-api:e2e-local
+    environment:
+      TZ: Asia/Shanghai
+      TIKTOKEN_CACHE_DIR: /tiktoken-cache
+    volumes:
+      - ./tests/e2e/config.e2e.toml:/app/config.toml:ro
+      - e2e_cluster_tiktoken_b:/tiktoken-cache
+      - e2e_cluster_logs_b:/data/logs
+    command: ["--config", "/app/config.toml"]
+    depends_on:
+      mysql-e2e:
+        condition: service_healthy
+      redis-e2e:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+
+  nginx-e2e-lb:
+    image: nginx:alpine
+    ports:
+      - "28080:80"
+    volumes:
+      - ./tests/e2e/nginx/cluster-lb.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - one-api-e2e-a
+      - one-api-e2e-b
+
+volumes:
+  e2e_cluster_mysql:
+  e2e_cluster_tiktoken_a:
+  e2e_cluster_tiktoken_b:
+  e2e_cluster_logs_a:
+  e2e_cluster_logs_b:

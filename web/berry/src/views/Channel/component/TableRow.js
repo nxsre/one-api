@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import { showInfo, showError, renderNumber } from "utils/common";
 import { API } from "utils/api";
-import { CHANNEL_OPTIONS } from "constants/ChannelConstants";
 
 import {
   Popover,
@@ -35,6 +34,7 @@ export default function ChannelTableRow({
   manageChannel,
   handleOpenModal,
   setModalChannelId,
+  channelTypeMap = {},
 }) {
   const [open, setOpen] = useState(null);
   const [openDelete, setOpenDelete] = useState(false);
@@ -128,15 +128,22 @@ export default function ChannelTableRow({
         </TableCell>
 
         <TableCell>
-          {!CHANNEL_OPTIONS[item.type] ? (
-            <Label color="error" variant="outlined">
-              未知
-            </Label>
-          ) : (
-            <Label color={CHANNEL_OPTIONS[item.type].color} variant="outlined">
-              {CHANNEL_OPTIONS[item.type].text}
-            </Label>
-          )}
+          {(() => {
+            const meta =
+              channelTypeMap[item.type] ?? channelTypeMap[String(item.type)];
+            if (!meta) {
+              return (
+                <Label color="error" variant="outlined">
+                  {item.type}（未知）
+                </Label>
+              );
+            }
+            return (
+              <Label color={meta.color} variant="outlined">
+                {meta.text}
+              </Label>
+            );
+          })()}
         </TableCell>
 
         <TableCell>
@@ -250,29 +257,22 @@ ChannelTableRow.propTypes = {
   manageChannel: PropTypes.func,
   handleOpenModal: PropTypes.func,
   setModalChannelId: PropTypes.func,
+  channelTypeMap: PropTypes.object,
 };
 
 function renderBalance(type, balance) {
+  const n = Number(balance);
+  if (!Number.isFinite(n)) {
+    return <span>—</span>;
+  }
   switch (type) {
-    case 1: // OpenAI
-      return <span>${balance.toFixed(2)}</span>;
-    case 4: // CloseAI
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 8: // 自定义
-      return <span>${balance.toFixed(2)}</span>;
-    case 5: // OpenAI-SB
-      return <span>¥{(balance / 10000).toFixed(2)}</span>;
-    case 10: // AI Proxy
-      return <span>{renderNumber(balance)}</span>;
-    case 12: // API2GPT
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 13: // AIGC2D
-      return <span>{renderNumber(balance)}</span>;
-    case 36: // DeepSeek
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 44: // SiliconFlow
-      return <span>¥{balance.toFixed(2)}</span>;
+    case 26:
+      return <span>¥{n.toFixed(2)}</span>;
+    case 34:
+      return <span>¥{n.toFixed(2)}</span>;
+    case 11:
+      return <span>{renderNumber(n)}</span>;
     default:
-      return <span>不支持</span>;
+      return <span>${n.toFixed(2)}</span>;
   }
 }

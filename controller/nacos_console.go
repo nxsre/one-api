@@ -44,9 +44,8 @@ func GetNacosRegistryInfo(c *gin.Context) {
 // ListNacosSkillsAdmin GET /api/nacos/skills
 func ListNacosSkillsAdmin(c *gin.Context) {
 	ns := c.DefaultQuery("namespace", "public")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	data, err := service.NacosAIListSkills(ns, "", page, size)
+	filter, page, size := parseNacosSkillListFilter(c)
+	data, err := service.NacosAIListSkills(ns, filter, page, size)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -232,6 +231,79 @@ func PublishNacosSkillAdmin(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": "skill 不存在"})
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type nacosSkillVersionOnlineBody struct {
+	Namespace         string `json:"namespace"`
+	Name              string `json:"name"`
+	Version           string `json:"version"`
+	UpdateLatestLabel *bool  `json:"updateLatestLabel"`
+}
+
+// NacosSkillVersionOnlineAdmin POST /api/nacos/skills/version/online
+// 与原生控制台「版本恢复上线」一致：仅 offline → online；可选将 latest 指向该版本（等同带 version 的 online 接口）。
+func NacosSkillVersionOnlineAdmin(c *gin.Context) {
+	var body nacosSkillVersionOnlineBody
+	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	ns := strings.TrimSpace(body.Namespace)
+	if ns == "" {
+		ns = "public"
+	}
+	name := strings.TrimSpace(body.Name)
+	ver := strings.TrimSpace(body.Version)
+	if name == "" || ver == "" {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "name 与 version 必填"})
+		return
+	}
+	updateLatest := true
+	if body.UpdateLatestLabel != nil {
+		updateLatest = *body.UpdateLatestLabel
+	}
+	if err := service.NacosAIArtifactVersionSetOnlineFromOffline(ns, model.NacosAIKindSkill, name, ver); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if updateLatest {
+		if err := service.NacosAIArtifactVersionEnsureOnline(ns, model.NacosAIKindSkill, name, ver, true); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type nacosSkillVersionOfflineBody struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+}
+
+// NacosSkillVersionOfflineAdmin POST /api/nacos/skills/version/offline
+// 与原生控制台「版本下线」一致：仅 online → offline。
+func NacosSkillVersionOfflineAdmin(c *gin.Context) {
+	var body nacosSkillVersionOfflineBody
+	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	ns := strings.TrimSpace(body.Namespace)
+	if ns == "" {
+		ns = "public"
+	}
+	name := strings.TrimSpace(body.Name)
+	ver := strings.TrimSpace(body.Version)
+	if name == "" || ver == "" {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "name 与 version 必填"})
+		return
+	}
+	if err := service.NacosAIArtifactVersionSetOffline(ns, model.NacosAIKindSkill, name, ver); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}

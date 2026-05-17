@@ -2,15 +2,19 @@ package model
 
 import (
 	"context"
+	"errors"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/common/utils"
 )
 
 type Ability struct {
-	Group     string `json:"group" gorm:"type:varchar(32);primaryKey;autoIncrement:false"`
+	Group     string `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
 	Model     string `json:"model" gorm:"primaryKey;autoIncrement:false"`
 	ChannelId int    `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	Enabled   bool   `json:"enabled"`
@@ -34,7 +38,6 @@ func QueryEnabledChannelsForGroupModel(group, model string) ([]*Channel, error) 
 		Find(&channels).Error
 	return channels, err
 }
-
 
 func (channel *Channel) AddAbilities() error {
 	models_ := strings.Split(channel.Models, ",")
@@ -95,4 +98,46 @@ func GetGroupModels(ctx context.Context, group string) ([]string, error) {
 	}
 	sort.Strings(models)
 	return models, err
+}
+
+var fixAbilitiesMu sync.Mutex
+
+// FixAbilities 清空 abilities 后按各渠道 models/group 重建，并刷新内存缓存。
+func FixAbilities() (success int, fails int, err error) {
+	if !fixAbilitiesMu.TryLock() {
+		return 0, 0, errors.New("已有修复任务在执行中，请稍后再试")
+	}
+	defer fixAbilitiesMu.Unlock()
+	if err = DB.Exec("DELETE FROM abilities").Error; err != nil {
+		return 0, 0, err
+	}
+	var channels []*Channel
+	if err = DB.Find(&channels).Error; err != nil {
+		return 0, 0, err
+	}
+	for _, ch := range channels {
+		if e := ch.AddAbilities(); e != nil {
+			logger.SysError("FixAbilities AddAbilities channel " + strconv.Itoa(ch.Id) + ": " + e.Error())
+			fails++
+		} else {
+			success++
+		}
+	}
+	InitChannelCache()
+	return success, fails, nil
+}
+
+// ListDistinctEnabledModels 返回 abilities 中已启用条目的去重模型名。
+func ListDistinctEnabledModels() ([]string, error) {
+	trueVal := "1"
+	if common.UsingPostgreSQL {
+		trueVal = "true"
+	}
+	var models []string
+	err := DB.Model(&Ability{}).Distinct("model").Where("enabled = "+trueVal).Pluck("model", &models).Error
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(models)
+	return models, nil
 }

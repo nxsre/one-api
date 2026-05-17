@@ -34,8 +34,8 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 		return "", errors.New("aippt: meta is nil")
 	}
 	base := strings.TrimSpace(meta.BaseURL)
-	if base == "" && meta.ChannelType > 0 && meta.ChannelType < len(channeltype.ChannelBaseURLs) {
-		base = channeltype.ChannelBaseURLs[meta.ChannelType]
+	if base == "" && meta.ChannelType > 0 && meta.ChannelType < channeltype.Dummy {
+		base = channeltype.DefaultBaseURL(meta.ChannelType)
 	}
 	if base == "" {
 		base = "https://co.aippt.cn"
@@ -95,8 +95,8 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 		return nil, err
 	}
 	base := strings.TrimSpace(meta.BaseURL)
-	if base == "" && meta.ChannelType > 0 && meta.ChannelType < len(channeltype.ChannelBaseURLs) {
-		base = channeltype.ChannelBaseURLs[meta.ChannelType]
+	if base == "" && meta.ChannelType > 0 && meta.ChannelType < channeltype.Dummy {
+		base = channeltype.DefaultBaseURL(meta.ChannelType)
 	}
 	cl := &Client{
 		BaseURL:   base,

@@ -149,7 +149,16 @@ func InitDB() {
 
 func migrateDB() error {
 	var err error
+	if err = migrateChannelRenameLegacySettingsColumn(); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&Channel{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&Option{}); err != nil {
+		return err
+	}
+	if err = migrateChannelGeminiOpenAIReorderIfNeeded(); err != nil {
 		return err
 	}
 	if err = migrateChannelMergeOtherIntoConfig(); err != nil {
@@ -170,19 +179,32 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&User{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&Option{}); err != nil {
-		return err
-	}
 	if err = DB.AutoMigrate(&Redemption{}); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&Ability{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&Log{}); err != nil {
-		return err
+	logDSN := env.StringAlways("log_sql_dsn")
+	if logDSN == "" {
+		if config.LogShardByDay {
+			if err = migrateLogShardTablesBoot(DB); err != nil {
+				return err
+			}
+		} else {
+			if err = DB.AutoMigrate(&Log{}); err != nil {
+				return err
+			}
+		}
+	} else if !config.LogShardByDay {
+		if err = DB.AutoMigrate(&Log{}); err != nil {
+			return err
+		}
 	}
 	if err = DB.AutoMigrate(&GlobalAccessWhitelist{}, &GlobalAccessBlacklist{}, &TwoFA{}, &TwoFABackupCode{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ModelCatalog{}); err != nil {
 		return err
 	}
 	return nil
@@ -269,6 +291,7 @@ func migrateChannelModelMappingToText() error {
 func InitLogDB() {
 	if env.StringAlways("log_sql_dsn") == "" {
 		LOG_DB = DB
+		initLogGroupColumn()
 		return
 	}
 
@@ -283,6 +306,7 @@ func InitLogDB() {
 	setDBConns(LOG_DB)
 
 	if !config.IsMasterNode {
+		initLogGroupColumn()
 		return
 	}
 
@@ -293,14 +317,14 @@ func InitLogDB() {
 		return
 	}
 	logger.SysLog("secondary database migrated")
+	initLogGroupColumn()
 }
 
 func migrateLOGDB() error {
-	var err error
-	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
-		return err
+	if config.LogShardByDay {
+		return migrateLogShardTablesBoot(LOG_DB)
 	}
-	return nil
+	return LOG_DB.AutoMigrate(&Log{})
 }
 
 func setDBConns(db *gorm.DB) *sql.DB {

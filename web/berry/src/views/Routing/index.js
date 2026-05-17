@@ -104,8 +104,13 @@ export default function Routing() {
         showError(res.data?.message || '加载失败');
         return;
       }
-      setPolicies(res.data.data || {});
-      const alias = res.data.data?.ModelAliasPolicy;
+      const data = res.data.data || {};
+      setPolicies({
+        ...data,
+        RelayProtocolBridgeEnabled:
+          data.RelayProtocolBridgeEnabled === 'true' ? 'true' : 'false',
+      });
+      const alias = data.ModelAliasPolicy;
       if (alias) setAliasRaw(alias);
     } catch (e) {
       showError(e.message);
@@ -187,9 +192,15 @@ export default function Routing() {
       return;
     }
     try {
+      let value;
+      if (key === 'RelayProtocolBridgeEnabled') {
+        value = policies[key] === 'true' ? 'true' : 'false';
+      } else {
+        value = policies[key] ?? '{}';
+      }
       const res = await API.put('/api/option', {
         key,
-        value: policies[key] ?? '{}'
+        value
       });
       if (!res.data?.success) {
         showError(res.data?.message || '保存失败');
@@ -346,6 +357,36 @@ export default function Routing() {
       <Alert severity="info" sx={{ mb: 2 }}>
         策略 JSON 持久化在运营选项中；保存单项需要 Root。可先校验别名策略再写入 ModelAliasPolicy。
       </Alert>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6">跨协议转发</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1, mt: 0.5 }}>
+          开启后 Anthropic / Gemini 原生 API 可选用非对应协议渠道，经 OpenAI 语义转发（需模型映射）。关闭则仅允许协议匹配。
+        </Typography>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={policies.RelayProtocolBridgeEnabled === 'true'}
+              onChange={(e) =>
+                setPolicies((p) => ({
+                  ...p,
+                  RelayProtocolBridgeEnabled: e.target.checked ? 'true' : 'false',
+                }))
+              }
+            />
+          }
+          label="允许跨协议转发（RelayProtocolBridgeEnabled）"
+        />
+        <Box sx={{ mt: 1 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            disabled={!isRoot()}
+            onClick={() => void saveOption('RelayProtocolBridgeEnabled')}
+          >
+            保存此项
+          </Button>
+        </Box>
+      </Box>
       {POLICY_KEYS.map((k) => (
         <Box key={k} sx={{ mb: 3 }}>
           <Typography variant="h6">{k}</Typography>

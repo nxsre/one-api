@@ -13,7 +13,9 @@ import (
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/ctxkey"
+	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
@@ -103,14 +105,35 @@ func getImageCostRatio(imageRequest *relaymodel.ImageRequest) (float64, error) {
 	return imageCostRatio, nil
 }
 
-func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatusCode {
+func finalizeImageAuditFailure(c *gin.Context, modelName string, bizErr *relaymodel.ErrorWithStatusCode) {
+	if bizErr == nil || bizErr.StatusCode == -1 {
+		return
+	}
+	r := requestaudit.FromContext(c)
+	if r == nil || r.IsFinalized() {
+		return
+	}
+	raw := auditRequestRaw(c)
+	thinking := requestaudit.InferThinkingStream(nil, raw)
+	requestaudit.FinalizeFailure(c, r, modelName, false, thinking, bizErr.StatusCode, bizErr.Error.Message)
+}
+
+func RelayImageHelper(c *gin.Context, relayMode int) (bizErr *relaymodel.ErrorWithStatusCode) {
+	_ = relayMode
 	ctx := c.Request.Context()
 	meta := meta.GetByContext(c)
+	var auditModel string
+	defer func() {
+		finalizeImageAuditFailure(c, auditModel, bizErr)
+	}()
+
 	imageRequest, err := getImageRequest(c, meta.Mode)
 	if err != nil {
 		logger.Errorf(ctx, "getImageRequest failed: %s", err.Error())
-		return openai.ErrorWrapper(err, "invalid_image_request", http.StatusBadRequest)
+		bizErr = openai.ErrorWrapper(err, "invalid_image_request", http.StatusBadRequest)
+		return
 	}
+	auditModel = imageRequest.Model
 
 	// map model name
 	var isModelMapped bool
@@ -119,14 +142,15 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	meta.ActualModelName = imageRequest.Model
 
 	// model validation
-	bizErr := validateImageRequest(imageRequest, meta)
+	bizErr = validateImageRequest(imageRequest, meta)
 	if bizErr != nil {
-		return bizErr
+		return
 	}
 
 	imageCostRatio, err := getImageCostRatio(imageRequest)
 	if err != nil {
-		return openai.ErrorWrapper(err, "get_image_cost_ratio_failed", http.StatusInternalServerError)
+		bizErr = openai.ErrorWrapper(err, "get_image_cost_ratio_failed", http.StatusInternalServerError)
+		return
 	}
 
 	imageModel := imageRequest.Model
@@ -138,7 +162,8 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	if isModelMapped || meta.ChannelType == channeltype.Azure { // make Azure channel request body
 		jsonStr, err := json.Marshal(imageRequest)
 		if err != nil {
-			return openai.ErrorWrapper(err, "marshal_image_request_failed", http.StatusInternalServerError)
+			bizErr = openai.ErrorWrapper(err, "marshal_image_request_failed", http.StatusInternalServerError)
+			return
 		}
 		requestBody = bytes.NewBuffer(jsonStr)
 	} else {
@@ -147,7 +172,8 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	adaptor := relay.GetAdaptor(meta.APIType)
 	if adaptor == nil {
-		return openai.ErrorWrapper(fmt.Errorf("invalid api type: %d", meta.APIType), "invalid_api_type", http.StatusBadRequest)
+		bizErr = openai.ErrorWrapper(fmt.Errorf("invalid api type: %d", meta.APIType), "invalid_api_type", http.StatusBadRequest)
+		return
 	}
 	adaptor.Init(meta)
 
@@ -159,11 +185,13 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		channeltype.Baidu:
 		finalRequest, err := adaptor.ConvertImageRequest(imageRequest)
 		if err != nil {
-			return openai.ErrorWrapper(err, "convert_image_request_failed", http.StatusInternalServerError)
+			bizErr = openai.ErrorWrapper(err, "convert_image_request_failed", http.StatusInternalServerError)
+			return
 		}
 		jsonStr, err := json.Marshal(finalRequest)
 		if err != nil {
-			return openai.ErrorWrapper(err, "marshal_image_request_failed", http.StatusInternalServerError)
+			bizErr = openai.ErrorWrapper(err, "marshal_image_request_failed", http.StatusInternalServerError)
+			return
 		}
 		requestBody = bytes.NewBuffer(jsonStr)
 	}
@@ -171,7 +199,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	modelRatio := billingratio.GetModelRatio(imageModel, meta.ChannelType)
 	groupRatio := billingratio.GetGroupRatio(meta.Group)
 	ratio := modelRatio * groupRatio
-	userQuota, err := model.CacheGetUserQuota(ctx, meta.UserId)
+	userQuota, _ := model.CacheGetUserQuota(ctx, meta.UserId)
 
 	var quota int64
 	switch meta.ChannelType {
@@ -183,14 +211,16 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	}
 
 	if userQuota-quota < 0 {
-		return openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
+		bizErr = openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
+		return
 	}
 
 	// do request
 	resp, err := adaptor.DoRequest(c, meta, requestBody)
 	if err != nil {
 		logger.Errorf(ctx, "DoRequest failed: %s", err.Error())
-		return openai.ErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
+		bizErr = openai.ErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
+		return
 	}
 
 	defer func(ctx context.Context) {
@@ -214,12 +244,16 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 			model.RecordConsumeLog(ctx, &model.Log{
 				UserId:           meta.UserId,
 				ChannelId:        meta.ChannelId,
+				TokenId:          meta.TokenId,
+				Group:            meta.Group,
 				PromptTokens:     0,
 				CompletionTokens: 0,
 				ModelName:        imageRequest.Model,
 				TokenName:        tokenName,
 				Quota:            int(quota),
 				Content:          logContent,
+				Other:            requestaudit.UpstreamHeadersJSONForLog(c),
+				ElapsedTime:      helper.CalcElapsedTime(meta.StartTime),
 			})
 			model.UpdateUserUsedQuotaAndRequestCount(meta.UserId, quota)
 			channelId := c.GetInt(ctxkey.ChannelId)
@@ -227,12 +261,15 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		}
 	}(c.Request.Context())
 
-	// do response
 	_, respErr := adaptor.DoResponse(c, resp, meta)
 	if respErr != nil {
 		logger.Errorf(ctx, "respErr is not nil: %+v", respErr)
-		return respErr
+		bizErr = respErr
+		return
 	}
 
+	if ra := requestaudit.FromContext(c); ra != nil && !ra.IsFinalized() {
+		requestaudit.FinalizeSuccess(c, ra, meta.OriginModelName, false, false, false, quota)
+	}
 	return nil
 }
