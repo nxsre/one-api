@@ -18,8 +18,26 @@ var (
 	TLSDualHTTPSPort string
 )
 
-// InitEmbeddedTLSFromEnv 从配置加载嵌入式 HTTPS；未配置证书时保持 HTTP。（名称保留以兼容调用方。）
+// InitEmbeddedTLSFromEnv 从配置加载嵌入式 HTTPS；未配置证书时保持 HTTP。
+// 若启用 acme_enabled，证书由 ACME 自动申请与续期，无需 tls_cert_file / tls_key_file。
 func InitEmbeddedTLSFromEnv() {
+	if cfg.V.GetBool("acme_enabled") {
+		HTTPSOnly = true
+		if cfg.V.IsSet("https_only") {
+			HTTPSOnly = cfg.V.GetBool("https_only")
+		}
+		TLSDualHTTPSPort = ""
+		if !HTTPSOnly {
+			TLSDualHTTPSPort = strings.TrimSpace(env.StringAlways("https_port"))
+			if TLSDualHTTPSPort == "" {
+				TLSDualHTTPSPort = "3443"
+			}
+		}
+		TLSCertFile = "acme-managed"
+		TLSKeyFile = "acme-managed"
+		return
+	}
+
 	TLSCertFile = strings.TrimSpace(env.StringAlways("tls_cert_file"))
 	TLSKeyFile = strings.TrimSpace(env.StringAlways("tls_key_file"))
 	HTTPSOnly = true

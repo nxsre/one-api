@@ -107,6 +107,7 @@ export default function RoutingOperations() {
   const [lookupReady, setLookupReady] = useState(false);
   const [tsShowAllModels, setTsShowAllModels] = useState(false);
   const [tsResolvedModels, setTsResolvedModels] = useState([]);
+  const [tsLoading, setTsLoading] = useState(false);
 
   useEffect(() => {
     if (!isAdmin()) {
@@ -318,12 +319,14 @@ export default function RoutingOperations() {
   };
 
   const loadTs = async () => {
+    setTsLoading(true);
     try {
+      const hours = Math.min(168, Math.max(1, parseInt(String(tsHours), 10) || 24));
       const res = await API.get(
         `/api/routing/timeseries?channel_id=${encodeURIComponent(
           tsCh
         )}&model=${encodeURIComponent(tsModel)}&hours=${encodeURIComponent(
-          String(tsHours)
+          String(hours)
         )}`
       );
       if (!res.data?.success) {
@@ -337,6 +340,8 @@ export default function RoutingOperations() {
       setTsData(rows);
     } catch (e) {
       showError(e.message);
+    } finally {
+      setTsLoading(false);
     }
   };
 
@@ -731,17 +736,20 @@ export default function RoutingOperations() {
   );
 
   const metricsPane = (
-    <Tab.Pane attached={false}>
-      <Form>
-        <Form.Input
-          label={t('routing.metrics_day')}
-          value={metricsDay}
-          onChange={(e, { value }) => setMetricsDay(value)}
-        />
+    <Tab.Pane attached={false} className='routing-tab-pane'>
+      <div className='routing-tab-toolbar'>
+        <Form className='routing-tab-toolbar__form'>
+          <Form.Input
+            label={t('routing.metrics_day')}
+            value={metricsDay}
+            onChange={(e, { value }) => setMetricsDay(value)}
+            width={6}
+          />
+        </Form>
         <Button type='button' onClick={() => void loadMetrics()}>
-          {t('routing.refresh')}
+          <Icon name='refresh' /> {t('routing.refresh')}
         </Button>
-      </Form>
+      </div>
       <Table compact celled size='small'>
         <Table.Header>
           <Table.Row>
@@ -766,10 +774,12 @@ export default function RoutingOperations() {
   );
 
   const fusePane = (
-    <Tab.Pane attached={false}>
-      <Button type='button' onClick={() => void loadFuse()}>
-        {t('routing.refresh')}
-      </Button>
+    <Tab.Pane attached={false} className='routing-tab-pane'>
+      <div className='routing-tab-toolbar'>
+        <Button type='button' onClick={() => void loadFuse()}>
+          <Icon name='refresh' /> {t('routing.refresh')}
+        </Button>
+      </div>
       <Table compact celled size='small'>
         <Table.Header>
           <Table.Row>
@@ -796,85 +806,134 @@ export default function RoutingOperations() {
   );
 
   const chartPane = (
-    <Tab.Pane attached={false}>
-      <Form>
-        <Form.Group widths='equal'>
-          <Form.Dropdown
-            label={t('routing.channel_id')}
-            placeholder={t('routing.combo_channel_placeholder')}
-            fluid
-            search
-            selection
-            clearable
-            allowAdditions
-            additionLabel={t('routing.combo_add_custom')}
-            disabled={!lookupReady}
-            options={channelOpts}
-            value={tsCh}
-            onAddItem={(e, { value }) => addChannelOpt(value)}
-            onChange={(e, { value }) => setTsCh(value ?? '')}
+    <Tab.Pane attached={false} className='routing-tab-pane routing-chart-pane'>
+      <div className='routing-chart-toolbar'>
+        <Form className='routing-chart-filters'>
+          <Form.Group widths='equal'>
+            <Form.Dropdown
+              label={t('routing.channel_id')}
+              placeholder={t('routing.combo_channel_placeholder')}
+              fluid
+              search
+              selection
+              clearable
+              allowAdditions
+              additionLabel={t('routing.combo_add_custom')}
+              disabled={!lookupReady}
+              options={channelOpts}
+              value={tsCh}
+              onAddItem={(e, { value }) => addChannelOpt(value)}
+              onChange={(e, { value }) => setTsCh(value ?? '')}
+            />
+            <Form.Dropdown
+              label={t('routing.model')}
+              placeholder={t('routing.combo_search_placeholder')}
+              fluid
+              search
+              selection
+              clearable
+              allowAdditions
+              additionLabel={t('routing.combo_add_custom')}
+              disabled={!lookupReady}
+              options={chartModelOpts}
+              value={tsModel}
+              onAddItem={(e, { value }) => addModelOpt(value)}
+              onChange={(e, { value }) => setTsModel(value ?? '')}
+            />
+            <Form.Input
+              label={t('routing.hours')}
+              type='number'
+              min={1}
+              max={168}
+              value={tsHours}
+              onChange={(e, { value }) => setTsHours(parseInt(value, 10) || 24)}
+            />
+          </Form.Group>
+        </Form>
+        <div className='routing-chart-toolbar__actions'>
+          <Form.Checkbox
+            className='routing-chart-toolbar__checkbox'
+            label={t('routing.chart_show_all_models')}
+            checked={tsShowAllModels}
+            disabled={!String(tsCh).trim()}
+            onChange={(e, { checked }) => setTsShowAllModels(!!checked)}
           />
-          <Form.Dropdown
-            label={t('routing.model')}
-            placeholder={t('routing.combo_search_placeholder')}
-            fluid
-            search
-            selection
-            clearable
-            allowAdditions
-            additionLabel={t('routing.combo_add_custom')}
-            disabled={!lookupReady}
-            options={chartModelOpts}
-            value={tsModel}
-            onAddItem={(e, { value }) => addModelOpt(value)}
-            onChange={(e, { value }) => setTsModel(value ?? '')}
-          />
-          <Form.Input
-            label={t('routing.hours')}
-            type='number'
-            value={tsHours}
-            onChange={(e, { value }) => setTsHours(parseInt(value, 10) || 24)}
-          />
-        </Form.Group>
-        <Button type='button' onClick={() => void loadTs()}>
-          {t('routing.refresh')}
-        </Button>
-      </Form>
-      <Form.Checkbox
-        style={{ marginBottom: '0.75rem' }}
-        label={t('routing.chart_show_all_models')}
-        checked={tsShowAllModels}
-        disabled={!String(tsCh).trim()}
-        onChange={(e, { checked }) => setTsShowAllModels(!!checked)}
-      />
-      <Message size='small' info style={{ marginBottom: '1rem' }}>
-        {t('routing.chart_models_hint')}
-      </Message>
-      <ResponsiveContainer width='100%' height={320}>
-        <LineChart data={tsData}>
-          <CartesianGrid strokeDasharray='3 3' />
-          <XAxis dataKey='time' />
-          <YAxis yAxisId='left' />
-          <YAxis yAxisId='right' orientation='right' />
-          <Tooltip />
-          <Line
-            yAxisId='left'
-            type='monotone'
-            dataKey='avg_latency_ms'
-            stroke='#8884d8'
-            dot={false}
-            name='avg_latency_ms'
-          />
-          <Line
-            yAxisId='right'
-            type='monotone'
-            dataKey='err_ratio'
-            stroke='#82ca9d'
-            dot={false}
-            name='err_ratio'
-          />
-        </LineChart>
-      </ResponsiveContainer>
+          <Button
+            type='button'
+            primary
+            loading={tsLoading}
+            disabled={tsLoading}
+            onClick={() => void loadTs()}
+          >
+            <Icon name='refresh' /> {t('routing.refresh')}
+          </Button>
+        </div>
+        <p className='routing-chart-toolbar__hint'>{t('routing.chart_models_hint')}</p>
+      </div>
+      <div className='routing-chart-panel'>
+        {tsData.length === 0 ? (
+          <div className='routing-chart-empty'>
+            <Icon name='line chart' size='huge' />
+            <p>{t('routing.chart_empty')}</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width='100%' height={360}>
+            <LineChart data={tsData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray='3 3' />
+              <XAxis dataKey='time' tick={{ fontSize: 11 }} />
+              <YAxis
+                yAxisId='left'
+                tick={{ fontSize: 11 }}
+                label={{
+                  value: t('routing.chart_axis_latency'),
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fontSize: 11 },
+                }}
+              />
+              <YAxis
+                yAxisId='right'
+                orientation='right'
+                domain={[0, 1]}
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v) => `${Math.round(v * 100)}%`}
+                label={{
+                  value: t('routing.chart_axis_error'),
+                  angle: 90,
+                  position: 'insideRight',
+                  style: { fontSize: 11 },
+                }}
+              />
+              <Tooltip
+                formatter={(value, name) => {
+                  if (name === 'err_ratio') {
+                    return [`${(Number(value) * 100).toFixed(2)}%`, t('routing.chart_legend_err')];
+                  }
+                  return [`${value} ms`, t('routing.chart_legend_latency')];
+                }}
+              />
+              <Line
+                yAxisId='left'
+                type='monotone'
+                dataKey='avg_latency_ms'
+                stroke='#5b6ee1'
+                strokeWidth={2}
+                dot={false}
+                name='avg_latency_ms'
+              />
+              <Line
+                yAxisId='right'
+                type='monotone'
+                dataKey='err_ratio'
+                stroke='#21ba45'
+                strokeWidth={2}
+                dot={false}
+                name='err_ratio'
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </Tab.Pane>
   );
 

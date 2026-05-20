@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/acme"
 	"github.com/songquanpeng/one-api/common/cfg"
 	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
@@ -20,6 +21,7 @@ import (
 	"github.com/songquanpeng/one-api/controller"
 	"github.com/songquanpeng/one-api/middleware"
 	"github.com/songquanpeng/one-api/model"
+	"github.com/songquanpeng/one-api/rbac"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/router"
 	"github.com/songquanpeng/one-api/routing"
@@ -45,15 +47,28 @@ func main() {
 	}
 
 	common.InitEmbeddedTLSFromEnv()
+	if cfg.V.GetBool("acme_enabled") {
+		if err := acme.Init(); err != nil {
+			logger.FatalLog("ACME init failed: " + err.Error())
+		}
+		defer acme.Shutdown()
+	}
 
 	// Initialize SQL Database
 	model.InitDB()
+	service.StartNacosConsoleClusterSelfHeartbeat(common.Port)
 	model.InitLogDB()
 
 	var err error
+	if err = rbac.Init(); err != nil {
+		logger.FatalLog("rbac init error: " + err.Error())
+	}
 	err = model.CreateRootAccountIfNeed()
 	if err != nil {
 		logger.FatalLog("database init error: " + err.Error())
+	}
+	if err = rbac.SyncAllUsers(); err != nil {
+		logger.SysError("rbac SyncAllUsers: " + err.Error())
 	}
 	defer func() {
 		err := model.CloseDB()
@@ -71,6 +86,9 @@ func main() {
 
 	// Initialize options
 	model.InitOptionMap()
+	if err := model.InitPricingEntryStore(); err != nil {
+		logger.SysError("init pricing entry store failed: " + err.Error())
+	}
 	logger.SysLog(fmt.Sprintf("using theme %s", config.Theme))
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -129,7 +147,41 @@ func main() {
 	router.SetRouter(server, buildFS, nacosConsoleFS)
 	service.StartS3Cleaner()
 	port := strconv.Itoa(common.Port)
+
+	startHTTPS := func(addr string, handler http.Handler) error {
+		srv := &http.Server{
+			Addr:      addr,
+			Handler:   handler,
+			TLSConfig: acme.TLSConfig(),
+		}
+		logger.SysLogf("server listening on https://0.0.0.0%s (ACME auto-renew)", addr)
+		return srv.ListenAndServeTLS("", "")
+	}
+
 	switch {
+	case acme.Enabled() && common.HTTPSOnly:
+		err = startHTTPS(":"+port, server)
+		if err != nil {
+			logger.FatalLog("failed to start HTTPS server: " + err.Error())
+		}
+	case acme.Enabled() && !common.HTTPSOnly:
+		httpsPort := common.TLSDualHTTPSPort
+		if httpsPort == port {
+			logger.FatalLog("HTTP and HTTPS cannot share the same PORT; set HTTPS_PORT to a different port")
+		}
+		go func() {
+			if e := startHTTPS(":"+httpsPort, server); e != nil {
+				logger.FatalLog("failed to start HTTPS server: " + e.Error())
+			}
+		}()
+		logger.SysLogf("server listening on http://0.0.0.0:%s and https://0.0.0.0:%s (ACME)", port, httpsPort)
+		err = (&http.Server{
+			Addr:    ":" + port,
+			Handler: acme.WrapHTTPHandler(server),
+		}).ListenAndServe()
+		if err != nil {
+			logger.FatalLog("failed to start HTTP server: " + err.Error())
+		}
 	case common.TLSCertFile != "" && common.HTTPSOnly:
 		logger.SysLogf("server listening on https://0.0.0.0:%s", port)
 		err = server.RunTLS(":"+port, common.TLSCertFile, common.TLSKeyFile)

@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 )
@@ -15,26 +14,6 @@ var HTTPClient *http.Client
 var ImpatientHTTPClient *http.Client
 var UserContentRequestHTTPClient *http.Client
 
-type outboundCheckTransport struct {
-	*http.Transport
-}
-
-func (o *outboundCheckTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := common.RunGlobalOutboundURLCheck(req.URL.String()); err != nil {
-			return nil, err
-		}
-	}
-	return o.Transport.RoundTrip(req)
-}
-
-func wrapRelayTransport(t *http.Transport) http.RoundTripper {
-	if t == nil {
-		return nil
-	}
-	return &outboundCheckTransport{Transport: t}
-}
-
 func Init() {
 	if config.UserContentRequestProxy != "" {
 		logger.SysLog(fmt.Sprintf("using %s as proxy to fetch user content", config.UserContentRequestProxy))
@@ -42,15 +21,17 @@ func Init() {
 		if err != nil {
 			logger.FatalLog(fmt.Sprintf("USER_CONTENT_REQUEST_PROXY set but invalid: %s", config.UserContentRequestProxy))
 		}
-		transport := &http.Transport{
+		transport := WrapOutboundRoundTripper(&http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
-		}
+		})
 		UserContentRequestHTTPClient = &http.Client{
 			Transport: transport,
 			Timeout:   time.Second * time.Duration(config.UserContentRequestTimeout),
 		}
 	} else {
-		UserContentRequestHTTPClient = &http.Client{}
+		UserContentRequestHTTPClient = NewOutboundHTTPClient(
+			time.Second * time.Duration(config.UserContentRequestTimeout),
+		)
 	}
 
 	base := http.DefaultTransport.(*http.Transport).Clone()
@@ -62,7 +43,7 @@ func Init() {
 		}
 		base.Proxy = http.ProxyURL(proxyURL)
 	}
-	relayTransport := wrapRelayTransport(base)
+	relayTransport := WrapOutboundRoundTripper(base)
 
 	if config.RelayTimeout == 0 {
 		HTTPClient = &http.Client{Transport: relayTransport}

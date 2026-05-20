@@ -9,7 +9,7 @@ import (
 // Force2FAForAllUsers 为 true 时，未启用 TOTP 的用户无法使用控制台与 API Key 转发。
 var Force2FAForAllUsers bool
 
-// LoginMathCaptchaEnabled 为 true 且未启用 Turnstile 时，登录需点击验证码。
+// LoginMathCaptchaEnabled 为 true 且未启用 Turnstile 时，登录可要求点击验证码（还受后台选项 LoginCaptchaEnabled 约束）。
 var LoginMathCaptchaEnabled bool
 
 // LoginBruteTrustXForwardedFor 为 true 时，登录爆破计数优先取 X-Forwarded-For 最左一跳（仅可信代理后开启）。

@@ -7,6 +7,7 @@ import (
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/i18n"
 	"github.com/songquanpeng/one-api/model"
@@ -19,6 +20,9 @@ func GetOptions(c *gin.Context) {
 	config.OptionMapRWMutex.Lock()
 	for k, v := range config.OptionMap {
 		if strings.HasSuffix(k, "Token") || strings.HasSuffix(k, "Secret") {
+			continue
+		}
+		if model.IsPricingOptionKey(k) && model.UsePricingEntryStore(k) {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -44,6 +48,15 @@ func UpdateOption(c *gin.Context) {
 			"message": i18n.Translate(c, "invalid_parameter"),
 		})
 		return
+	}
+	if c.GetInt(ctxkey.Role) < model.RoleRootUser {
+		if strings.HasSuffix(option.Key, "Token") || strings.HasSuffix(option.Key, "Secret") || strings.HasSuffix(option.Key, "Key") || option.Key == "SystemName" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "超级管理员无权修改系统核心敏感配置",
+			})
+			return
+		}
 	}
 	switch option.Key {
 	case "Theme":

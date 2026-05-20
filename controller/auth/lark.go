@@ -14,6 +14,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/controller"
@@ -77,8 +78,8 @@ func getLarkUserInfoByCode(code string) (*larkUserData, error) {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/json")
 
-	client := http.Client{Timeout: 15 * time.Second}
-	res, err := client.Do(req)
+	httpClient := client.NewOutboundHTTPClient(15 * time.Second)
+	res, err := httpClient.Do(req)
 	if err != nil {
 		logger.SysLog(err.Error())
 		return nil, errors.New("无法连接至飞书服务器，请稍后重试！")
@@ -109,7 +110,7 @@ func getLarkUserInfoByCode(code string) (*larkUserData, error) {
 	req2.Header.Set("Authorization", "Bearer "+tok.Data.AccessToken)
 	req2.Header.Set("Accept", "application/json")
 
-	res2, err := client.Do(req2)
+	res2, err := httpClient.Do(req2)
 	if err != nil {
 		logger.SysLog(err.Error())
 		return nil, errors.New("无法连接至飞书服务器，请稍后重试！")

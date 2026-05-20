@@ -10,6 +10,7 @@ import {
   Modal,
   Segment,
   Card,
+  Icon,
 } from 'semantic-ui-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +21,7 @@ import {
   buildLoginPayload,
   getLogo,
   isSecurePasswordLoginEnabled,
+  postLoginDefaultPath,
   showError,
   showInfo,
   showSuccess,
@@ -43,16 +45,17 @@ function consumeSafeInternalRedirect(searchParams) {
   return decoded;
 }
 
-const LoginForm = () => {
-  const { t } = useTranslation();
+const LoginForm = ({ tenantPortal }) => {
+  const { t, i18n } = useTranslation();
   const [inputs, setInputs] = useState({
     username: '',
     password: '',
+    tenant_id: '',
     wechat_verification_code: '',
   });
   const [searchParams] = useSearchParams();
   const [submitted, setSubmitted] = useState(false);
-  const { username, password } = inputs;
+  const { username, password, tenant_id } = inputs;
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
   const navigate = useNavigate();
@@ -86,6 +89,14 @@ const LoginForm = () => {
   const [loginBusy, setLoginBusy] = useState(false);
 
   const turnstileEnabled = !!status.turnstile_check;
+
+  const isEnglishUI =
+    i18n.language && String(i18n.language).toLowerCase().startsWith('en');
+
+  const toggleLanguage = async () => {
+    await i18n.changeLanguage(isEnglishUI ? 'zh' : 'en');
+    window.location.reload();
+  };
 
   const mergeStatus = useCallback((data) => {
     if (!data) return;
@@ -205,7 +216,7 @@ const LoginForm = () => {
     if (success) {
       userDispatch({ type: 'login', payload: data });
       localStorage.setItem('user', JSON.stringify(data));
-      afterLoginNavigate('/');
+      afterLoginNavigate(postLoginDefaultPath(data));
       showSuccess(t('messages.success.login'));
       setShowWeChatLoginModal(false);
     } else {
@@ -266,6 +277,12 @@ const LoginForm = () => {
             }
           : undefined;
       const body = await buildLoginPayload(username, password, captcha, proof);
+      if (tenantPortal) {
+        const tid = String(tenant_id ?? '').trim();
+        if (tid !== '') {
+          body.tenant_id = tid;
+        }
+      }
       const res = await API.post(`/api/user/login`, body);
       const { success, message, data } = res.data;
       if (success) {
@@ -286,7 +303,7 @@ const LoginForm = () => {
           showSuccess(t('messages.success.login'));
           showWarning(t('messages.error.root_password'));
         } else {
-          afterLoginNavigate(data?.require_force_2fa_setup ? '/setting' : '/token');
+          afterLoginNavigate(data?.require_force_2fa_setup ? '/setting' : postLoginDefaultPath(data));
           showSuccess(t('messages.success.login'));
         }
       } else {
@@ -324,7 +341,7 @@ const LoginForm = () => {
           showWarning('请前往个人设置完成两步验证配置');
           afterLoginNavigate('/setting');
         } else {
-          afterLoginNavigate('/token');
+          afterLoginNavigate(postLoginDefaultPath(data));
         }
         showSuccess(t('messages.success.login'));
       } else {
@@ -340,6 +357,17 @@ const LoginForm = () => {
   return (
     <>
       <div className='app-public-theme-bar'>
+        <Button
+          icon
+          basic
+          size='small'
+          className='app-theme-toggle'
+          onClick={() => void toggleLanguage()}
+          title={t('header.language_switch_tooltip')}
+          aria-label={t('header.language_switch_tooltip')}
+        >
+          <Icon name='language' />
+        </Button>
         <NacosThemeToggle />
       </div>
       <Grid textAlign='center' style={{ marginTop: '24px' }}>
@@ -357,10 +385,36 @@ const LoginForm = () => {
                 style={{ marginBottom: '1.5em' }}
               >
                 <Image src={logo} style={{ marginBottom: '10px' }} />
-                <Header.Content>{t('auth.login.title')}</Header.Content>
+                <Header.Content>
+                  {tenantPortal
+                    ? t('auth.login.tenant_title')
+                    : t('auth.login.title')}
+                </Header.Content>
               </Header>
             </Card.Header>
+            {tenantPortal ? (
+              <Message
+                info
+                size='small'
+                style={{ marginBottom: '1em', textAlign: 'left' }}
+              >
+                {t('auth.login.tenant_portal_hint')}
+              </Message>
+            ) : null}
             <Form size='large'>
+              {tenantPortal ? (
+                <Form.Input
+                  fluid
+                  icon='building'
+                  iconPosition='left'
+                  placeholder='租户ID (Tenant ID)'
+                  name='tenant_id'
+                  type='text'
+                  value={tenant_id}
+                  onChange={handleChange}
+                  style={{ marginBottom: '1em' }}
+                />
+              ) : null}
               <Form.Input
                 fluid
                 icon='user'
@@ -609,33 +663,35 @@ const LoginForm = () => {
 
             <Divider />
             <Message style={{ background: 'transparent', boxShadow: 'none' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: '0.9em',
-                  color: '#666',
-                }}
-              >
-                <div>
-                  {t('auth.login.forgot_password')}
-                  <Link
-                    to='/reset'
-                    style={{ color: '#2185d0', marginLeft: '2px' }}
-                  >
-                    {t('auth.login.reset_password')}
+              {tenantPortal ? (
+                <div className='login-form-footer login-form-footer--tenant'>
+                  <Link to='/reset' className='login-form-footer-link'>
+                    {t('auth.login.tenant_footer_reset')}
+                  </Link>
+                  <Link to='/login' className='login-form-footer-link'>
+                    {t('auth.login.platform_login_link')}
                   </Link>
                 </div>
-                <div>
-                  {t('auth.login.no_account')}
-                  <Link
-                    to='/register'
-                    style={{ color: '#2185d0', marginLeft: '2px' }}
-                  >
-                    {t('auth.login.register')}
-                  </Link>
+              ) : (
+                <div className='login-form-footer'>
+                  <span className='login-form-footer-line'>
+                    {t('auth.login.forgot_password')}
+                    <Link to='/reset' className='login-form-footer-link'>
+                      {t('auth.login.reset_password')}
+                    </Link>
+                  </span>
+                  <span className='login-form-footer-line'>
+                    {t('auth.login.no_account')}
+                    <Link to='/register' className='login-form-footer-link'>
+                      {t('auth.login.register')}
+                    </Link>
+                    <span className='login-form-footer-sep'>·</span>
+                    <Link to='/tenant-login' className='login-form-footer-link'>
+                      {t('auth.login.tenant_login_link')}
+                    </Link>
+                  </span>
                 </div>
-              </div>
+              )}
             </Message>
 
             {(status.github_oauth ||

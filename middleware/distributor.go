@@ -15,6 +15,19 @@ import (
 	"github.com/songquanpeng/one-api/routing"
 )
 
+// RelayAllowedChannelIDs 返回租户子账号的渠道白名单映射；nil 表示不按用户白名单过滤。
+func RelayAllowedChannelIDs(c *gin.Context) map[int]struct{} {
+	v, ok := c.Get(ctxkey.UserAllowedChannelIDs)
+	if !ok || v == nil {
+		return nil
+	}
+	m, ok := v.(map[int]struct{})
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	return m
+}
+
 type ModelRequest struct {
 	Model string `json:"model" form:"model"`
 }
@@ -24,8 +37,15 @@ func Distribute() func(c *gin.Context) {
 		ctx := relayctx.WithClientIP(c.Request.Context(), c.ClientIP())
 		c.Request = c.Request.WithContext(ctx)
 		userId := c.GetInt(ctxkey.Id)
-		userGroup, _ := model.CacheGetUserGroup(userId)
-		c.Set(ctxkey.Group, userGroup)
+		userGroup := c.GetString(ctxkey.Group)
+		if strings.TrimSpace(userGroup) == "" {
+			userGroup, _ = model.CacheGetUserGroup(userId)
+			if g := strings.TrimSpace(c.GetString(ctxkey.TokenBoundGroup)); g != "" {
+				userGroup = g
+			}
+			c.Set(ctxkey.Group, userGroup)
+		}
+		c.Set(ctxkey.UserGroup, userGroup)
 		var requestModel string
 		var channel *model.Channel
 		channelId, ok := c.Get(ctxkey.SpecificChannelId)
@@ -40,6 +60,26 @@ func Distribute() func(c *gin.Context) {
 				abortWithMessage(c, http.StatusBadRequest, "无效的渠道 Id")
 				return
 			}
+			ut := model.GetUserTenantIDNumeric(userId)
+			if ut > 0 {
+				if channel.TenantID != nil && *channel.TenantID == ut {
+					// 本租户私有渠道
+				} else if channel.TenantID == nil {
+					if !model.ChannelAppliesToGroup(channel, userGroup) {
+						abortWithMessage(c, http.StatusForbidden, "无权使用该渠道")
+						return
+					}
+				} else {
+					abortWithMessage(c, http.StatusForbidden, "无权使用该渠道")
+					return
+				}
+			}
+			if allowed := RelayAllowedChannelIDs(c); allowed != nil {
+				if _, ok := allowed[id]; !ok {
+					abortWithMessage(c, http.StatusForbidden, "无权使用该渠道")
+					return
+				}
+			}
 			if channel.Status != model.ChannelStatusEnabled {
 				abortWithMessage(c, http.StatusForbidden, "该渠道已被禁用")
 				return
@@ -51,6 +91,8 @@ func Distribute() func(c *gin.Context) {
 				StickyKey:           c.GetString(ctxkey.RoutingStickyKey),
 				ExcludeChannelIDs:   nil,
 				SkipCircuitDisabled: routing.CurrentRoutingPolicy().CircuitFailThreshold > 0,
+				UserTenantID:        c.GetInt(ctxkey.UserTenantID),
+				AllowedChannelIDs:   RelayAllowedChannelIDs(c),
 			}
 			channel, err = routing.SelectChannel(userGroup, requestModel, false, opts)
 			if err != nil {
@@ -97,4 +139,10 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set(ctxkey.BaseURL, channel.GetBaseURL())
 	cfg, _ := channel.LoadConfig()
 	c.Set(ctxkey.Config, cfg)
+	if g := strings.TrimSpace(channel.Group); g != "" {
+		if i := strings.IndexByte(g, ','); i >= 0 {
+			g = strings.TrimSpace(g[:i])
+		}
+		c.Set(ctxkey.UsingGroup, g)
+	}
 }

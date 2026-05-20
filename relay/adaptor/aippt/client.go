@@ -49,7 +49,7 @@ func (c *Client) httpClient() *http.Client {
 	}
 	base := client.HTTPClient
 	if base == nil {
-		return &http.Client{Timeout: 6 * time.Minute}
+		return client.NewOutboundHTTPClient(6 * time.Minute)
 	}
 	hc := *base
 	hc.Timeout = 6 * time.Minute
@@ -117,7 +117,7 @@ func (c *Client) TestPresetList() error {
 		tmp.Timeout = 45 * time.Second
 		c.HTTP = &tmp
 	} else {
-		c.HTTP = &http.Client{Timeout: 45 * time.Second}
+		c.HTTP = client.NewOutboundHTTPClient(45 * time.Second)
 	}
 	defer func() { c.HTTP = saved }()
 

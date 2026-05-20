@@ -37,16 +37,24 @@ func GetAllChannels(c *gin.Context) {
 	case "disabled", "0":
 		statusF = 0
 	}
-	channels, _, err := model.GetChannelsPage(model.ChannelPageOptions{
-		Offset:       p * pageSize,
-		Limit:        pageSize,
-		Scope:        "limited",
-		TypeFilter:   typeF,
-		StatusFilter: statusF,
-		SortBy:       c.Query("sort_by"),
-		SortOrder:    c.Query("sort_order"),
-		IdSort:       idSort,
-	})
+	opt := model.ChannelPageOptions{
+		Offset:               p * pageSize,
+		Limit:                pageSize,
+		Scope:                "limited",
+		TypeFilter:           typeF,
+		StatusFilter:         statusF,
+		SortBy:               c.Query("sort_by"),
+		SortOrder:            c.Query("sort_order"),
+		IdSort:               idSort,
+		PlatformChannelsOnly: true,
+	}
+	if tq := strings.TrimSpace(c.Query("tenant_id")); tq != "" {
+		if tid, e := strconv.Atoi(tq); e == nil && tid > 0 {
+			opt.TenantIDEq = &tid
+			opt.PlatformChannelsOnly = false
+		}
+	}
+	channels, _, err := model.GetChannelsPage(opt)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

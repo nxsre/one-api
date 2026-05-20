@@ -14,17 +14,24 @@ import {
   clearNacosEmbeddedConsoleLocalSession,
   getLogo,
   getSystemName,
+  hasTenantPermission,
   isAdmin,
+  isRoot,
   isMobile,
   isNacosEnabled,
+  isTenantAdmin,
+  isTenantConsoleDelegate,
+  clearTenantConsoleActingTenantId,
   showSuccess,
 } from '../helpers';
 import Footer from './Footer';
 import NacosThemeToggle from './NacosThemeToggle';
+import TenantConsoleActingBar from './TenantConsoleActingBar';
 import '../index.css';
 
 const publicPaths = new Set([
   '/login',
+  '/tenant-login',
   '/register',
   '/reset',
   '/user/reset',
@@ -38,6 +45,7 @@ function isPublicLayoutPath(pathname) {
 
 const nacosNavGroup = {
   type: 'group',
+  groupId: 'nacos',
   name: 'header.nacos_menu',
   icon: 'cloud',
   admin: true,
@@ -106,17 +114,71 @@ const nacosNavGroup = {
   ],
 };
 
+const tenantModuleGroup = {
+  type: 'group',
+  groupId: 'tenant',
+  name: 'header.tenant_platform',
+  icon: 'building',
+  admin: true,
+  collapsible: true,
+  children: [
+    { type: 'divider' },
+    { type: 'header', name: 'header.tenant_platform_mgmt' },
+    {
+      name: 'header.tenant_upgrades',
+      to: '/tenant-upgrades',
+      icon: 'clipboard check',
+    },
+    {
+      name: 'header.tenant_management',
+      to: '/tenant-management',
+      icon: 'building outline',
+    },
+    { type: 'divider' },
+    { type: 'header', name: 'header.tenant_platform_console' },
+    {
+      name: 'header.tenant_subusers',
+      to: '/tenant-console/users',
+      icon: 'users',
+    },
+    {
+      name: 'header.tenant_channels',
+      to: '/tenant-console/channels',
+      icon: 'sitemap',
+    },
+    {
+      name: 'header.tenant_billing_reports',
+      to: '/tenant-console/reports',
+      icon: 'file text outline',
+    },
+  ],
+};
+
 const sidebarNavItems = [
   { name: 'header.home', to: '/', icon: 'home', admin: false, exact: true },
   nacosNavGroup,
+  tenantModuleGroup,
+  {
+    name: 'header.tenant_reports',
+    to: '/platform-reports',
+    icon: 'file text',
+    admin: true,
+  },
   { name: 'header.routing', to: '/routing', icon: 'random', admin: true },
-  { name: 'header.channel', to: '/channel', icon: 'sitemap', admin: true },
   {
     name: 'header.model_catalog',
     to: '/model-catalog',
     icon: 'list alternate outline',
     admin: true,
   },
+  {
+    name: 'header.operations_management',
+    to: '/operations',
+    icon: 'sliders horizontal',
+    admin: true,
+    rootOnly: true,
+  },
+  { name: 'header.channel', to: '/channel', icon: 'sitemap', admin: true },
   { name: 'header.token', to: '/token', icon: 'key', admin: false },
   { name: 'header.redemption', to: '/redemption', icon: 'dollar sign', admin: true },
   { name: 'header.topup', to: '/topup', icon: 'cart', admin: false },
@@ -147,9 +209,15 @@ function isNavActive(locPath, item) {
   return locPath.startsWith(`${item.to}/`);
 }
 
-function isNacosGroupChildActive(locPath, group) {
+function isNavGroupChildActive(locPath, group) {
   if (!group.children) return false;
   return group.children.some((ch) => !ch.openNativeConsoleInNewTab && isNavActive(locPath, ch));
+}
+
+function navGroupModifierClass(groupId) {
+  if (groupId === 'nacos') return ' app-sidebar-nav-group--nacos';
+  if (groupId === 'tenant') return ' app-sidebar-nav-group--tenant';
+  return '';
 }
 
 function userDisplayName(user) {
@@ -189,9 +257,24 @@ const SidebarLayout = ({ children }) => {
     }
   });
 
+  const [tenantSectionOpen, setTenantSectionOpen] = useState(() => {
+    try {
+      return localStorage.getItem('one-api-sidebar-tenant-open') === '1';
+    } catch {
+      return false;
+    }
+  });
+
   useEffect(() => {
     if (location.pathname.startsWith('/nacos')) {
       setNacosSectionOpen(true);
+    }
+    if (
+      location.pathname.startsWith('/tenant-upgrades') ||
+      location.pathname.startsWith('/tenant-management') ||
+      location.pathname.startsWith('/tenant-console')
+    ) {
+      setTenantSectionOpen(true);
     }
   }, [location.pathname]);
 
@@ -224,6 +307,7 @@ const SidebarLayout = ({ children }) => {
     showSuccess('注销成功!');
     userDispatch({ type: 'logout' });
     localStorage.removeItem('user');
+    clearTenantConsoleActingTenantId();
     clearNacosEmbeddedConsoleLocalSession();
     navigate('/login');
   }
@@ -281,6 +365,11 @@ const SidebarLayout = ({ children }) => {
     <div className='app-main-page-wrap'>
       <div className='app-main-page-panel'>
         <div className='app-main-page-scroll'>
+          {location.pathname.startsWith('/tenant-console') &&
+          isAdmin() &&
+          !isTenantAdmin() ? (
+            <TenantConsoleActingBar />
+          ) : null}
           {body}
         </div>
         <div className='app-main-page-footer'>
@@ -303,55 +392,233 @@ const SidebarLayout = ({ children }) => {
     );
   }
 
-  const renderNav = (onPick, navCollapsed) =>
-    sidebarNavItems.map((item) => {
-      if (item.type === 'group' && !nacosMenuEnabled) {
-        return null;
+  const renderNav = (onPick, navCollapsed) => {
+    if (isTenantAdmin() || isTenantConsoleDelegate()) {
+      const tenantItems = [
+        {
+          name: 'header.tenant_console',
+          to: '/tenant-console',
+          icon: 'building',
+          exact: true,
+        },
+      ];
+      if (
+        hasTenantPermission('manage_users') ||
+        hasTenantPermission('manage_tokens')
+      ) {
+        tenantItems.push({
+          name: 'header.tenant_subusers',
+          to: '/tenant-console/users',
+          icon: 'users',
+        });
       }
-      if (item.type === 'group') {
-        if (item.admin && !isAdmin()) return null;
-        const groupActive = isNacosGroupChildActive(location.pathname, item);
-        const collapsible = !!item.collapsible;
-        const showNacosChildren =
-          !collapsible || nacosSectionOpen || navCollapsed;
-        const toggleNacos = () => {
-          if (!collapsible || navCollapsed) return;
-          setNacosSectionOpen((open) => {
-            const next = !open;
-            try {
-              localStorage.setItem('one-api-sidebar-nacos-open', next ? '1' : '0');
-            } catch {
-              /* ignore */
-            }
-            return next;
-          });
-        };
+      if (hasTenantPermission('manage_channels')) {
+        tenantItems.push({
+          name: 'header.tenant_channels',
+          to: '/tenant-console/channels',
+          icon: 'sitemap',
+        });
+      }
+      if (hasTenantPermission('manage_billing')) {
+        tenantItems.push({
+          name: 'header.tenant_billing_reports',
+          to: '/tenant-console/reports',
+          icon: 'file text outline',
+        });
+      }
+      if (isTenantAdmin()) {
+        tenantItems.push(
+          { name: 'header.token', to: '/token', icon: 'key' },
+          { name: 'header.log', to: '/log', icon: 'book' },
+          { name: 'header.dashboard', to: '/dashboard', icon: 'chart bar' },
+          { name: 'header.topup', to: '/topup', icon: 'cart' },
+        );
+      }
+      tenantItems.push(
+        { name: 'header.setting', to: '/setting', icon: 'setting' },
+        { name: 'header.about', to: '/about', icon: 'info circle' },
+      );
+
+      const showTenantNacos =
+        nacosMenuEnabled &&
+        (isTenantAdmin() || hasTenantPermission('manage_nacos'));
+
+      const flatItems = tenantItems.map((item) => {
+        const active = isNavActive(location.pathname, item);
         return (
           <Menu.Item
-            key={item.name}
-            className={`app-sidebar-nav-group${
-              item.name === 'header.nacos_menu' ? ' app-sidebar-nav-group--nacos' : ''
-            }${groupActive ? ' app-sidebar-nav-group--active' : ''}`}
+            key={item.to + item.name}
+            active={active}
+            title={navCollapsed ? t(item.name) : undefined}
+            onClick={() => {
+              navigate(item.to);
+              if (onPick) onPick();
+            }}
+          >
+            <Icon name={item.icon} />
+            <span className='app-sidebar-nav-label'>{t(item.name)}</span>
+          </Menu.Item>
+        );
+      });
+
+      const groupActive = isNavGroupChildActive(location.pathname, nacosNavGroup);
+      const collapsible = !!nacosNavGroup.collapsible;
+      const showNacosChildren =
+        !collapsible || nacosSectionOpen || navCollapsed;
+      const toggleNacos = () => {
+        if (!collapsible || navCollapsed) return;
+        setNacosSectionOpen((open) => {
+          const next = !open;
+          try {
+            localStorage.setItem('one-api-sidebar-nacos-open', next ? '1' : '0');
+          } catch {
+            /* ignore */
+          }
+          return next;
+        });
+      };
+
+      const nacosBlock = showTenantNacos ? (
+        <Menu.Item
+          key='tenant-nacos-group'
+          className={`app-sidebar-nav-group app-sidebar-nav-group--nacos${
+            groupActive ? ' app-sidebar-nav-group--active' : ''
+          }`}
+          title={navCollapsed ? t(nacosNavGroup.name) : undefined}
+        >
+          <Menu.Header
+            className={`app-sidebar-nav-group-header${
+              collapsible ? ' app-sidebar-nav-group-header--collapsible' : ''
+            }`}
+            onClick={collapsible && !navCollapsed ? toggleNacos : undefined}
+          >
+            {collapsible && !navCollapsed ? (
+              <Icon
+                name={nacosSectionOpen ? 'angle down' : 'angle right'}
+                className='app-sidebar-nav-group-chevron'
+              />
+            ) : null}
+            <Icon name={nacosNavGroup.icon} />
+            <span className='app-sidebar-nav-label'>{t(nacosNavGroup.name)}</span>
+          </Menu.Header>
+          {showNacosChildren ? (
+            <Menu.Menu>
+              {nacosNavGroup.children.map((ch) => {
+                const subActive = ch.openNativeConsoleInNewTab
+                  ? false
+                  : isNavActive(location.pathname, ch);
+                return (
+                  <Menu.Item
+                    key={ch.openNativeConsoleInNewTab ? ch.name : ch.to}
+                    active={subActive}
+                    title={navCollapsed ? t(ch.name) : undefined}
+                    onClick={() => {
+                      if (ch.openNativeConsoleInNewTab) {
+                        window.open(
+                          `${window.location.origin}/nacos-ui/`,
+                          '_blank',
+                          'noopener,noreferrer',
+                        );
+                        if (onPick) onPick();
+                        return;
+                      }
+                      navigate(ch.to);
+                      if (onPick) onPick();
+                    }}
+                  >
+                    <Icon name={ch.icon} />
+                    <span className='app-sidebar-nav-label'>{t(ch.name)}</span>
+                  </Menu.Item>
+                );
+              })}
+            </Menu.Menu>
+          ) : null}
+        </Menu.Item>
+      ) : null;
+
+      return (
+        <>
+          {nacosBlock}
+          {flatItems}
+        </>
+      );
+    }
+    return (
+      <>
+        {sidebarNavItems.map((item) => {
+      if (item.type === 'group') {
+        if (item.groupId === 'nacos' && !nacosMenuEnabled) return null;
+        if (item.admin && !(isAdmin() || isTenantAdmin())) return null;
+        const groupActive = isNavGroupChildActive(location.pathname, item);
+        const collapsible = !!item.collapsible;
+        const isNacos = item.groupId === 'nacos';
+        const isTenant = item.groupId === 'tenant';
+        const isOpen = isNacos ? nacosSectionOpen : isTenant ? tenantSectionOpen : false;
+        const showChildren = !collapsible || isOpen || navCollapsed;
+
+        const toggleGroup = () => {
+          if (!collapsible || navCollapsed) return;
+          if (isNacos) {
+            setNacosSectionOpen((open) => {
+              const next = !open;
+              try { localStorage.setItem('one-api-sidebar-nacos-open', next ? '1' : '0'); } catch {}
+              return next;
+            });
+          } else if (isTenant) {
+            setTenantSectionOpen((open) => {
+              const next = !open;
+              try { localStorage.setItem('one-api-sidebar-tenant-open', next ? '1' : '0'); } catch {}
+              return next;
+            });
+          }
+        };
+
+        return (
+          <Menu.Item
+            key={item.groupId || item.name}
+            className={`app-sidebar-nav-group${navGroupModifierClass(item.groupId)}${
+              groupActive ? ' app-sidebar-nav-group--active' : ''
+            }`}
             title={navCollapsed ? t(item.name) : undefined}
           >
             <Menu.Header
               className={`app-sidebar-nav-group-header${
                 collapsible ? ' app-sidebar-nav-group-header--collapsible' : ''
               }`}
-              onClick={collapsible && !navCollapsed ? toggleNacos : undefined}
+              onClick={collapsible && !navCollapsed ? toggleGroup : undefined}
             >
               {collapsible && !navCollapsed ? (
                 <Icon
-                  name={nacosSectionOpen ? 'angle down' : 'angle right'}
+                  name={isOpen ? 'angle down' : 'angle right'}
                   className='app-sidebar-nav-group-chevron'
                 />
               ) : null}
               <Icon name={item.icon} />
               <span className='app-sidebar-nav-label'>{t(item.name)}</span>
             </Menu.Header>
-            {showNacosChildren ? (
+            {showChildren ? (
               <Menu.Menu>
-                {item.children.map((ch) => {
+                {item.children.map((ch, idx) => {
+                  if (ch.type === 'divider') {
+                    return (
+                      <div
+                        key={`divider-${idx}`}
+                        className='app-sidebar-nav-section-divider'
+                        role='separator'
+                        aria-hidden='true'
+                      />
+                    );
+                  }
+                  if (ch.type === 'header') {
+                    return (
+                      <Menu.Header
+                        key={`header-${idx}`}
+                        className='app-sidebar-nav-subheader'
+                      >
+                        {t(ch.name)}
+                      </Menu.Header>
+                    );
+                  }
                   const subActive = ch.openNativeConsoleInNewTab
                     ? false
                     : isNavActive(location.pathname, ch);
@@ -385,6 +652,7 @@ const SidebarLayout = ({ children }) => {
         );
       }
       if (item.admin && !isAdmin()) return null;
+      if (item.rootOnly && !isRoot()) return null;
       const active = isNavActive(location.pathname, item);
       return (
         <Menu.Item
@@ -400,7 +668,10 @@ const SidebarLayout = ({ children }) => {
           <span className='app-sidebar-nav-label'>{t(item.name)}</span>
         </Menu.Item>
       );
-    });
+    })}
+      </>
+    );
+  };
 
   if (isMobile()) {
     return (

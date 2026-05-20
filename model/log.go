@@ -178,6 +178,36 @@ func RecordTopupLog(ctx context.Context, userId int, content string, quota int) 
 	recordLogHelper(ctx, log)
 }
 
+// applyLogTypeScope 列表查询：type=0 为「全部」时默认排除失败记录，includeErrors 为 true 时包含。
+func applyLogTypeScope(db *gorm.DB, logType int, includeErrors bool) *gorm.DB {
+	if logType != LogTypeUnknown {
+		return db.Where("type = ?", logType)
+	}
+	if includeErrors {
+		return db
+	}
+	return db.Where("type <> ?", LogTypeError)
+}
+
+func RecordErrorLog(ctx context.Context, log *Log) {
+	if !config.ErrorLogEnabled {
+		return
+	}
+	log.Username = GetUsernameById(log.UserId)
+	log.CreatedAt = helper.GetTimestamp()
+	log.Type = LogTypeError
+	if log.Ip == "" {
+		log.Ip = relayctx.ClientIP(ctx)
+	}
+	if log.UseTime <= 0 && log.ElapsedTime > 0 {
+		log.UseTime = int(log.ElapsedTime / 1000)
+		if log.UseTime == 0 {
+			log.UseTime = 1
+		}
+	}
+	recordLogHelper(ctx, log)
+}
+
 func RecordConsumeLog(ctx context.Context, log *Log) {
 	if !config.LogConsumeEnabled {
 		return
@@ -273,7 +303,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	return logs, err
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, includeErrors bool) (logs []*Log, total int64, err error) {
 	if config.LogShardByDay {
 		tables, err := tablesForLogQuery(startTimestamp, endTimestamp)
 		if err != nil {
@@ -281,6 +311,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		}
 		p := &shardFilterParams{
 			LogType:        logType,
+			IncludeErrors:  includeErrors,
 			ModelName:      modelName,
 			Username:       username,
 			TokenName:      tokenName,
@@ -303,12 +334,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		return logs, total, err
 	}
 
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = LOG_DB.Model(&Log{})
-	} else {
-		tx = LOG_DB.Model(&Log{}).Where("type = ?", logType)
-	}
+	tx := applyLogTypeScope(LOG_DB.Model(&Log{}), logType, includeErrors)
 	if modelName != "" {
 		modelNamePattern, perr := sanitizeLikePattern(modelName)
 		if perr != nil {
@@ -349,7 +375,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	return logs, total, err
 }
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, includeErrors bool) (logs []*Log, total int64, err error) {
 	if config.LogShardByDay {
 		tables, err := tablesForLogQuery(startTimestamp, endTimestamp)
 		if err != nil {
@@ -357,6 +383,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		}
 		p := &shardFilterParams{
 			LogType:        logType,
+			IncludeErrors:  includeErrors,
 			UserID:         &userId,
 			ModelName:      modelName,
 			TokenName:      tokenName,
@@ -380,12 +407,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		return logs, total, err
 	}
 
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("user_id = ?", userId)
-	} else {
-		tx = LOG_DB.Where("user_id = ? and type = ?", userId, logType)
-	}
+	tx := applyLogTypeScope(LOG_DB.Where("user_id = ?", userId), logType, includeErrors)
 	if modelName != "" {
 		modelNamePattern, perr := sanitizeLikePattern(modelName)
 		if perr != nil {

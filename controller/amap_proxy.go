@@ -26,7 +26,7 @@ const amapProxyAuditModel = "amap"
 // 客户端 Bearer 为用户令牌；服务端注入高德 Web Key 并转发至 https://restapi.amap.com 。
 //
 // 允许的 path 前缀：/v3/direction/、/v4/direction/、/v5/direction/、/v5/place/
-// （涵盖路径规划 v3/v4、路径规划 2.0（v5）、POI 2.0（v5））。
+//（涵盖路径规划 v3/v4、路径规划 2.0（v5）、POI 2.0（v5））。
 //
 // 文档：
 // - 路径规划 v3/v4：https://lbs.amap.com/api/webservice/guide/api/direction
@@ -146,7 +146,7 @@ func recordAmapProxyConsume(c *gin.Context, startAt time.Time, content string) {
 		Group:       c.GetString(ctxkey.Group),
 		ModelName:   amapProxyAuditModel,
 		Content:     content,
-		Other:       requestaudit.UpstreamHeadersJSONForLog(c),
+		Other:       requestaudit.ConsumeLogOtherJSON(c),
 		ElapsedTime: time.Since(startAt).Milliseconds(),
 	})
 }

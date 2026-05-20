@@ -19,7 +19,10 @@ type Meta struct {
 	TokenId      int
 	TokenName    string
 	UserId       int
+	UserTenantId int
 	Group        string
+	UserGroup    string
+	UsingGroup   string
 	ModelMapping map[string]string
 	// BaseURL is the proxy url set in the channel config
 	BaseURL  string
@@ -49,7 +52,10 @@ func GetByContext(c *gin.Context) *Meta {
 		TokenId:            c.GetInt(ctxkey.TokenId),
 		TokenName:          c.GetString(ctxkey.TokenName),
 		UserId:             c.GetInt(ctxkey.Id),
+		UserTenantId:       c.GetInt(ctxkey.UserTenantID),
 		Group:              c.GetString(ctxkey.Group),
+		UserGroup:          c.GetString(ctxkey.UserGroup),
+		UsingGroup:         c.GetString(ctxkey.UsingGroup),
 		ModelMapping:       c.GetStringMapString(ctxkey.ModelMapping),
 		OriginModelName:    c.GetString(ctxkey.RequestModel),
 		BaseURL:            c.GetString(ctxkey.BaseURL),

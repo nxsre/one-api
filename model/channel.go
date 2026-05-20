@@ -2,7 +2,9 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/songquanpeng/one-api/common/config"
@@ -23,6 +25,8 @@ type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
 	Key                string  `json:"key" gorm:"type:text"`
+	// TenantID 非空表示租户专属渠道；NULL 表示平台级渠道（租户子账号可选用与其 Group 字段匹配的平台渠道）。
+	TenantID           *int    `json:"tenant_id,omitempty" gorm:"column:tenant_id;index"`
 	OpenAIOrganization *string `json:"openai_organization" gorm:"type:varchar(128)"`
 	TestModel          *string `json:"test_model" gorm:"type:varchar(255)"`
 	Status             int     `json:"status" gorm:"default:1"`
@@ -51,6 +55,7 @@ type Channel struct {
 	OtherSettings string `json:"settings" gorm:"column:settings;type:text"`
 	Config             string  `json:"config"`
 	SystemPrompt       *string `json:"system_prompt" gorm:"type:text"`
+	ApiCallCount       int64   `json:"api_call_count" gorm:"bigint;default:0"` // 记录 API 调用总次数
 }
 
 type ChannelConfig struct {
@@ -95,6 +100,10 @@ type ChannelPageOptions struct {
 	SortBy       string // id,name,priority,balance,response_time,test_time
 	SortOrder    string // asc|desc
 	IdSort       bool   // true 且 SortBy 为空时按 id 降序（与 air 前端 id_sort 一致）
+	// TenantIDEq 非 nil 时只返回该租户下的渠道。
+	TenantIDEq *int
+	// PlatformChannelsOnly 为 true 时只返回 tenant_id 为 NULL 的平台渠道（平台控制台列表）。
+	PlatformChannelsOnly bool
 }
 
 var channelSortColumns = map[string]string{
@@ -121,6 +130,11 @@ func GetChannelsPage(opt ChannelPageOptions) ([]*Channel, int64, error) {
 		return channels, total, err
 	default:
 		q := DB.Model(&Channel{}).Omit("key")
+		if opt.TenantIDEq != nil {
+			q = q.Where("tenant_id = ?", *opt.TenantIDEq)
+		} else if opt.PlatformChannelsOnly {
+			q = q.Where("tenant_id IS NULL")
+		}
 		if opt.TypeFilter >= 0 {
 			q = q.Where("type = ?", opt.TypeFilter)
 		}
@@ -197,6 +211,37 @@ func SearchChannelsFiltered(keyword, groupFilter, modelFilter string) (channels 
 	return channels, err
 }
 
+// SearchTenantChannels 在单个租户下按关键字 / 分组 / 模型过滤搜索渠道。
+func SearchTenantChannels(tenantID int, keyword, groupFilter, modelFilter string) (channels []*Channel, err error) {
+	if tenantID <= 0 {
+		return nil, errors.New("tenant id 无效")
+	}
+	keyword = strings.TrimSpace(keyword)
+	groupFilter = strings.TrimSpace(groupFilter)
+	modelFilter = strings.TrimSpace(modelFilter)
+	if keyword == "" && groupFilter == "" && modelFilter == "" {
+		return []*Channel{}, nil
+	}
+	q := DB.Omit("key").Where("tenant_id = ?", tenantID)
+	if keyword != "" {
+		pattern := "%" + keyword + "%"
+		idMatch := helper.String2Int(keyword)
+		if idMatch > 0 {
+			q = q.Where("id = ? OR name LIKE ? OR COALESCE(remark,'') LIKE ? OR COALESCE(tag,'') LIKE ?", idMatch, pattern, pattern, pattern)
+		} else {
+			q = q.Where("name LIKE ? OR COALESCE(remark,'') LIKE ? OR COALESCE(tag,'') LIKE ?", pattern, pattern, pattern)
+		}
+	}
+	if groupFilter != "" {
+		q = q.Where("group LIKE ?", "%"+groupFilter+"%")
+	}
+	if modelFilter != "" {
+		q = q.Where("models LIKE ?", "%"+modelFilter+"%")
+	}
+	err = q.Order("id desc").Find(&channels).Error
+	return channels, err
+}
+
 func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	channel := Channel{Id: id}
 	var err error = nil
@@ -206,6 +251,16 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 		err = DB.Omit("key").First(&channel, "id = ?", id).Error
 	}
 	return &channel, err
+}
+
+// GetChannelsByIds 按 ID 批量查询渠道（含密钥，供倍率同步等管理端功能使用）。
+func GetChannelsByIds(ids []int) ([]*Channel, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var channels []*Channel
+	err := DB.Where("id IN ?", ids).Find(&channels).Error
+	return channels, err
 }
 
 func BatchInsertChannels(channels []Channel) error {
@@ -305,6 +360,7 @@ func (channel *Channel) Delete() error {
 	if err != nil {
 		return err
 	}
+	_ = DeleteChannelModelTestResultsByChannel(channel.Id)
 	err = channel.DeleteAbilities()
 	return err
 }
@@ -398,6 +454,92 @@ func PickAmapWebServiceKeyFromEnabledChannel() string {
 		return ""
 	}
 	return k
+}
+
+// ChannelAppliesToGroup 判断渠道配置的 group 列表（逗号分隔）是否包含指定分组。
+func ChannelAppliesToGroup(ch *Channel, userGroup string) bool {
+	userGroup = strings.TrimSpace(userGroup)
+	if userGroup == "" || ch == nil {
+		return false
+	}
+	for _, g := range strings.Split(ch.Group, ",") {
+		if strings.TrimSpace(g) == userGroup {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateChannelIDsForTenantSubUser 校验渠道均已启用；每条须为本租户私有渠道，或与 subUserGroup 匹配的平台渠道（tenant_id 为空且 group 命中）。
+func ValidateChannelIDsForTenantSubUser(tenantID int, subUserGroup string, channelIDs []int) error {
+	if tenantID <= 0 || len(channelIDs) == 0 {
+		return nil
+	}
+	subUserGroup = strings.TrimSpace(subUserGroup)
+	if subUserGroup == "" {
+		subUserGroup = "default"
+	}
+	uniq := make(map[int]struct{}, len(channelIDs))
+	for _, id := range channelIDs {
+		if id <= 0 {
+			return errors.New("渠道 ID 无效")
+		}
+		if _, dup := uniq[id]; dup {
+			continue
+		}
+		uniq[id] = struct{}{}
+	}
+	var channels []Channel
+	err := DB.Where("id IN ? AND status = ?", channelIDs, ChannelStatusEnabled).Find(&channels).Error
+	if err != nil {
+		return err
+	}
+	if len(channels) != len(uniq) {
+		return errors.New("渠道无效或未启用")
+	}
+	for i := range channels {
+		ch := &channels[i]
+		if ch.TenantID != nil && *ch.TenantID == tenantID {
+			continue
+		}
+		if ch.TenantID == nil && ChannelAppliesToGroup(ch, subUserGroup) {
+			continue
+		}
+		return fmt.Errorf("渠道 #%d 不可分配给该子账号（须为本租户私有或与当前分组匹配的平台渠道）", ch.Id)
+	}
+	return nil
+}
+
+// ListChannelsForTenantSubUserACL 子账号渠道白名单编辑：本租户启用渠道 + 平台启用渠道（channel.group 命中 subUserGroup）。
+func ListChannelsForTenantSubUserACL(tenantID int, subUserGroup string) ([]*Channel, error) {
+	if tenantID <= 0 {
+		return nil, errors.New("租户 ID 无效")
+	}
+	subUserGroup = strings.TrimSpace(subUserGroup)
+	if subUserGroup == "" {
+		subUserGroup = "default"
+	}
+	var tenantCh []*Channel
+	err := DB.Omit("key").Where("tenant_id = ? AND status = ?", tenantID, ChannelStatusEnabled).
+		Order("id ASC").Find(&tenantCh).Error
+	if err != nil {
+		return nil, err
+	}
+	var platform []*Channel
+	err = DB.Omit("key").Where("tenant_id IS NULL AND status = ?", ChannelStatusEnabled).
+		Order("id ASC").Find(&platform).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*Channel, 0, len(tenantCh)+len(platform))
+	out = append(out, tenantCh...)
+	for _, ch := range platform {
+		if ChannelAppliesToGroup(ch, subUserGroup) {
+			out = append(out, ch)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Id < out[j].Id })
+	return out, nil
 }
 
 func UpdateChannelStatusById(id int, status int) {

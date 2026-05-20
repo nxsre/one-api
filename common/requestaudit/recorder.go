@@ -180,9 +180,19 @@ func SnapUpstreamHTTP(c *gin.Context, req *http.Request, resp *http.Response) {
 	}
 	if req != nil {
 		c.Set(ctxkey.UpstreamRequestHeadersLog, AuditHeaderSnapshot(req.Header))
+		if req.URL != nil {
+			c.Set(ctxkey.UpstreamRequestMetaLog, map[string]interface{}{
+				"method": req.Method,
+				"url":    req.URL.String(),
+			})
+		}
 	}
 	if resp != nil {
 		c.Set(ctxkey.UpstreamResponseHeadersLog, AuditHeaderSnapshot(resp.Header))
+		c.Set(ctxkey.UpstreamResponseMetaLog, map[string]interface{}{
+			"status":      resp.Status,
+			"status_code": resp.StatusCode,
+		})
 	}
 	if !config.RequestAuditEnabled {
 		return

@@ -7,6 +7,7 @@ import {
   Checkbox,
   Form,
   Icon,
+  Label,
   Message,
   Modal,
   Pagination,
@@ -17,11 +18,21 @@ import {
   isAdmin,
   showError,
   showSuccess,
+  noAutofillFormProps,
+  noAutofillSecretProps,
+  noAutofillTextProps,
+  useNoAutofillUnlock,
 } from '../../helpers';
 import './ModelCatalog.css';
+import ModelCatalogEditModal, { catalogFormToPayload } from './ModelCatalogEditModal';
+import ModelCatalogProviderSearch from '../../components/ModelCatalogProviderSearch';
 
 const SYNC_OPENAI = 'openai_compatible';
 const SYNC_MODELS_DEV = 'models_dev';
+const SYNC_BASELLM = 'basellm';
+const SYNC_ALIAPI = 'aliapi';
+const SYNC_ANYFAST = 'anyfast';
+const SYNC_NEW_API_MODELS = 'new_api_models';
 const SYNC_OPENROUTER = 'openrouter';
 const SYNC_ANTHROPIC = 'anthropic';
 const SYNC_GEMINI = 'gemini';
@@ -29,6 +40,15 @@ const SYNC_CHANNEL = 'channel';
 
 const MODEL_CATALOG_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const MODEL_CATALOG_DEFAULT_PAGE_SIZE = 20;
+
+const EMPTY_FILTERS = {
+  model_id: '',
+  model_name: '',
+  provider: '',
+  family: '',
+  modalities_in: '',
+  modalities_out: '',
+};
 
 function fmtPrice(n) {
   if (n === null || n === undefined || Number.isNaN(Number(n))) return '—';
@@ -48,27 +68,27 @@ export default function ModelCatalogPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS });
   const [sortColumn, setSortColumn] = useState(null);
   const [sortDirection, setSortDirection] = useState('ascending');
   const [activePage, setActivePage] = useState(1);
   const [pageSize, setPageSize] = useState(MODEL_CATALOG_DEFAULT_PAGE_SIZE);
+  const [includeExpired, setIncludeExpired] = useState(false);
   const [totalMatched, setTotalMatched] = useState(0);
   const [grandTotal, setGrandTotal] = useState(0);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
-  const [formModelId, setFormModelId] = useState('');
-  const [formOwnedBy, setFormOwnedBy] = useState('');
-  const [formEnabled, setFormEnabled] = useState(true);
-  const [formNotes, setFormNotes] = useState('');
+  const [formSaving, setFormSaving] = useState(false);
 
   const [openSync, setOpenSync] = useState(false);
   const [syncSource, setSyncSource] = useState(SYNC_MODELS_DEV);
   const [syncBaseURL, setSyncBaseURL] = useState('');
   const [syncApiKey, setSyncApiKey] = useState('');
   const [syncChannelId, setSyncChannelId] = useState('');
+  const [syncNewApiUserId, setSyncNewApiUserId] = useState('');
   const [syncBusy, setSyncBusy] = useState(false);
+  const syncAutofillUnlock = useNoAutofillUnlock();
 
   useEffect(() => {
     if (!isAdmin()) {
@@ -83,8 +103,26 @@ export default function ModelCatalogPage() {
       const params = new URLSearchParams();
       params.set('page', String(activePage));
       params.set('page_size', String(pageSize));
-      const q = String(searchQuery || '').trim();
-      if (q) params.set('search', q);
+      if (includeExpired) params.set('include_expired', 'true');
+      const f = filters;
+      if (String(f.model_id || '').trim()) {
+        params.set('filter_model_id', String(f.model_id).trim());
+      }
+      if (String(f.model_name || '').trim()) {
+        params.set('filter_model_name', String(f.model_name).trim());
+      }
+      if (String(f.provider || '').trim()) {
+        params.set('filter_provider', String(f.provider).trim());
+      }
+      if (String(f.family || '').trim()) {
+        params.set('filter_family', String(f.family).trim());
+      }
+      if (String(f.modalities_in || '').trim()) {
+        params.set('filter_modalities_in', String(f.modalities_in).trim());
+      }
+      if (String(f.modalities_out || '').trim()) {
+        params.set('filter_modalities_out', String(f.modalities_out).trim());
+      }
       if (sortColumn) {
         params.set('sort', sortColumn);
         params.set('order', sortDirection === 'ascending' ? 'asc' : 'desc');
@@ -113,7 +151,7 @@ export default function ModelCatalogPage() {
     } finally {
       setLoading(false);
     }
-  }, [activePage, pageSize, searchQuery, sortColumn, sortDirection]);
+  }, [activePage, pageSize, filters, sortColumn, sortDirection, includeExpired]);
 
   useEffect(() => {
     if (isAdmin()) load().then();
@@ -121,59 +159,36 @@ export default function ModelCatalogPage() {
 
   const openAddModal = () => {
     setEditRow(null);
-    setFormModelId('');
-    setFormOwnedBy('');
-    setFormEnabled(true);
-    setFormNotes('');
     setModalOpen(true);
   };
 
   const openEditModal = (row) => {
     setEditRow(row);
-    setFormModelId(row.model_id || '');
-    setFormOwnedBy(row.owned_by || '');
-    setFormEnabled(!!row.enabled);
-    setFormNotes(row.notes || '');
     setModalOpen(true);
   };
 
-  const saveEdit = async () => {
-    const mid = String(formModelId || '').trim();
-    if (!mid) {
+  const saveEdit = async (form) => {
+    const payload = catalogFormToPayload(form, editRow);
+    if (!payload.model_id) {
       showError(t('model_catalog.col_model_id'));
       return;
     }
+    setFormSaving(true);
     try {
-      if (editRow) {
-        const res = await API.put('/api/model_catalog', {
-          id: editRow.id,
-          model_id: mid,
-          owned_by: String(formOwnedBy || '').trim(),
-          enabled: !!formEnabled,
-          source: editRow.source || 'manual',
-          notes: String(formNotes || '').trim(),
-        });
-        if (!res.data?.success) {
-          showError(res.data?.message || 'fail');
-          return;
-        }
-      } else {
-        const res = await API.post('/api/model_catalog', {
-          model_id: mid,
-          owned_by: String(formOwnedBy || '').trim(),
-          enabled: !!formEnabled,
-          notes: String(formNotes || '').trim(),
-        });
-        if (!res.data?.success) {
-          showError(res.data?.message || 'fail');
-          return;
-        }
+      const res = editRow
+        ? await API.put('/api/model_catalog', payload)
+        : await API.post('/api/model_catalog', payload);
+      if (!res.data?.success) {
+        showError(res.data?.message || 'fail');
+        return;
       }
       showSuccess(t('model_catalog.saved'));
       setModalOpen(false);
       await load();
     } catch {
       /* noop */
+    } finally {
+      setFormSaving(false);
     }
   };
 
@@ -195,7 +210,12 @@ export default function ModelCatalogPage() {
     setSyncBusy(true);
     try {
       const body = { source: syncSource };
-      if (syncSource === SYNC_MODELS_DEV) {
+      if (
+        syncSource === SYNC_MODELS_DEV ||
+        syncSource === SYNC_BASELLM ||
+        syncSource === SYNC_ALIAPI ||
+        syncSource === SYNC_ANYFAST
+      ) {
         const u = String(syncBaseURL || '').trim();
         if (u) body.base_url = u;
       } else if (syncSource === SYNC_OPENAI || syncSource === SYNC_OPENROUTER) {
@@ -206,6 +226,22 @@ export default function ModelCatalogPage() {
         syncSource === SYNC_GEMINI
       ) {
         body.api_key = String(syncApiKey || '').trim();
+      } else if (syncSource === SYNC_NEW_API_MODELS) {
+        const u = String(syncBaseURL || '').trim();
+        if (u) body.base_url = u;
+        body.api_key = String(syncApiKey || '').trim();
+        const uid = parseInt(String(syncNewApiUserId || '').trim(), 10);
+        body.new_api_user_id = Number.isFinite(uid) ? uid : 0;
+        if (!body.api_key) {
+          showError(t('model_catalog.sync_new_api_token_required', '请填写 Access Token'));
+          setSyncBusy(false);
+          return;
+        }
+        if (!body.new_api_user_id) {
+          showError(t('model_catalog.sync_new_api_user_required', '请填写用户 ID（New-Api-User）'));
+          setSyncBusy(false);
+          return;
+        }
       } else if (syncSource === SYNC_CHANNEL) {
         const n = parseInt(String(syncChannelId || '').trim(), 10);
         body.channel_id = Number.isFinite(n) ? n : 0;
@@ -233,6 +269,13 @@ export default function ModelCatalogPage() {
 
   const syncOptions = [
     { value: SYNC_MODELS_DEV, text: t('model_catalog.sync_src_models_dev') },
+    { value: SYNC_BASELLM, text: t('model_catalog.sync_src_basellm') },
+    { value: SYNC_ALIAPI, text: t('model_catalog.sync_src_aliapi', 'aliapi.me') },
+    { value: SYNC_ANYFAST, text: t('model_catalog.sync_src_anyfast', 'Anyfast') },
+    {
+      value: SYNC_NEW_API_MODELS,
+      text: t('model_catalog.sync_src_new_api_models', 'New API (/api/models)'),
+    },
     { value: SYNC_OPENAI, text: t('model_catalog.sync_src_openai') },
     { value: SYNC_OPENROUTER, text: t('model_catalog.sync_src_openrouter') },
     { value: SYNC_ANTHROPIC, text: t('model_catalog.sync_src_anthropic') },
@@ -248,7 +291,13 @@ export default function ModelCatalogPage() {
 
   useEffect(() => {
     setActivePage(1);
-  }, [searchQuery]);
+  }, [filters]);
+
+  const setFilter = (key) => (e, { value }) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearFilters = () => setFilters({ ...EMPTY_FILTERS });
 
   useEffect(() => {
     setActivePage((p) => Math.min(Math.max(1, p), totalPages));
@@ -275,43 +324,93 @@ export default function ModelCatalogPage() {
       <Card fluid className='chart-card'>
         <Card.Content>
           <Card.Header className='header'>{t('model_catalog.title')}</Card.Header>
-          <Message info>{t('model_catalog.hint')}</Message>
-          <Button primary onClick={openAddModal} style={{ marginBottom: 12 }}>
-            <Icon name='add' /> {t('model_catalog.add')}
-          </Button>
-          <Button
-            color='teal'
-            onClick={() => setOpenSync(true)}
-            style={{ marginBottom: 12, marginLeft: 8 }}
-          >
-            <Icon name='cloud download' /> {t('model_catalog.sync')}
-          </Button>
-          <Button
-            basic
-            icon
-            labelPosition='left'
-            onClick={() => load()}
-            loading={loading}
-            disabled={loading}
-            style={{ marginBottom: 12, marginLeft: 8 }}
-          >
-            <Icon name='refresh' /> {t('model_catalog.refresh')}
-          </Button>
 
-          <Form className='model-catalog-toolbar-form'>
-            <Form.Input
-              className='model-catalog-search-input'
-              icon='search'
-              placeholder={t('model_catalog.search_placeholder')}
-              value={searchQuery}
-              onChange={(e, { value }) => setSearchQuery(value)}
-            />
-            <span className='model-catalog-filter-count'>
-              {t('model_catalog.visible_rows', {
-                matched: totalMatched,
-                grand_total: grandTotal,
-              })}
-            </span>
+          <div className='model-catalog-toolbar-actions'>
+            <div className='model-catalog-toolbar-actions__buttons'>
+              <Button primary onClick={openAddModal}>
+                <Icon name='add' /> {t('model_catalog.add')}
+              </Button>
+              <Button color='teal' onClick={() => setOpenSync(true)}>
+                <Icon name='cloud download' /> {t('model_catalog.sync')}
+              </Button>
+              <Button
+                basic
+                icon
+                labelPosition='left'
+                onClick={() => load()}
+                loading={loading}
+                disabled={loading}
+              >
+                <Icon name='refresh' /> {t('model_catalog.refresh')}
+              </Button>
+            </div>
+            <div className='model-catalog-toolbar-actions__meta'>
+              <Checkbox
+                label={t('model_catalog.include_expired', '显示历史版本')}
+                checked={includeExpired}
+                onChange={(e, { checked }) => setIncludeExpired(!!checked)}
+              />
+              <span className='model-catalog-filter-count'>
+                {t('model_catalog.visible_rows', {
+                  matched: totalMatched,
+                  grand_total: grandTotal,
+                })}
+              </span>
+            </div>
+          </div>
+
+          <Form className='model-catalog-filters-form'>
+            <Form.Group widths='equal'>
+              <Form.Input
+                icon='search'
+                label={t('model_catalog.col_model_id')}
+                placeholder={t('model_catalog.filter_ph_contains')}
+                value={filters.model_id}
+                onChange={setFilter('model_id')}
+              />
+              <Form.Input
+                icon='search'
+                label={t('model_catalog.col_model_name')}
+                placeholder={t('model_catalog.filter_ph_contains')}
+                value={filters.model_name}
+                onChange={setFilter('model_name')}
+              />
+              <ModelCatalogProviderSearch
+                label={t('model_catalog.filter_provider_label')}
+                placeholder={t('model_catalog.filter_ph_provider')}
+                value={filters.provider}
+                onChange={(value) => {
+                  setFilters((prev) => ({ ...prev, provider: value }));
+                  setActivePage(1);
+                }}
+              />
+            </Form.Group>
+            <Form.Group widths='equal'>
+              <Form.Input
+                icon='search'
+                label={t('model_catalog.col_family')}
+                placeholder={t('model_catalog.filter_ph_contains')}
+                value={filters.family}
+                onChange={setFilter('family')}
+              />
+              <Form.Input
+                icon='search'
+                label={t('model_catalog.col_modalities_in')}
+                placeholder={t('model_catalog.filter_ph_contains')}
+                value={filters.modalities_in}
+                onChange={setFilter('modalities_in')}
+              />
+              <Form.Input
+                icon='search'
+                label={t('model_catalog.col_modalities_out')}
+                placeholder={t('model_catalog.filter_ph_contains')}
+                value={filters.modalities_out}
+                onChange={setFilter('modalities_out')}
+              />
+            </Form.Group>
+            <Button type='button' size='small' basic onClick={clearFilters}>
+              {t('model_catalog.filter_clear')}
+            </Button>
           </Form>
 
           <div className='model-catalog-table-wrap'>
@@ -323,6 +422,12 @@ export default function ModelCatalogPage() {
                   </Table.HeaderCell>
                   <Table.HeaderCell {...sortProps('model_id')}>
                     {t('model_catalog.col_model_id')}
+                  </Table.HeaderCell>
+                  <Table.HeaderCell {...sortProps('version')}>
+                    {t('model_catalog.col_version', '版本')}
+                  </Table.HeaderCell>
+                  <Table.HeaderCell {...sortProps('status')}>
+                    {t('model_catalog.col_status', '状态')}
                   </Table.HeaderCell>
                   <Table.HeaderCell {...sortProps('model_name')}>
                     {t('model_catalog.col_model_name')}
@@ -413,6 +518,14 @@ export default function ModelCatalogPage() {
                   <Table.Row key={r.id}>
                     <Table.Cell>{r.id}</Table.Cell>
                     <Table.Cell>{r.model_id}</Table.Cell>
+                    <Table.Cell>v{r.version || 1}</Table.Cell>
+                    <Table.Cell>
+                      {r.status === 'current' ? (
+                        <Label color='green' size='tiny'>{t('model_catalog.status_current', '当前')}</Label>
+                      ) : (
+                        <Label color='grey' size='tiny'>{t('model_catalog.status_expired', '已过期')}</Label>
+                      )}
+                    </Table.Cell>
                     <Table.Cell className='collapsible-text' title={r.model_name}>
                       {r.model_name || '—'}
                     </Table.Cell>
@@ -539,53 +652,18 @@ export default function ModelCatalogPage() {
         </Card.Content>
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size='small'>
-        <Modal.Header>
-          {editRow
-            ? t('model_catalog.modal_edit_title')
-            : t('model_catalog.modal_add_title')}
-        </Modal.Header>
-        <Modal.Content>
-          <Form>
-            <Form.Input
-              label={t('model_catalog.col_model_id')}
-              value={formModelId}
-              onChange={(e, { value }) => setFormModelId(value)}
-              required
-            />
-            <Form.Input
-              label={t('model_catalog.col_owned_by')}
-              value={formOwnedBy}
-              onChange={(e, { value }) => setFormOwnedBy(value)}
-            />
-            <Form.Field>
-              <Checkbox
-                label={t('model_catalog.col_enabled')}
-                checked={formEnabled}
-                onChange={(e, { checked }) => setFormEnabled(!!checked)}
-              />
-            </Form.Field>
-            <Form.TextArea
-              label={t('model_catalog.col_notes')}
-              value={formNotes}
-              onChange={(e, { value }) => setFormNotes(value)}
-            />
-          </Form>
-        </Modal.Content>
-        <Modal.Actions>
-          <Button onClick={() => setModalOpen(false)}>
-            {t('model_catalog.btn_cancel')}
-          </Button>
-          <Button primary onClick={saveEdit}>
-            {t('model_catalog.btn_save')}
-          </Button>
-        </Modal.Actions>
-      </Modal>
+      <ModelCatalogEditModal
+        open={modalOpen}
+        editRow={editRow}
+        saving={formSaving}
+        onClose={() => !formSaving && setModalOpen(false)}
+        onSave={saveEdit}
+      />
 
       <Modal open={openSync} onClose={() => !syncBusy && setOpenSync(false)} size='small'>
         <Modal.Header>{t('model_catalog.modal_sync_title')}</Modal.Header>
         <Modal.Content>
-          <Form>
+          <Form {...noAutofillFormProps}>
             <Form.Dropdown
               selection
               label={t('model_catalog.sync_source')}
@@ -606,6 +684,81 @@ export default function ModelCatalogPage() {
                 />
               </>
             )}
+            {syncSource === SYNC_BASELLM && (
+              <>
+                <Message info size='small'>
+                  {t('model_catalog.sync_basellm_url_hint')}
+                </Message>
+                <Form.Input
+                  label={t('model_catalog.sync_basellm_url_label')}
+                  value={syncBaseURL}
+                  onChange={(e, { value }) => setSyncBaseURL(value)}
+                  placeholder='https://basellm.github.io/llm-metadata'
+                />
+              </>
+            )}
+            {syncSource === SYNC_ALIAPI && (
+              <>
+                <Message info size='small'>
+                  {t('model_catalog.sync_aliapi_url_hint', '从 aliapi.me 匿名抓取模型数据（无需鉴权）')}
+                </Message>
+                <Form.Input
+                  label={t('model_catalog.sync_aliapi_url_label', '基础URL (可选)')}
+                  value={syncBaseURL}
+                  onChange={(e, { value }) => setSyncBaseURL(value)}
+                  placeholder='https://aliapi.me/models.html'
+                />
+              </>
+            )}
+            {syncSource === SYNC_ANYFAST && (
+              <>
+                <Message info size='small'>
+                  {t(
+                    'model_catalog.sync_anyfast_url_hint',
+                    '从 Anyfast /api/pricing 匿名拉取模型与价目（无需鉴权）'
+                  )}
+                </Message>
+                <Form.Input
+                  label={t('model_catalog.sync_anyfast_url_label', '站点根 URL (可选)')}
+                  value={syncBaseURL}
+                  onChange={(e, { value }) => setSyncBaseURL(value)}
+                  placeholder='https://www.anyfast.ai'
+                />
+              </>
+            )}
+            {syncSource === SYNC_NEW_API_MODELS && (
+              <>
+                <Message info size='small'>
+                  {t(
+                    'model_catalog.sync_new_api_models_hint',
+                    '拉取 New API 兼容站点的管理端模型树（/api/models）。需控制台 Access Token 与用户 ID，不能使用 sk- 密钥。'
+                  )}
+                </Message>
+                <Form.Input
+                  label={t('model_catalog.sync_new_api_url_label', '站点根 URL（可选）')}
+                  value={syncBaseURL}
+                  onChange={(e, { value }) => setSyncBaseURL(value)}
+                  placeholder='https://www.anyfast.ai'
+                />
+                <Form.Input
+                  label={t('model_catalog.sync_new_api_user_id', '用户 ID（New-Api-User）')}
+                  value={syncNewApiUserId}
+                  onChange={(e, { value }) => setSyncNewApiUserId(value)}
+                  placeholder='1096'
+                  {...noAutofillTextProps}
+                  {...syncAutofillUnlock}
+                />
+                <Form.Input
+                  label={t('model_catalog.sync_new_api_token', 'Access Token')}
+                  value={syncApiKey}
+                  onChange={(e, { value }) => setSyncApiKey(value)}
+                  type='password'
+                  placeholder='控制台个人设置中的 Access Token'
+                  {...noAutofillSecretProps}
+                  {...syncAutofillUnlock}
+                />
+              </>
+            )}
             {(syncSource === SYNC_OPENAI ||
               syncSource === SYNC_OPENROUTER) && (
               <>
@@ -620,6 +773,8 @@ export default function ModelCatalogPage() {
                   value={syncApiKey}
                   onChange={(e, { value }) => setSyncApiKey(value)}
                   type='password'
+                  {...noAutofillSecretProps}
+                  {...syncAutofillUnlock}
                 />
               </>
             )}
@@ -630,6 +785,8 @@ export default function ModelCatalogPage() {
                 value={syncApiKey}
                 onChange={(e, { value }) => setSyncApiKey(value)}
                 type='password'
+                {...noAutofillSecretProps}
+                {...syncAutofillUnlock}
               />
             )}
             {syncSource === SYNC_CHANNEL && (

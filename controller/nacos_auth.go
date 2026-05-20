@@ -39,6 +39,20 @@ func NacosUserLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 		return
 	}
+	if u.TenantID != nil {
+		if strings.Contains(c.FullPath(), "/v1/") {
+			c.JSON(http.StatusOK, gin.H{
+				"code":    401,
+				"message": "租户账号请使用站点「租户登录」或主站会话，勿使用控制台表单登录。",
+				"data":    nil,
+			})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{
+			"message": "租户账号请使用站点「租户登录」或先在 One API 主站以租户方式登录后再访问控制台。",
+		})
+		return
+	}
 	if strings.Contains(c.FullPath(), "/v1/") {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
@@ -60,12 +74,12 @@ func NacosUserLogin(c *gin.Context) {
 func nacosAuthRequireAdmin(c *gin.Context) (*model.User, bool) {
 	raw, ok := c.Get(service.NacosCtxUserKey())
 	if !ok {
-		nacosV3Err(c, 401, "未登录")
+		nacosV3Err(c, 10001, "未登录")
 		return nil, false
 	}
 	caller := raw.(*model.User)
 	if caller.Role < model.RoleAdminUser {
-		nacosV3Err(c, 403, "需要管理员权限")
+		nacosV3Err(c, 10001, "需要管理员权限")
 		return nil, false
 	}
 	return caller, true
@@ -83,7 +97,7 @@ func NacosAuthRoleList(c *gin.Context) {
 	usernameKw := c.Query("username")
 	total, list, err := model.NacosConsoleRoleListPage(pageNo, pageSize, roleKw, usernameKw, mode)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	if pageNo < 1 {
@@ -116,7 +130,7 @@ func NacosAuthPermissionList(c *gin.Context) {
 	keyword := strings.TrimSpace(c.Query("role"))
 	total, list, err := service.NacosConsolePermissionListPage(pageNo, pageSize, keyword, mode)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	if pageNo < 1 {
@@ -150,7 +164,7 @@ func NacosAuthUserList(c *gin.Context) {
 	mode := strings.TrimSpace(c.DefaultQuery("search", "blur"))
 	total, users, err := model.NacosConsoleUserPage(pageNo, pageSize, username, mode)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	if pageNo < 1 {

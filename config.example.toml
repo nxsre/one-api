@@ -89,6 +89,18 @@ tls_key_file = ""
 https_only = false
 https_port = "3443"
 
+# Let's Encrypt / ACME 自动申请与续期（启用后无需 tls_cert_file / tls_key_file）
+# 完整场景见仓库根目录 config.acme.example.toml
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_domains = "api.example.com"
+# acme_ips = ""                      # 公网 IP，如 "203.0.113.10"
+# acme_storage_dir = "data/acme"     # 证书与账户密钥持久化目录
+# acme_use_staging = false             # 测试时可 true（Let's Encrypt staging）
+# acme_http_port = 80                # HTTP-01 挑战端口（需从公网可达）
+# acme_profile = ""                    # 仅域名时可留空；IP 会自动使用 shortlived
+# acme_disable_http_challenge = false # 仅 TLS-ALPN（443）时可 true，且需 https_only
+
 force_2fa_for_all_users = false
 login_math_captcha_enabled = true
 login_brute_trust_x_forwarded_for = false

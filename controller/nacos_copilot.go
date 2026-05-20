@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/service"
 )
 
@@ -49,11 +50,11 @@ func NacosConsoleCopilotConfigGet(c *gin.Context) {
 func NacosConsoleCopilotConfigPost(c *gin.Context) {
 	var body service.NacosCopilotConfig
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if err := service.NacosCopilotSaveConfig(body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -94,7 +95,7 @@ func copilotOpenAIStream(c *gin.Context, cfg service.NacosCopilotConfig, system,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.ApiKey))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
 		copilotWriteErrorData(c, err.Error())
 		return

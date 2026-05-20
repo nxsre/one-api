@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/env"
@@ -15,6 +17,11 @@ import (
 
 func SetRouter(router *gin.Engine, buildFS embed.FS, nacosConsoleFS embed.FS) {
 	router.Use(middleware.NacosFeatureGate())
+
+	metricsGroup := router.Group("/metrics")
+	metricsGroup.Use(middleware.MetricsAuth())
+	metricsGroup.GET("", gin.WrapH(promhttp.Handler()))
+
 	SetS3CompatRouter(router)
 	SetApiRouter(router)
 	SetDashboardRouter(router)

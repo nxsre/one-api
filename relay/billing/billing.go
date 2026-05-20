@@ -48,7 +48,7 @@ func PostConsumeQuota(c *gin.Context, ctx context.Context, tokenId int, quotaDel
 			TokenName:        tokenName,
 			Quota:            int(totalQuota),
 			Content:          logContent,
-			Other:            requestaudit.UpstreamHeadersJSONForLog(c),
+			Other:            requestaudit.ConsumeLogOtherJSON(c),
 		})
 		model.UpdateUserUsedQuotaAndRequestCount(userId, totalQuota)
 		model.UpdateChannelUsedQuota(channelId, totalQuota)

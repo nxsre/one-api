@@ -128,15 +128,18 @@ livenessProbe:
 - **Ingress**：
   - **仅 API**：把 `/v1`、`/v1beta` 等前缀指向 **worker** Service；
   - **控制台**：将管理路径指向 **primary** Service，或只开内网 `ClusterIP` + `kubectl port-forward`。
-- **TLS**：Ingress 终止 TLS 或使用 **cert-manager**；应用内 `tls_cert_file` 多用于裸 Pod/边缘无 Ingress 的场景。
+- **TLS**：
+  - **推荐**：Ingress 终止 TLS 或使用 **cert-manager**；应用内 `tls_cert_file` / **ACME** 多用于裸 Pod/边缘无 Ingress 的场景。
+  - **内置 ACME**：在 TOML 中设置 `acme_enabled = true`，见根目录 **`config.acme.example.toml`**；需持久化 `acme_storage_dir`（PVC），Service 暴露 **80**（HTTP-01）与 **443**。
 
 ### 6.1 `secret-config.yaml` 中的应用内 TLS 示例
 
 示例清单 **`k8s/example/secret-config.yaml`** 在 `primary.toml` / `worker.toml` 内已包含 **`tls_cert_file`、`tls_key_file`、`https_only`、`https_port`** 的默认空值与注释示例（与仓库根目录 `config.example.toml` 语义一致）。若启用进程内 HTTPS：
 
-1. 将证书放入 Kubernetes **Secret**（如 `kubernetes.io/tls`），在 Deployment 中 **volumeMount** 到与配置一致的路径（示例中为 `/etc/one-api/tls/`）。
-2. 编辑该 Secret 中的 TOML，取消注释或填入正确的 `tls_cert_file` / `tls_key_file`。
-3. 若 **`https_only = true`** 且 **`port`** 改为 **443**（或仅暴露 HTTPS），需同步修改 Deployment 的 **端口、Service 与探针**；就绪/存活探针示例见上文 **§4 HTTPS** 与 **`k8s/example/deployment-*.yaml`** 内注释。
+1. **手动证书**：将证书放入 Kubernetes **Secret**（如 `kubernetes.io/tls`），在 Deployment 中 **volumeMount** 到与配置一致的路径（示例中为 `/etc/one-api/tls/`）。
+2. **内置 ACME**：在 TOML 中配置 `acme_*` 项（见 **`config.acme.example.toml`**），用 **PVC** 挂载 `acme_storage_dir`（如 `/data/acme`），Service 映射 **80/443**。
+3. 编辑该 Secret 中的 TOML，取消注释或填入正确配置。
+4. 若 **`https_only = true`** 且 **`port`** 改为 **443**（或仅暴露 HTTPS），需同步修改 Deployment 的 **端口、Service 与探针**；就绪/存活探针示例见上文 **§4 HTTPS** 与 **`k8s/example/deployment-*.yaml`** 内注释。
 
 主从两份 TOML 的 TLS 段通常相同；证书卷可同时挂到 primary 与 worker。
 
@@ -156,7 +159,7 @@ livenessProbe:
 
 - `README.md` — 探针 HTTP/HTTPS 切换要点
 - `namespace.yaml`
-- `secret-config.yaml` — **务必替换**占位 DSN、密钥后再应用；内含可选的 **应用内 TLS**（`tls_cert_file` / `tls_key_file` / `https_only` / `https_port`）示例与注释（切勿提交真实秘密到 Git）。
+- `secret-config.yaml` — **务必替换**占位 DSN、密钥后再应用；内含可选的 **应用内 TLS**（`tls_cert_file` / `tls_key_file` / `https_only` / `https_port`）与 **ACME** 注释；ACME 场景见 **`config.acme.example.toml`**（切勿提交真实秘密到 Git）。
 - `deployment-primary.yaml`
 - `deployment-worker.yaml`
 - `service.yaml`

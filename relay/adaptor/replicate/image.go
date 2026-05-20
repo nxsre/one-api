@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
@@ -71,7 +72,7 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 			}
 
 			taskReq.Header.Set("Authorization", "Bearer "+meta.GetByContext(c).APIKey)
-			taskResp, err := http.DefaultClient.Do(taskReq)
+			taskResp, err := client.HTTPClient.Do(taskReq)
 			if err != nil {
 				return errors.Wrap(err, "get task")
 			}
@@ -127,7 +128,7 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 						return errors.Wrap(err, "new request")
 					}
 
-					imgResp, err := http.DefaultClient.Do(downloadReq)
+					imgResp, err := client.HTTPClient.Do(downloadReq)
 					if err != nil {
 						return errors.Wrap(err, "download image")
 					}

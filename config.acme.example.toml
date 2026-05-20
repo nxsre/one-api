@@ -1,0 +1,121 @@
+# =============================================================================
+# One API — ACME / Let's Encrypt 自动证书配置示例
+#
+# 用法：将所需「场景」段落复制到 config.toml，或单独作为配置文件启动：
+#   ./one-api -c config.acme.example.toml
+#
+# 说明：
+# - 启用 acme_enabled 后无需 tls_cert_file / tls_key_file
+# - 证书与 ACME 账户密钥保存在 acme_storage_dir（请持久化该目录）
+# - 域名证书约 90 天自动续期；公网 IP 证书约 6 天（shortlived），同样自动续期
+# - 测试阶段建议 acme_use_staging = true，避免触发生产 CA 频率限制
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 场景 A：域名 + 仅 HTTPS（443 直连公网，推荐）
+#
+# 要求：
+# - 域名 DNS 已解析到本机公网 IP
+# - 防火墙放行 443；80 端口用于 HTTP-01 挑战（certmagic 会在 acme_http_port 监听）
+# - port 设为 443 时需 root/CAP_NET_BIND_SERVICE，或使用 setcap / 反向代理
+# -----------------------------------------------------------------------------
+# port = 443
+# https_only = true
+#
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_domains = "api.example.com"
+# acme_storage_dir = "data/acme"
+# acme_use_staging = false
+# acme_http_port = 80
+# acme_disable_http_challenge = false
+
+# -----------------------------------------------------------------------------
+# 场景 B：域名 + HTTP/HTTPS 双端口（HTTP 3000 + HTTPS 3443）
+#
+# 适用：内网 HTTP 调试、对外 HTTPS；HTTP 处理器同时响应 ACME 挑战
+# -----------------------------------------------------------------------------
+# port = 3000
+# https_only = false
+# https_port = "3443"
+#
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_domains = "api.example.com,www.api.example.com"
+# acme_storage_dir = "data/acme"
+# acme_http_port = 80
+
+# -----------------------------------------------------------------------------
+# 场景 C：仅 TLS-ALPN 挑战（443 上 HTTPS，不占用 80）
+#
+# 适用：80 端口不可用，且 https_only = true、服务监听 443
+# 注意：Let's Encrypt 对 IP 证书不支持纯 TLS-ALPN 时需保留 HTTP-01（IP 见场景 D）
+# -----------------------------------------------------------------------------
+# port = 443
+# https_only = true
+#
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_domains = "api.example.com"
+# acme_storage_dir = "data/acme"
+# acme_disable_http_challenge = true
+
+# -----------------------------------------------------------------------------
+# 场景 D：公网 IP 证书（无域名）
+#
+# 要求：
+# - acme_ips 填公网 IPv4/IPv6；自动使用 shortlived profile（约 6 天有效期）
+# - 80 或 443 从公网可达（HTTP-01 / TLS-ALPN）
+# - Docker 内访问时 SNI 可能为空，进程会自动将 DefaultServerName 设为 acme_ips
+# - 推荐 https_only = true、port = 443，并映射 80:80、443:443
+# -----------------------------------------------------------------------------
+# port = 443
+# https_only = true
+#
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_ips = "203.0.113.10"
+# acme_storage_dir = "data/acme"
+# acme_http_port = 80
+
+# -----------------------------------------------------------------------------
+# 场景 E：Staging 测试（不计入生产限额）
+#
+# 验证通过后将 acme_use_staging 改为 false，并删除 data/acme 后重新申请生产证书
+# -----------------------------------------------------------------------------
+# port = 443
+# https_only = true
+#
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_domains = "api.example.com"
+# acme_storage_dir = "data/acme-staging"
+# acme_use_staging = true
+# acme_http_port = 80
+
+# -----------------------------------------------------------------------------
+# 场景 F：手动证书（与 ACME 二选一，沿用原有方式）
+# -----------------------------------------------------------------------------
+# port = 443
+# https_only = true
+# tls_cert_file = "/etc/letsencrypt/live/api.example.com/fullchain.pem"
+# tls_key_file = "/etc/letsencrypt/live/api.example.com/privkey.pem"
+# acme_enabled = false
+
+# =============================================================================
+# 以下为 Docker Compose 最小可运行示例（需替换域名与邮箱）
+# 挂载：./data/acme:/app/data/acme
+# 端口：443:443、80:80（HTTP-01）
+# =============================================================================
+#
+# port = 443
+# https_only = true
+# sql_dsn = "oneapi:123456@tcp(db:3306)/one-api"
+# redis_conn_string = "redis://redis:6379/0"
+# session_secret = "REPLACE_WITH_LONG_RANDOM"
+#
+# acme_enabled = true
+# acme_email = "admin@example.com"
+# acme_domains = "api.example.com"
+# acme_storage_dir = "data/acme"
+# acme_http_port = 80

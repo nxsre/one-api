@@ -177,6 +177,55 @@ sudo certbot --nginx
 sudo service nginx restart
 ```
 
+### 内置 ACME 自动证书（无需 Nginx / certbot）
+
+若 **one-api 直接对外暴露 443**（无前置反向代理），可在 `config.toml` 中启用 Let's Encrypt 自动申请与续期，无需手动配置 `tls_cert_file`。
+
+完整场景示例见 **[config.acme.example.toml](./config.acme.example.toml)**（域名、双端口、公网 IP、Staging 测试等）。
+
+**最简示例（域名 + 仅 HTTPS）：**
+
+```toml
+port = 443
+https_only = true
+
+acme_enabled = true
+acme_email = "admin@example.com"
+acme_domains = "api.example.com"
+acme_storage_dir = "data/acme"   # 务必持久化该目录
+acme_http_port = 80              # HTTP-01 挑战；公网需放行 80/443
+```
+
+启动：
+
+```bash
+./one-api -c config.toml
+# 或合并示例：cp config.acme.example.toml 中所需段落到 config.toml
+```
+
+**Docker Compose 端口映射示例：**
+
+```yaml
+services:
+  one-api:
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./data/acme:/app/data/acme
+      - ./config.toml:/app/config.toml
+```
+
+**与 Nginx 的关系：**
+
+| 部署方式 | 建议 |
+|----------|------|
+| Nginx/Ingress 终止 TLS | 继续用 certbot 或 cert-manager，**不要**开 `acme_enabled` |
+| one-api 直连公网 443 | 使用内置 `acme_enabled` |
+| 已有 certbot 证书文件 | 使用 `tls_cert_file` / `tls_key_file`，`acme_enabled = false` |
+
+**公网 IP 证书（无域名）：** 设置 `acme_ips = "203.0.113.10"`，有效期约 6 天，进程会自动续期。详见 `config.acme.example.toml` 场景 D。
+
 初始账号用户名为 `root`，密码为 `123456`。
 
 ### 通过宝塔面板进行一键部署
@@ -440,7 +489,8 @@ https://openai.justsong.cn
 
 ## 常见问题
 1. 额度是什么？怎么计算的？One API 的额度计算有问题？
-   + 额度 = 分组倍率 * 模型倍率 * （提示 token 数 + 补全 token 数 * 补全倍率）
+   + 额度 = 分组倍率 * 模型倍率 * （提示 token 数 + 补全 token 数 * 补全倍率）；支持按模型配置 **固定价格**、**缓存/图片/音频** 分项倍率、**分层表达式计费（tiered_expr）**，以及 `GET /api/ratio_config` 对外暴露价目。
+   + 管理端可在「运营设置」配置 `BillingMode` / `BillingExpr`，并通过 `/api/ratio_sync` 从上游拉取价目对比（需 Root）。
    + 其中补全倍率对于 GPT3.5 固定为 1.33，GPT4 为 2，与官方保持一致。
    + 如果是非流模式，官方接口会返回消耗的总 token，但是你要注意提示和补全的消耗倍率不一样。
    + 注意，One API 的默认倍率就是官方倍率，是已经调整过的。

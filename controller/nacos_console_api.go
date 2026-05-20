@@ -26,15 +26,15 @@ func NacosCsConfigDeleteConsole(c *gin.Context) {
 	dataID := strings.TrimSpace(c.Query("dataId"))
 	group := strings.TrimSpace(c.Query("groupName"))
 	if dataID == "" || group == "" {
-		nacosV3Err(c, 400, "dataId 与 groupName 必填")
+		nacosV3Err(c, 10000, "dataId 与 groupName 必填")
 		return
 	}
 	if err := service.NacosCsDelete(service.NormalizeNacosNamespaceID(c.Query("namespaceId")), dataID, group); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "config 不存在")
+			nacosV3Err(c, 20004, "config 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -44,7 +44,7 @@ func NacosCsConfigBatchDeleteConsole(c *gin.Context) {
 	raw := strings.TrimSpace(c.Query("ids"))
 	ns := service.NormalizeNacosNamespaceID(c.Query("namespaceId"))
 	if raw == "" || ns == "" {
-		nacosV3Err(c, 400, "ids 与 namespaceId 必填")
+		nacosV3Err(c, 10000, "ids 与 namespaceId 必填")
 		return
 	}
 	var ids []int64
@@ -55,14 +55,14 @@ func NacosCsConfigBatchDeleteConsole(c *gin.Context) {
 		}
 		id, err := strconv.ParseInt(p, 10, 64)
 		if err != nil || id <= 0 {
-			nacosV3Err(c, 400, "ids 格式无效")
+			nacosV3Err(c, 20002, "ids 格式无效")
 			return
 		}
 		ids = append(ids, id)
 	}
 	n, err := service.NacosCsBatchDeleteByIDs(ns, ids)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, n > 0)
@@ -71,7 +71,7 @@ func NacosCsConfigBatchDeleteConsole(c *gin.Context) {
 func NacosCsConfigExport2Console(c *gin.Context) {
 	ns := service.NormalizeNacosNamespaceID(c.Query("namespaceId"))
 	if ns == "" {
-		nacosV3Err(c, 400, "namespaceId 必填")
+		nacosV3Err(c, 10000, "namespaceId 必填")
 		return
 	}
 	var ids []int64
@@ -89,7 +89,7 @@ func NacosCsConfigExport2Console(c *gin.Context) {
 	}
 	body, err := service.NacosCsExportPayload(ns, ids, c.Query("dataId"), c.Query("groupName"))
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	fn := fmt.Sprintf("nacos-config-export-%s.json", ns)
@@ -126,26 +126,26 @@ func nacosCsHistoryToConsole(h *model.NacosCsConfigHistory) (gin.H, error) {
 func NacosCsConfigHistoryDetailConsole(c *gin.Context) {
 	nid := strings.TrimSpace(c.Query("nid"))
 	if nid == "" {
-		nacosV3Err(c, 400, "nid 必填")
+		nacosV3Err(c, 10000, "nid 必填")
 		return
 	}
 	hid, err := strconv.ParseInt(nid, 10, 64)
 	if err != nil || hid <= 0 {
-		nacosV3Err(c, 400, "nid 无效")
+		nacosV3Err(c, 20002, "nid 无效")
 		return
 	}
 	h, err := service.NacosCsHistoryGetByID(service.NormalizeNacosNamespaceID(c.Query("namespaceId")), hid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "历史不存在")
+			nacosV3Err(c, 20004, "历史不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	body, err := nacosCsHistoryToConsole(h)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, body)
@@ -154,7 +154,7 @@ func NacosCsConfigHistoryDetailConsole(c *gin.Context) {
 func NacosCsConfigHistoryPreviousConsole(c *gin.Context) {
 	curID, err := strconv.ParseInt(strings.TrimSpace(c.Query("id")), 10, 64)
 	if err != nil || curID <= 0 {
-		nacosV3Err(c, 400, "id 无效")
+		nacosV3Err(c, 20002, "id 无效")
 		return
 	}
 	dataID := strings.TrimSpace(c.Query("dataId"))
@@ -162,15 +162,15 @@ func NacosCsConfigHistoryPreviousConsole(c *gin.Context) {
 	h, err := service.NacosCsHistoryPreviousByID(service.NormalizeNacosNamespaceID(c.Query("namespaceId")), curID, dataID, group)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "无更早历史")
+			nacosV3Err(c, 20004, "无更早历史")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	body, err := nacosCsHistoryToConsole(h)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, body)
@@ -179,9 +179,16 @@ func NacosCsConfigHistoryPreviousConsole(c *gin.Context) {
 // --- 命名空间 ---
 
 func NacosConsoleNamespaceList(c *gin.Context) {
-	data, err := service.NacosListConsoleNamespaces()
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	var data []service.NacosConsoleNamespaceItem
+	var err error
+	if scoped {
+		data, err = service.NacosListConsoleNamespacesForTenant(tid)
+	} else {
+		data, err = service.NacosListConsoleNamespaces()
+	}
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -190,16 +197,23 @@ func NacosConsoleNamespaceList(c *gin.Context) {
 func NacosConsoleNamespaceGet(c *gin.Context) {
 	ns := service.NormalizeNacosNamespaceID(c.Query("namespaceId"))
 	if ns == "" {
-		nacosV3Err(c, 400, "namespaceId 必填")
+		nacosV3Err(c, 10000, "namespaceId 必填")
 		return
 	}
-	item, err := service.NacosGetConsoleNamespaceItem(ns)
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	var item service.NacosConsoleNamespaceItem
+	var err error
+	if scoped {
+		item, err = service.NacosGetConsoleNamespaceItemScoped(tid, true, ns)
+	} else {
+		item, err = service.NacosGetConsoleNamespaceItem(ns)
+	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "命名空间不存在")
+			nacosV3Err(c, 22001, "命名空间不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, item)
@@ -209,60 +223,110 @@ func NacosConsoleNamespaceMutateStub(c *gin.Context) {
 	switch c.Request.Method {
 	case http.MethodPost:
 		var body struct {
-			CustomNamespaceId string `json:"customNamespaceId"`
-			NamespaceName     string `json:"namespaceName"`
-			NamespaceDesc     string `json:"namespaceDesc"`
+			CustomNamespaceId string `json:"customNamespaceId" form:"customNamespaceId"`
+			NamespaceName     string `json:"namespaceName" form:"namespaceName"`
+			NamespaceDesc     string `json:"namespaceDesc" form:"namespaceDesc"`
+			ExposeToTenants   *bool  `json:"expose_to_tenants" form:"expose_to_tenants"`
 		}
-		if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-			nacosV3Err(c, 400, err.Error())
+		if err := c.ShouldBind(&body); err != nil {
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		remark := strings.TrimSpace(body.NamespaceDesc)
 		if remark == "" {
 			remark = strings.TrimSpace(body.NamespaceName)
 		}
-		if err := service.NacosCreateRegistryNamespace(body.CustomNamespaceId, remark); err != nil {
-			nacosV3Err(c, 400, err.Error())
+		nsID := strings.TrimSpace(body.CustomNamespaceId)
+		if nsID == "" {
+			nsID = strings.TrimSpace(body.NamespaceName)
+		}
+		if nsID == "" {
+			nacosV3Err(c, 10000, "命名空间名称或 ID 不能为空")
+			return
+		}
+		tid, scoped := nacosCallerNamespaceTenantScope(c)
+		var owner *int
+		expose := false
+		if scoped {
+			owner = &tid
+		} else if body.ExposeToTenants != nil {
+			expose = *body.ExposeToTenants
+		}
+		if err := service.NacosCreateRegistryNamespaceExt(nsID, remark, owner, expose); err != nil {
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 	case http.MethodPut:
 		var body struct {
-			Namespace         string `json:"namespace"`
-			NamespaceShowName string `json:"namespaceShowName"`
-			NamespaceDesc     string `json:"namespaceDesc"`
+			Namespace         string `json:"namespace" form:"namespaceId"`
+			NamespaceShowName string `json:"namespaceShowName" form:"namespaceName"`
+			NamespaceDesc     string `json:"namespaceDesc" form:"namespaceDesc"`
+			ExposeToTenants   *bool  `json:"expose_to_tenants" form:"expose_to_tenants"`
 		}
-		if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-			nacosV3Err(c, 400, err.Error())
+		if err := c.ShouldBind(&body); err != nil {
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		ns := strings.TrimSpace(body.Namespace)
 		if ns == "" {
-			nacosV3Err(c, 400, "namespace 必填")
+			nacosV3Err(c, 10000, "namespace 必填")
 			return
 		}
 		remark := strings.TrimSpace(body.NamespaceDesc)
 		if remark == "" {
 			remark = strings.TrimSpace(body.NamespaceShowName)
 		}
+		tid, scoped := nacosCallerNamespaceTenantScope(c)
+		if scoped {
+			if err := service.NacosAssertTenantOwnsRegistryNS(tid, ns); err != nil {
+				nacosV3Err(c, 20002, err.Error())
+				return
+			}
+			if body.ExposeToTenants != nil {
+				nacosV3Err(c, 20002, "租户无权配置「对租户开放」")
+				return
+			}
+			if err := service.NacosUpdateRegistryNamespaceRemark(ns, remark); err != nil {
+				nacosV3Err(c, 20002, err.Error())
+				return
+			}
+			nacosV3OK(c, true)
+			return
+		}
+		if body.ExposeToTenants != nil {
+			if err := service.NacosUpdateRegistryNamespacePlatformFields(ns, &remark, body.ExposeToTenants); err != nil {
+				nacosV3Err(c, 20002, err.Error())
+				return
+			}
+			nacosV3OK(c, true)
+			return
+		}
 		if err := service.NacosUpdateRegistryNamespaceRemark(ns, remark); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 	default:
-		nacosV3Err(c, 405, "不支持的方法")
+		nacosV3Err(c, 20002, "不支持的方法")
 	}
 }
 
 func NacosConsoleNamespaceDeleteStub(c *gin.Context) {
-	ns := strings.TrimSpace(c.Query("namespaceId"))
+	ns := service.NormalizeNacosNamespaceID(c.Query("namespaceId"))
 	if ns == "" {
-		nacosV3Err(c, 400, "namespaceId 必填")
+		nacosV3Err(c, 10000, "namespaceId 必填")
 		return
 	}
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	if scoped {
+		if err := service.NacosAssertTenantOwnsRegistryNS(tid, ns); err != nil {
+			nacosV3Err(c, 20002, err.Error())
+			return
+		}
+	}
 	if err := service.NacosDeleteRegistryNamespaceByNamespaceId(ns); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -326,26 +390,34 @@ func NacosConsoleStubClusterNodes(c *gin.Context) {
 // --- AI：Skill / AgentSpec 版本与元数据 ---
 
 func NacosSkillConsoleGetVersion(c *gin.Context) {
-	doc, err := service.NacosAIDocumentSkillVersion(nacosNamespace(c), strings.TrimSpace(c.Query("skillName")), strings.TrimSpace(c.Query("version")))
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	doc, err := service.NacosAIDocumentSkillVersion(ns, strings.TrimSpace(c.Query("skillName")), strings.TrimSpace(c.Query("version")))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, doc)
 }
 
 func NacosAgentSpecConsoleGetVersion(c *gin.Context) {
-	doc, err := service.NacosAIDocumentAgentSpecVersion(nacosNamespace(c), strings.TrimSpace(c.Query("agentSpecName")), strings.TrimSpace(c.Query("version")))
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	doc, err := service.NacosAIDocumentAgentSpecVersion(ns, strings.TrimSpace(c.Query("agentSpecName")), strings.TrimSpace(c.Query("version")))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "agentspec 不存在")
+			nacosV3Err(c, 20004, "agentspec 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, doc)
@@ -393,7 +465,10 @@ func parseSkillCardJSON(raw string) (*skillCardPayload, error) {
 }
 
 func NacosConsoleSkillDraftStub(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	switch c.Request.Method {
 	case http.MethodPost:
 		var body struct {
@@ -405,18 +480,18 @@ func NacosConsoleSkillDraftStub(c *gin.Context) {
 			CommitMsg        string `json:"commitMsg" form:"commitMsg"`
 		}
 		if err := c.ShouldBind(&body); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		name := strings.TrimSpace(body.SkillName)
 		if strings.TrimSpace(body.SkillCard) == "" {
 			if name == "" || strings.TrimSpace(body.BasedOnVersion) == "" {
-				nacosV3Err(c, 400, "基于版本创建草稿需要 skillName 与 basedOnVersion，或提供 skillCard")
+				nacosV3Err(c, 20002, "基于版本创建草稿需要 skillName 与 basedOnVersion，或提供 skillCard")
 				return
 			}
 			nv, err := service.NacosAIArtifactCreateDraftFromVersion(ns, model.NacosAIKindSkill, name, body.BasedOnVersion, body.TargetVersion, body.CommitMsg)
 			if err != nil {
-				nacosV3Err(c, 400, err.Error())
+				nacosV3Err(c, 20002, err.Error())
 				return
 			}
 			nacosV3OK(c, nv)
@@ -424,28 +499,28 @@ func NacosConsoleSkillDraftStub(c *gin.Context) {
 		}
 		card, err := parseSkillCardJSON(body.SkillCard)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if name == "" {
 			name = strings.TrimSpace(card.Name)
 		}
 		if name == "" {
-			nacosV3Err(c, 400, "skillName 必填")
+			nacosV3Err(c, 10000, "skillName 必填")
 			return
 		}
 		md := strings.TrimSpace(card.SkillMd)
 		if md == "" {
-			nacosV3Err(c, 400, "skillCard.skillMd 必填")
+			nacosV3Err(c, 10000, "skillCard.skillMd 必填")
 			return
 		}
 		zipB, err := buildSkillZip(name, md)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if err := service.NacosAIUploadSkill(ns, zipB, 0, name+".zip"); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if card.Description != "" {
@@ -465,12 +540,12 @@ func NacosConsoleSkillDraftStub(c *gin.Context) {
 			SkillName   string `json:"skillName" form:"skillName"`
 		}
 		if err := c.ShouldBind(&body); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		card, err := parseSkillCardJSON(body.SkillCard)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		name := strings.TrimSpace(body.SkillName)
@@ -478,21 +553,21 @@ func NacosConsoleSkillDraftStub(c *gin.Context) {
 			name = strings.TrimSpace(card.Name)
 		}
 		if name == "" {
-			nacosV3Err(c, 400, "skillName 必填（查询参数或 skillCard.name）")
+			nacosV3Err(c, 10000, "skillName 必填（查询参数或 skillCard.name）")
 			return
 		}
 		md := strings.TrimSpace(card.SkillMd)
 		if md == "" {
-			nacosV3Err(c, 400, "skillCard.skillMd 必填")
+			nacosV3Err(c, 10000, "skillCard.skillMd 必填")
 			return
 		}
 		zipB, err := buildSkillZip(name, md)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if err := service.NacosAIUploadSkill(ns, zipB, 0, name+".zip"); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if card.Description != "" {
@@ -502,24 +577,27 @@ func NacosConsoleSkillDraftStub(c *gin.Context) {
 	case http.MethodDelete:
 		name := strings.TrimSpace(c.Query("skillName"))
 		if name == "" {
-			nacosV3Err(c, 400, "skillName 必填")
+			nacosV3Err(c, 10000, "skillName 必填")
 			return
 		}
 		if err := service.NacosAIDeleteEditingArtifactVersions(ns, model.NacosAIKindSkill, name); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 	default:
-		nacosV3Err(c, 405, "不支持的方法")
+		nacosV3Err(c, 20002, "不支持的方法")
 	}
 }
 
 func NacosConsoleSkillOnlineOfflineStub(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("skillName"))
 	if name == "" {
-		nacosV3Err(c, 400, "skillName 必填")
+		nacosV3Err(c, 10000, "skillName 必填")
 		return
 	}
 	ver := strings.TrimSpace(c.PostForm("version"))
@@ -527,7 +605,7 @@ func NacosConsoleSkillOnlineOfflineStub(c *gin.Context) {
 	if strings.Contains(c.Request.URL.Path, "/offline") {
 		if ver != "" {
 			if err := service.NacosAIArtifactVersionSetOffline(ns, model.NacosAIKindSkill, name, ver); err != nil {
-				nacosV3Err(c, 400, err.Error())
+				nacosV3Err(c, 20002, err.Error())
 				return
 			}
 			nacosV3OK(c, "ok")
@@ -535,7 +613,7 @@ func NacosConsoleSkillOnlineOfflineStub(c *gin.Context) {
 		}
 		en := false
 		if err := service.NacosAIUpdateSkillMetadata(ns, name, nil, nil, &en, nil); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, "ok")
@@ -543,7 +621,7 @@ func NacosConsoleSkillOnlineOfflineStub(c *gin.Context) {
 	}
 	if ver != "" {
 		if err := service.NacosAIArtifactVersionEnsureOnline(ns, model.NacosAIKindSkill, name, ver, updateLatest); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, "ok")
@@ -551,64 +629,76 @@ func NacosConsoleSkillOnlineOfflineStub(c *gin.Context) {
 	}
 	en := true
 	if err := service.NacosAIUpdateSkillMetadata(ns, name, nil, nil, &en, nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleSkillBizTagsUpdate(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("skillName"))
 	if name == "" {
-		nacosV3Err(c, 400, "skillName 必填")
+		nacosV3Err(c, 10000, "skillName 必填")
 		return
 	}
 	bt := c.PostForm("bizTags")
 	if err := service.NacosAIUpdateSkillMetadata(ns, name, nil, &bt, nil, nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleSkillScopeUpdate(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("skillName"))
 	sc := strings.TrimSpace(c.PostForm("scope"))
 	if name == "" || sc == "" {
-		nacosV3Err(c, 400, "skillName 与 scope 必填")
+		nacosV3Err(c, 10000, "skillName 与 scope 必填")
 		return
 	}
 	if err := service.NacosAIUpdateSkillMetadata(ns, name, nil, nil, nil, &sc); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosSkillLabelsUpdateConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("skillName"))
 	raw := strings.TrimSpace(c.PostForm("labels"))
 	if name == "" || raw == "" {
-		nacosV3Err(c, 400, "skillName 与 labels 必填")
+		nacosV3Err(c, 10000, "skillName 与 labels 必填")
 		return
 	}
 	var labels map[string]string
 	if err := json.Unmarshal([]byte(raw), &labels); err != nil {
-		nacosV3Err(c, 400, "labels 须为 JSON 对象")
+		nacosV3Err(c, 20002, "labels 须为 JSON 对象")
 		return
 	}
 	if err := service.NacosAIUpdateArtifactLabels(ns, model.NacosAIKindSkill, name, labels, false); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	switch c.Request.Method {
 	case http.MethodPost:
 		var body struct {
@@ -619,18 +709,18 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 			AgentSpecCard  string `json:"agentSpecCard" form:"agentSpecCard"`
 		}
 		if err := c.ShouldBind(&body); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		name := strings.TrimSpace(body.AgentSpecName)
 		if strings.TrimSpace(body.AgentSpecCard) == "" {
 			if name == "" || strings.TrimSpace(body.BasedOnVersion) == "" {
-				nacosV3Err(c, 400, "基于版本创建草稿需要 agentSpecName 与 basedOnVersion，或提供 agentSpecCard")
+				nacosV3Err(c, 20002, "基于版本创建草稿需要 agentSpecName 与 basedOnVersion，或提供 agentSpecCard")
 				return
 			}
 			nv, err := service.NacosAIArtifactCreateDraftFromVersion(ns, model.NacosAIKindAgentSpec, name, body.BasedOnVersion, body.TargetVersion, "")
 			if err != nil {
-				nacosV3Err(c, 400, err.Error())
+				nacosV3Err(c, 20002, err.Error())
 				return
 			}
 			nacosV3OK(c, nv)
@@ -643,14 +733,14 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 			Resource    map[string]json.RawMessage `json:"resource"`
 		}
 		if err := json.Unmarshal([]byte(body.AgentSpecCard), &probe); err != nil {
-			nacosV3Err(c, 400, "agentSpecCard 须为合法 JSON")
+			nacosV3Err(c, 20002, "agentSpecCard 须为合法 JSON")
 			return
 		}
 		if name == "" {
 			name = strings.TrimSpace(probe.Name)
 		}
 		if name == "" {
-			nacosV3Err(c, 400, "agentSpecName 或 agentSpecCard.name 必填")
+			nacosV3Err(c, 10000, "agentSpecName 或 agentSpecCard.name 必填")
 			return
 		}
 		man := strings.TrimSpace(probe.Content)
@@ -663,11 +753,11 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 		}
 		zipB, err := service.BuildAgentSpecZipFromEditorCard(name, man, probe.Resource)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if err := service.NacosAIUploadAgentSpec(ns, zipB, 0, true, name+".zip"); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if probe.Description != "" {
@@ -687,7 +777,7 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 			AgentSpecName string `json:"agentSpecName" form:"agentSpecName"`
 		}
 		if err := c.ShouldBind(&body); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		name := strings.TrimSpace(body.AgentSpecName)
@@ -698,14 +788,14 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 			Resource    map[string]json.RawMessage `json:"resource"`
 		}
 		if err := json.Unmarshal([]byte(body.AgentSpecCard), &probe); err != nil {
-			nacosV3Err(c, 400, "agentSpecCard 须为合法 JSON")
+			nacosV3Err(c, 20002, "agentSpecCard 须为合法 JSON")
 			return
 		}
 		if name == "" {
 			name = strings.TrimSpace(probe.Name)
 		}
 		if name == "" {
-			nacosV3Err(c, 400, "agentSpecName 必填（查询参数或 agentSpecCard.name）")
+			nacosV3Err(c, 10000, "agentSpecName 必填（查询参数或 agentSpecCard.name）")
 			return
 		}
 		man := strings.TrimSpace(probe.Content)
@@ -718,11 +808,11 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 		}
 		zipB, err := service.BuildAgentSpecZipFromEditorCard(name, man, probe.Resource)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if err := service.NacosAIUploadAgentSpec(ns, zipB, 0, true, name+".zip"); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		if probe.Description != "" {
@@ -733,24 +823,27 @@ func NacosConsoleAgentSpecDraftStub(c *gin.Context) {
 	case http.MethodDelete:
 		name := strings.TrimSpace(c.Query("agentSpecName"))
 		if name == "" {
-			nacosV3Err(c, 400, "agentSpecName 必填")
+			nacosV3Err(c, 10000, "agentSpecName 必填")
 			return
 		}
 		if err := service.NacosAIDeleteEditingArtifactVersions(ns, model.NacosAIKindAgentSpec, name); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 	default:
-		nacosV3Err(c, 405, "不支持的方法")
+		nacosV3Err(c, 20002, "不支持的方法")
 	}
 }
 
 func NacosConsoleAgentSpecOnlineOfflineStub(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("agentSpecName"))
 	if name == "" {
-		nacosV3Err(c, 400, "agentSpecName 必填")
+		nacosV3Err(c, 10000, "agentSpecName 必填")
 		return
 	}
 	ver := strings.TrimSpace(c.PostForm("version"))
@@ -758,7 +851,7 @@ func NacosConsoleAgentSpecOnlineOfflineStub(c *gin.Context) {
 	if strings.Contains(c.Request.URL.Path, "/offline") {
 		if ver != "" {
 			if err := service.NacosAIArtifactVersionSetOffline(ns, model.NacosAIKindAgentSpec, name, ver); err != nil {
-				nacosV3Err(c, 400, err.Error())
+				nacosV3Err(c, 20002, err.Error())
 				return
 			}
 			nacosV3OK(c, "ok")
@@ -766,7 +859,7 @@ func NacosConsoleAgentSpecOnlineOfflineStub(c *gin.Context) {
 		}
 		en := false
 		if err := service.NacosAIUpdateAgentSpecMetadata(ns, name, nil, nil, &en, nil); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, "ok")
@@ -774,7 +867,7 @@ func NacosConsoleAgentSpecOnlineOfflineStub(c *gin.Context) {
 	}
 	if ver != "" {
 		if err := service.NacosAIArtifactVersionEnsureOnline(ns, model.NacosAIKindAgentSpec, name, ver, updateLatest); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, "ok")
@@ -782,57 +875,66 @@ func NacosConsoleAgentSpecOnlineOfflineStub(c *gin.Context) {
 	}
 	en := true
 	if err := service.NacosAIUpdateAgentSpecMetadata(ns, name, nil, nil, &en, nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleAgentSpecBizTagsUpdate(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("agentSpecName"))
 	bt := c.PostForm("bizTags")
 	if name == "" {
-		nacosV3Err(c, 400, "agentSpecName 必填")
+		nacosV3Err(c, 10000, "agentSpecName 必填")
 		return
 	}
 	if err := service.NacosAIUpdateAgentSpecMetadata(ns, name, nil, &bt, nil, nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleAgentSpecScopeUpdate(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("agentSpecName"))
 	sc := strings.TrimSpace(c.PostForm("scope"))
 	if name == "" || sc == "" {
-		nacosV3Err(c, 400, "agentSpecName 与 scope 必填")
+		nacosV3Err(c, 10000, "agentSpecName 与 scope 必填")
 		return
 	}
 	if err := service.NacosAIUpdateAgentSpecMetadata(ns, name, nil, nil, nil, &sc); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosAgentSpecLabelsUpdateConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.PostForm("agentSpecName"))
 	raw := strings.TrimSpace(c.PostForm("labels"))
 	if name == "" || raw == "" {
-		nacosV3Err(c, 400, "agentSpecName 与 labels 必填")
+		nacosV3Err(c, 10000, "agentSpecName 与 labels 必填")
 		return
 	}
 	var labels map[string]string
 	if err := json.Unmarshal([]byte(raw), &labels); err != nil {
-		nacosV3Err(c, 400, "labels 须为 JSON 对象")
+		nacosV3Err(c, 20002, "labels 须为 JSON 对象")
 		return
 	}
 	if err := service.NacosAIUpdateArtifactLabels(ns, model.NacosAIKindAgentSpec, name, labels, false); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
@@ -843,19 +945,22 @@ func NacosConsoleMcpImportValidateStub(c *gin.Context) {
 }
 
 func NacosA2AVersionListConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.Query("agentName"))
 	if name == "" {
-		nacosV3Err(c, 400, "agentName 必填")
+		nacosV3Err(c, 10000, "agentName 必填")
 		return
 	}
 	var r model.NacosAIA2AAgent
 	if err := model.DB.Where("namespace_id = ? AND agent_name = ?", service.NormalizeNacosNamespaceID(ns), name).First(&r).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "Agent 不存在")
+			nacosV3Err(c, 20004, "Agent 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	ver := "v1"
@@ -940,16 +1045,20 @@ func parsePromptVersionPayload(raw []byte) (template string, variables []gin.H) 
 func NacosPromptConsoleGovernance(c *gin.Context) {
 	key := strings.TrimSpace(c.Query("promptKey"))
 	if key == "" {
-		nacosV3Err(c, 400, "promptKey 必填")
+		nacosV3Err(c, 10000, "promptKey 必填")
 		return
 	}
-	d, err := service.NacosAIDescribePrompt(nacosNamespace(c), key)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	d, err := service.NacosAIDescribePrompt(ns, key)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "prompt 不存在")
+			nacosV3Err(c, 20004, "prompt 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	labels := d.Labels
@@ -1005,21 +1114,24 @@ func nullStrPtr(s string) any {
 }
 
 func NacosPromptConsoleVersionDetail(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.Query("promptKey"))
 	ver := strings.TrimSpace(c.Query("version"))
 	if key == "" || ver == "" {
-		nacosV3Err(c, 400, "promptKey 与 version 必填")
+		nacosV3Err(c, 10000, "promptKey 与 version 必填")
 		return
 	}
 	raw, err := service.NacosAIPromptVersionRawContent(ns, key, ver)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	d, err := service.NacosAIDescribePrompt(ns, key)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	var st string
@@ -1052,17 +1164,20 @@ func NacosPromptConsoleVersionDetail(c *gin.Context) {
 }
 
 func NacosPromptConsoleVersionsPage(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.Query("promptKey"))
 	if key == "" {
-		nacosV3Err(c, 400, "promptKey 必填")
+		nacosV3Err(c, 10000, "promptKey 必填")
 		return
 	}
 	pageNo, _ := strconv.Atoi(c.DefaultQuery("pageNo", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	total, rows, err := service.NacosAIPromptVersionListPage(ns, key, pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
@@ -1098,16 +1213,19 @@ func NacosPromptConsoleVersionsPage(c *gin.Context) {
 }
 
 func NacosPromptConsoleVersionDownload(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.Query("promptKey"))
 	ver := strings.TrimSpace(c.Query("version"))
 	if key == "" || ver == "" {
-		nacosV3Err(c, 400, "promptKey 与 version 必填")
+		nacosV3Err(c, 10000, "promptKey 与 version 必填")
 		return
 	}
 	raw, err := service.NacosAIPromptVersionRawContent(ns, key, ver)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	tpl, _ := parsePromptVersionPayload(raw)
@@ -1117,10 +1235,13 @@ func NacosPromptConsoleVersionDownload(c *gin.Context) {
 }
 
 func NacosPromptConsoleDraftStub(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.PostForm("promptKey"))
 	if key == "" {
-		nacosV3Err(c, 400, "promptKey 必填")
+		nacosV3Err(c, 10000, "promptKey 必填")
 		return
 	}
 	switch c.Request.Method {
@@ -1128,140 +1249,152 @@ func NacosPromptConsoleDraftStub(c *gin.Context) {
 		desc := c.PostForm("description")
 		biz := c.PostForm("bizTags")
 		if err := service.NacosAIUpsertPromptHeader(ns, key, desc, biz, "", "PUBLIC", nil); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		tpl := c.PostForm("template")
 		if strings.TrimSpace(tpl) == "" {
-			nacosV3Err(c, 400, "template 必填")
+			nacosV3Err(c, 10000, "template 必填")
 			return
 		}
 		vars := strings.TrimSpace(c.PostForm("variables"))
 		obj := map[string]any{"template": tpl}
 		if vars != "" {
 			if !json.Valid([]byte(vars)) {
-				nacosV3Err(c, 400, "variables 须为合法 JSON")
+				nacosV3Err(c, 20002, "variables 须为合法 JSON")
 				return
 			}
 			obj["variables"] = json.RawMessage(vars)
 		}
 		b, err := json.Marshal(obj)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		ver, err := service.NacosAIPromptAddVersion(ns, key, string(b))
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, ver)
 	case http.MethodPut:
 		tpl := c.PostForm("template")
 		if strings.TrimSpace(tpl) == "" {
-			nacosV3Err(c, 400, "template 必填")
+			nacosV3Err(c, 10000, "template 必填")
 			return
 		}
 		vars := strings.TrimSpace(c.PostForm("variables"))
 		obj := map[string]any{"template": tpl}
 		if vars != "" {
 			if !json.Valid([]byte(vars)) {
-				nacosV3Err(c, 400, "variables 须为合法 JSON")
+				nacosV3Err(c, 20002, "variables 须为合法 JSON")
 				return
 			}
 			obj["variables"] = json.RawMessage(vars)
 		}
 		b, err := json.Marshal(obj)
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		_, err = service.NacosAIPromptUpsertEditingContent(ns, key, string(b))
 		if err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 	case http.MethodDelete:
 		if err := service.NacosAIPromptDeleteEditingVersions(ns, key); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 	default:
-		nacosV3Err(c, 405, "不支持的方法")
+		nacosV3Err(c, 20002, "不支持的方法")
 	}
 }
 
 func NacosPromptConsoleOnlineOfflineStub(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.PostForm("promptKey"))
 	ver := strings.TrimSpace(c.PostForm("version"))
 	if key == "" || ver == "" {
-		nacosV3Err(c, 400, "promptKey 与 version 必填")
+		nacosV3Err(c, 10000, "promptKey 与 version 必填")
 		return
 	}
 	updateLatest := c.DefaultPostForm("updateLatestLabel", "true") == "true"
 	if strings.Contains(c.Request.URL.Path, "/offline") {
 		if err := service.NacosAIPromptVersionSetOffline(ns, key, ver); err != nil {
-			nacosV3Err(c, 400, err.Error())
+			nacosV3Err(c, 20002, err.Error())
 			return
 		}
 		nacosV3OK(c, true)
 		return
 	}
 	if err := service.NacosAIPromptVersionEnsureOnline(ns, key, ver, updateLatest); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
 }
 
 func NacosPromptLabelsUpdateConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.PostForm("promptKey"))
 	raw := strings.TrimSpace(c.PostForm("labels"))
 	if key == "" || raw == "" {
-		nacosV3Err(c, 400, "promptKey 与 labels 必填")
+		nacosV3Err(c, 10000, "promptKey 与 labels 必填")
 		return
 	}
 	var labels map[string]string
 	if err := json.Unmarshal([]byte(raw), &labels); err != nil {
-		nacosV3Err(c, 400, "labels 须为 JSON 对象")
+		nacosV3Err(c, 20002, "labels 须为 JSON 对象")
 		return
 	}
 	if err := service.NacosAIUpdatePromptLabels(ns, key, labels, false); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
 }
 
 func NacosPromptConsoleDescriptionUpdate(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.PostForm("promptKey"))
 	desc := c.PostForm("description")
 	if key == "" {
-		nacosV3Err(c, 400, "promptKey 必填")
+		nacosV3Err(c, 10000, "promptKey 必填")
 		return
 	}
 	if err := service.NacosAIUpsertPromptHeader(ns, key, desc, "", "", "", nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
 }
 
 func NacosPromptConsoleBizTagsUpdate(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	key := strings.TrimSpace(c.PostForm("promptKey"))
 	biz := c.PostForm("bizTags")
 	if key == "" {
-		nacosV3Err(c, 400, "promptKey 必填")
+		nacosV3Err(c, 10000, "promptKey 必填")
 		return
 	}
 	if err := service.NacosAIUpsertPromptHeader(ns, key, "", biz, "", "", nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)

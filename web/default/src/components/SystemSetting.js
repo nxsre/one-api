@@ -9,7 +9,7 @@ import {
   Modal,
   Message,
 } from 'semantic-ui-react';
-import { API, removeTrailingSlash, showError } from '../helpers';
+import { API, removeTrailingSlash, showError, noAutofillSecretProps, noAutofillTextProps } from '../helpers';
 import { StatusContext } from '../context/Status';
 
 const SystemSetting = () => {
@@ -41,6 +41,7 @@ const SystemSetting = () => {
     MessagePusherAddress: '',
     MessagePusherToken: '',
     TurnstileCheckEnabled: '',
+    LoginCaptchaEnabled: '',
     TurnstileSiteKey: '',
     TurnstileSecretKey: '',
     RegisterEnabled: '',
@@ -49,6 +50,7 @@ const SystemSetting = () => {
     S3SiteEnabled: '',
     NacosEnabled: '',
     SecurePasswordLoginEnabled: '',
+    OutboundSSRFSProtectionEnabled: 'true',
     OutboundURLWhitelistEnabled: 'false',
     OutboundURLWhitelistDomains: '',
     OutboundURLWhitelistIPs: '',
@@ -69,6 +71,7 @@ const SystemSetting = () => {
         newInputs[item.key] = item.value;
       });
       const merged = {
+        OutboundSSRFSProtectionEnabled: 'true',
         OutboundURLWhitelistEnabled: 'false',
         OutboundURLWhitelistDomains: '',
         OutboundURLWhitelistIPs: '',
@@ -105,11 +108,13 @@ const SystemSetting = () => {
       case 'LarkOAuthEnabled':
       case 'WeChatAuthEnabled':
       case 'TurnstileCheckEnabled':
+      case 'LoginCaptchaEnabled':
       case 'EmailDomainRestrictionEnabled':
       case 'RegisterEnabled':
       case 'S3SiteEnabled':
       case 'NacosEnabled':
       case 'SecurePasswordLoginEnabled':
+      case 'OutboundSSRFSProtectionEnabled':
       case 'OutboundURLWhitelistEnabled':
         value = inputs[key] === 'true' ? 'false' : 'true';
         break;
@@ -136,6 +141,27 @@ const SystemSetting = () => {
           }
           localStorage.setItem('status', JSON.stringify(st));
           statusDispatch({ type: 'set', payload: st });
+        } catch {
+          /* ignore */
+        }
+      }
+      if (key === 'LoginCaptchaEnabled') {
+        try {
+          const st = JSON.parse(localStorage.getItem('status') || '{}');
+          if (value === 'false') {
+            st.login_math_captcha = false;
+            localStorage.setItem('status', JSON.stringify(st));
+            statusDispatch({ type: 'set', payload: st });
+          } else {
+            API.get('/api/status').then((res) => {
+              const payload = res.data?.data;
+              if (!payload) return;
+              const st = JSON.parse(localStorage.getItem('status') || '{}');
+              Object.assign(st, payload);
+              localStorage.setItem('status', JSON.stringify(st));
+              statusDispatch({ type: 'set', payload: st });
+            });
+          }
         } catch {
           /* ignore */
         }
@@ -356,44 +382,61 @@ const SystemSetting = () => {
             placeholder={t('setting.system.general.server_address_placeholder')}
             value={inputs.ServerAddress}
             onChange={handleInputChange}
-            autoComplete='off'
+            {...noAutofillTextProps}
           />
           <Form.Button onClick={submitServerAddress}>
             {t('setting.system.general.buttons.update')}
           </Form.Button>
           <Divider />
-          <Header as='h3'>{t('setting.system.outbound_whitelist.title')}</Header>
+          <Header as='h3'>{t('setting.system.security.title')}</Header>
+          <Message info>{t('setting.system.security.subtitle')}</Message>
+          <Header as='h4'>{t('setting.system.security.ssrf.title')}</Header>
+          <Message warning>{t('setting.system.security.ssrf.subtitle')}</Message>
+          <Form.Group inline>
+            <Form.Checkbox
+              checked={inputs.OutboundSSRFSProtectionEnabled === 'true'}
+              label={t('setting.system.security.ssrf.enable')}
+              name='OutboundSSRFSProtectionEnabled'
+              onChange={handleInputChange}
+            />
+          </Form.Group>
+          <Divider section />
+          <Header as='h4'>
+            {t('setting.system.security.outbound_whitelist.title')}
+          </Header>
           <Message warning>
-            {t('setting.system.outbound_whitelist.subtitle')}
+            {t('setting.system.security.outbound_whitelist.subtitle')}
           </Message>
           <Form.Group inline>
             <Form.Checkbox
               checked={inputs.OutboundURLWhitelistEnabled === 'true'}
-              label={t('setting.system.outbound_whitelist.enable')}
+              label={t('setting.system.security.outbound_whitelist.enable')}
               name='OutboundURLWhitelistEnabled'
               onChange={handleInputChange}
             />
           </Form.Group>
           <Form.TextArea
-            label={t('setting.system.outbound_whitelist.domains')}
+            label={t('setting.system.security.outbound_whitelist.domains')}
             name='OutboundURLWhitelistDomains'
             placeholder={t(
-              'setting.system.outbound_whitelist.domains_placeholder'
+              'setting.system.security.outbound_whitelist.domains_placeholder'
             )}
             value={inputs.OutboundURLWhitelistDomains || ''}
             onChange={handleInputChange}
             rows={4}
           />
           <Form.TextArea
-            label={t('setting.system.outbound_whitelist.ips')}
+            label={t('setting.system.security.outbound_whitelist.ips')}
             name='OutboundURLWhitelistIPs'
-            placeholder={t('setting.system.outbound_whitelist.ips_placeholder')}
+            placeholder={t(
+              'setting.system.security.outbound_whitelist.ips_placeholder'
+            )}
             value={inputs.OutboundURLWhitelistIPs || ''}
             onChange={handleInputChange}
             rows={4}
           />
           <Form.Button onClick={() => submitOutboundWhitelist().then()}>
-            {t('setting.system.outbound_whitelist.buttons.save')}
+            {t('setting.system.security.outbound_whitelist.buttons.save')}
           </Form.Button>
           <Divider />
           <Header as='h3'>{t('setting.system.login.title')}</Header>
@@ -487,6 +530,12 @@ const SystemSetting = () => {
               checked={inputs.TurnstileCheckEnabled === 'true'}
               label={t('setting.system.login.turnstile')}
               name='TurnstileCheckEnabled'
+              onChange={handleInputChange}
+            />
+            <Form.Checkbox
+              checked={inputs.LoginCaptchaEnabled === 'true'}
+              label={t('setting.system.login.login_captcha')}
+              name='LoginCaptchaEnabled'
               onChange={handleInputChange}
             />
           </Form.Group>
@@ -599,7 +648,7 @@ const SystemSetting = () => {
               placeholder={t('setting.system.smtp.server_placeholder')}
               value={inputs.SMTPServer}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.smtp.port')}
@@ -607,7 +656,7 @@ const SystemSetting = () => {
               placeholder={t('setting.system.smtp.port_placeholder')}
               value={inputs.SMTPPort}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.smtp.account')}
@@ -615,7 +664,7 @@ const SystemSetting = () => {
               placeholder={t('setting.system.smtp.account_placeholder')}
               value={inputs.SMTPAccount}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
           </Form.Group>
           <Form.Group widths={3}>
@@ -625,7 +674,7 @@ const SystemSetting = () => {
               placeholder={t('setting.system.smtp.from_placeholder')}
               value={inputs.SMTPFrom}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.smtp.token')}
@@ -662,7 +711,7 @@ const SystemSetting = () => {
               placeholder={t('setting.system.github.client_id_placeholder')}
               value={inputs.GitHubClientId}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.github.client_secret')}
@@ -701,14 +750,14 @@ const SystemSetting = () => {
               placeholder={t('setting.system.lark.client_id_placeholder')}
               value={inputs.LarkClientId}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.lark.client_secret')}
               name='LarkClientSecret'
               onChange={handleInputChange}
               type='password'
-              autoComplete='new-password'
+              {...noAutofillSecretProps}
               value={inputs.LarkClientSecret}
               placeholder={t('setting.system.lark.client_secret_placeholder')}
             />
@@ -737,14 +786,14 @@ const SystemSetting = () => {
               placeholder={t('setting.system.wechat.server_address_placeholder')}
               value={inputs.WeChatServerAddress}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.wechat.token')}
               name='WeChatServerToken'
               onChange={handleInputChange}
               type='password'
-              autoComplete='new-password'
+              {...noAutofillSecretProps}
               value={inputs.WeChatServerToken}
               placeholder={t('setting.system.wechat.token_placeholder')}
             />
@@ -754,7 +803,7 @@ const SystemSetting = () => {
               placeholder={t('setting.system.wechat.qrcode_placeholder')}
               value={inputs.WeChatAccountQRCodeImageURL}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
           </Form.Group>
           <Form.Button onClick={submitWeChat}>
@@ -779,14 +828,14 @@ const SystemSetting = () => {
               placeholder={t('setting.system.turnstile.site_key_placeholder')}
               value={inputs.TurnstileSiteKey}
               onChange={handleInputChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
             <Form.Input
               label={t('setting.system.turnstile.secret_key')}
               name='TurnstileSecretKey'
               onChange={handleInputChange}
               type='password'
-              autoComplete='new-password'
+              {...noAutofillSecretProps}
               value={inputs.TurnstileSecretKey}
               placeholder={t('setting.system.turnstile.secret_key_placeholder')}
             />

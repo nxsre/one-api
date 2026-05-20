@@ -39,7 +39,7 @@ func GetNacosConsoleEmbedToken(c *gin.Context) {
 		"data": gin.H{
 			"accessToken": user.AccessToken,
 			"username":    user.Username,
-			"globalAdmin": user.Role >= model.RoleAdminUser,
+			"globalAdmin": user.Role >= model.RoleAdminUser && user.TenantID == nil,
 		},
 	})
 }

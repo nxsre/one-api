@@ -19,6 +19,7 @@ func BuiltinEditorTypes() []BuiltinEditorMeta {
 		{OpenAICompatible, "OpenAI 兼容", "openai", "basic", "对接任意 OpenAI 形态网关，必须填写 Base URL。"},
 		{AnthropicCompatible, "Anthropic 兼容", "anthropic", "basic", "Anthropic Messages 兼容上游，必须填写 Base URL。"},
 		{GeminiCompatible, "Gemini 兼容（OpenAI 形态）", "openai", "basic", "gemini 兼容（非官方前缀须填 Base URL）"},
+		{GeminiNativeCompatible, "Gemini 兼容（原生 API）", "gemini", "basic", "第三方 Gemini 原生 API 代理（Generative Language 协议，如 anyfast）；必须填写 Base URL，可在配置 JSON 中填写 api_version（默认 v1beta）。"},
 		{Azure, "Azure", "openai", "basic", "填写 AZURE_OPENAI_ENDPOINT；可在配置 JSON 中设置 api_version。"},
 		{PaLM, "Google PaLM", "gemini", "basic", ""},
 		{Baidu, "百度文心", "openai", "basic", ""},

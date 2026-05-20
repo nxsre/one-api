@@ -176,6 +176,9 @@ func migrateDB() error {
 	if err = migrateUserLegacyS3ColumnNames(); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&Tenant{}); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&User{}); err != nil {
 		return err
 	}
@@ -183,6 +186,9 @@ func migrateDB() error {
 		return err
 	}
 	if err = DB.AutoMigrate(&Ability{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ChannelModelTestResult{}); err != nil {
 		return err
 	}
 	logDSN := env.StringAlways("log_sql_dsn")
@@ -204,7 +210,20 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&GlobalAccessWhitelist{}, &GlobalAccessBlacklist{}, &TwoFA{}, &TwoFABackupCode{}); err != nil {
 		return err
 	}
+	if err = migrateModelCatalogVersionStatus(); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&ModelCatalog{}); err != nil {
+		return err
+	}
+	backfillModelCatalogVersionStatus()
+	if err = DB.AutoMigrate(&TenantUpgradeRequest{}, &TenantBillingRule{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&NacosRegistryNamespace{}); err != nil {
+		return err
+	}
+	if err = migrateNacosExtensionTables(); err != nil {
 		return err
 	}
 	return nil
@@ -361,4 +380,19 @@ func CloseDB() error {
 		}
 	}
 	return closeDB(DB)
+}
+
+func migrateModelCatalogVersionStatus() error {
+	if DB.Migrator().HasIndex(&ModelCatalog{}, "uk_model_catalog_mid") {
+		err := DB.Migrator().DropIndex(&ModelCatalog{}, "uk_model_catalog_mid")
+		if err != nil {
+			logger.SysError("failed to drop uk_model_catalog_mid: " + err.Error())
+		}
+	}
+	return nil
+}
+
+func backfillModelCatalogVersionStatus() {
+	DB.Exec(`UPDATE model_catalogs SET version=1 WHERE version IS NULL OR version=0`)
+	DB.Exec(`UPDATE model_catalogs SET status='current' WHERE status='' OR status IS NULL`)
 }

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -118,6 +119,75 @@ func init() {
 	}
 }
 
+func intersectSortedModelSlices(a, b []string) []string {
+	set := make(map[string]struct{}, len(b))
+	for _, x := range b {
+		set[x] = struct{}{}
+	}
+	out := make([]string, 0)
+	for _, x := range a {
+		if _, ok := set[x]; ok {
+			out = append(out, x)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func filterGroupModelsByTenantSubUser(ctx context.Context, u *model.User, userGroup string, models []string) ([]string, error) {
+	if u.TenantID == nil || u.Role != model.RoleCommonUser {
+		return models, nil
+	}
+	tid := *u.TenantID
+	chIDs := dedupePositiveIntsForController(u.AllowedChannelIDs)
+	out := models
+	if len(chIDs) > 0 {
+		chModels, err := model.GetDistinctModelsForGroupTenantChannelIDs(userGroup, tid, chIDs)
+		if err != nil {
+			return nil, err
+		}
+		out = intersectSortedModelSlices(out, chModels)
+	}
+	if len(u.AllowedModels) > 0 {
+		allow := make(map[string]struct{})
+		for _, m := range u.AllowedModels {
+			t := strings.TrimSpace(m)
+			if t != "" {
+				allow[t] = struct{}{}
+			}
+		}
+		if len(allow) > 0 {
+			filtered := make([]string, 0, len(out))
+			for _, m := range out {
+				if _, ok := allow[m]; ok {
+					filtered = append(filtered, m)
+				}
+			}
+			out = filtered
+		}
+	}
+	return out, nil
+}
+
+func dedupePositiveIntsForController(ids []int) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{})
+	out := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 func DashboardListModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -136,38 +206,13 @@ func ListAllModels(c *gin.Context) {
 }
 
 func ListModels(c *gin.Context) {
-	ctx := c.Request.Context()
-	var availableModels []string
-	if c.GetString(ctxkey.AvailableModels) != "" {
-		availableModels = strings.Split(c.GetString(ctxkey.AvailableModels), ",")
-	} else {
-		userId := c.GetInt(ctxkey.Id)
-		userGroup, _ := model.CacheGetUserGroup(userId)
-		availableModels, _ = model.CacheGetGroupModels(ctx, userGroup)
-	}
-	modelSet := make(map[string]bool)
-	for _, availableModel := range availableModels {
-		modelSet[availableModel] = true
-	}
-	availableOpenAIModels := make([]OpenAIModels, 0)
-	for _, model := range mergedOpenAIModelsBestEffort() {
-		if _, ok := modelSet[model.Id]; ok {
-			modelSet[model.Id] = false
-			availableOpenAIModels = append(availableOpenAIModels, model)
-		}
-	}
-	for modelName, ok := range modelSet {
-		if ok {
-			availableOpenAIModels = append(availableOpenAIModels, OpenAIModels{
-				Id:         modelName,
-				Object:     "model",
-				Created:    1626777600,
-				OwnedBy:    "custom",
-				Permission: defaultModelPermissions(),
-				Root:       modelName,
-				Parent:     nil,
-			})
-		}
+	availableOpenAIModels, err := collectRelayAvailableModels(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"object":  "error",
+			"message": err.Error(),
+		})
+		return
 	}
 	c.JSON(200, gin.H{
 		"object": "list",
@@ -176,6 +221,7 @@ func ListModels(c *gin.Context) {
 }
 
 func RetrieveModel(c *gin.Context) {
+	ctx := c.Request.Context()
 	modelId := c.Param("model")
 	var found *OpenAIModels
 	for _, m := range mergedOpenAIModelsBestEffort() {
@@ -183,6 +229,26 @@ func RetrieveModel(c *gin.Context) {
 			mm := m
 			found = &mm
 			break
+		}
+	}
+	if found != nil {
+		userId := c.GetInt(ctxkey.Id)
+		userGroup, _ := model.CacheGetUserGroup(userId)
+		u, uerr := model.GetUserById(userId, false)
+		if uerr == nil {
+			allowed, ferr := filterGroupModelsByTenantSubUser(ctx, u, userGroup, []string{modelId})
+			if ferr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": relaymodel.Error{
+						Message: ferr.Error(),
+						Type:    "api_error",
+					},
+				})
+				return
+			}
+			if len(allowed) == 0 {
+				found = nil
+			}
 		}
 	}
 	if found != nil {
@@ -238,11 +304,70 @@ func GetUserAvailableModels(c *gin.Context) {
 		})
 		return
 	}
+	u, uerr := model.GetUserById(id, false)
+	if uerr == nil {
+		models, err = filterGroupModelsByTenantSubUser(ctx, u, userGroup, models)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data":    models,
 	})
+	return
+}
+
+// GetUserAvailableModelsDetail GET /user/available_models_detail
+// 返回模型与可提供该模型的渠道列表，供令牌「模型范围」下拉展示与按渠道批量勾选。
+func GetUserAvailableModelsDetail(c *gin.Context) {
+	id := c.GetInt(ctxkey.Id)
+	if model.IsAdmin(id) {
+		rows, err := model.QueryAvailableModelChannelRowsAdmin()
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		rows, err = model.ApplyClientFacingModelNames(rows)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"items": rows}})
+		return
+	}
+	userGroup, err := model.CacheGetUserGroup(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if strings.TrimSpace(userGroup) == "" {
+		userGroup = "default"
+	}
+	ut := 0
+	u, uerr := model.GetUserById(id, false)
+	if uerr == nil && u.Role == model.RoleCommonUser && u.TenantID != nil {
+		ut = *u.TenantID
+	}
+	rows, err := model.QueryAvailableModelChannelRowsScoped(userGroup, ut)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if uerr == nil {
+		rows = model.FilterModelChannelRowsForTenantSubUser(u, rows)
+	}
+	rows, err = model.ApplyClientFacingModelNames(rows)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"items": rows}})
 	return
 }
 

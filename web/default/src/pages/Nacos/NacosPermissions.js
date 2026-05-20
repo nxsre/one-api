@@ -70,7 +70,9 @@ const NacosPermissions = () => {
     }
     setSearching(true);
     try {
-      const res = await API.get('/api/user/search', { params: { keyword: q } });
+      const res = await API.get('/api/nacos/users/search', {
+        params: { keyword: q },
+      });
       if (!res.data?.success) {
         showError(res.data?.message || 'search failed');
         return;

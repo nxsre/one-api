@@ -190,6 +190,7 @@ func filterLogTablesByTimeRange(tables []string, startSec, endSec int64) []strin
 
 type shardFilterParams struct {
 	LogType        int
+	IncludeErrors  bool // LogTypeUnknown 时：false 排除 LogTypeError
 	TypeStringEq   string // 非空时按字符串绑定 type（兼容 SearchUserLogs）
 	UserID         *int
 	TokenId        int // 0 = 不按 token_id 过滤
@@ -213,6 +214,9 @@ func appendShardWhereSQL(sb *strings.Builder, p *shardFilterParams, args *[]inte
 	} else if p.LogType != LogTypeUnknown {
 		sb.WriteString(" AND type = ?")
 		*args = append(*args, p.LogType)
+	} else if !p.IncludeErrors {
+		sb.WriteString(" AND type <> ?")
+		*args = append(*args, LogTypeError)
 	}
 	if p.UserID != nil {
 		sb.WriteString(" AND user_id = ?")

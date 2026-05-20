@@ -38,6 +38,7 @@ import {
   buildJobProgressSummary,
   buildStoredModelTestSummary,
   fetchChannelModelTestResults,
+  filterOutFailedModels,
   MODEL_TEST_FAIL,
   MODEL_TEST_OK,
   normalizeChannelTestBaseUrl,
@@ -679,6 +680,20 @@ const EditChannel = () => {
     await pollRunningJob(payload, models);
   };
 
+  const clearInvalidModels = () => {
+    const { failed, remaining } = filterOutFailedModels(inputs.models, modelTestStatus);
+    if (!failed.length) {
+      showInfo(t('channel.edit.messages.clear_failed_empty'));
+      return;
+    }
+    handleInputChange(null, { name: 'models', value: remaining });
+    showSuccess(t('channel.edit.messages.clear_failed_done', { count: failed.length }));
+  };
+
+  const failedModelCount = (inputs.models || []).filter(
+    (m) => modelTestStatus[String(m)] === MODEL_TEST_FAIL
+  ).length;
+
   return (
     <div className='dashboard-container channel-edit-page'>
       <Card fluid className='chart-card'>
@@ -852,27 +867,26 @@ const EditChannel = () => {
                     options={modelOptions}
                   />
                 </Form.Field>
-                {modelTestSummary ? (
-                  <p className='channel-edit-model-test-summary'>{modelTestSummary}</p>
-                ) : null}
-                {(testModelsBusy || testModelsProgress.running) && testModelsProgress.total > 0 ? (
-                  <Progress
-                    className='channel-edit-model-test-progress'
-                    percent={Math.min(
-                      100,
-                      Math.round(
-                        (testModelsProgress.completed / testModelsProgress.total) * 100
-                      )
-                    )}
-                    progress
-                    indicating={testModelsProgress.running}
-                    active={testModelsProgress.running}
-                    label={t('channel.edit.messages.test_models_progress', {
-                      completed: testModelsProgress.completed,
-                      total: testModelsProgress.total,
-                      model: testModelsProgress.currentModel || '…',
-                    })}
-                  />
+                {modelTestSummary || ((testModelsBusy || testModelsProgress.running) && testModelsProgress.total > 0) ? (
+                  <div className='channel-edit-model-test-block'>
+                    {modelTestSummary ? (
+                      <p className='channel-edit-model-test-summary'>{modelTestSummary}</p>
+                    ) : null}
+                    {(testModelsBusy || testModelsProgress.running) && testModelsProgress.total > 0 ? (
+                      <Progress
+                        className='channel-edit-model-test-progress'
+                        percent={Math.min(
+                          100,
+                          Math.round(
+                            (testModelsProgress.completed / testModelsProgress.total) * 100
+                          )
+                        )}
+                        progress
+                        indicating={testModelsProgress.running}
+                        active={testModelsProgress.running}
+                      />
+                    ) : null}
+                  </div>
                 ) : null}
                 <div className='channel-edit-models-toolbar'>
                   <Button
@@ -927,6 +941,17 @@ const EditChannel = () => {
                     onClick={() => void fillAllCatalogModels()}
                   >
                     {t('channel.edit.buttons.fill_all')}
+                  </Button>
+                  <Button
+                    type='button'
+                    disabled={
+                      testModelsBusy ||
+                      testModelsProgress.running ||
+                      failedModelCount === 0
+                    }
+                    onClick={clearInvalidModels}
+                  >
+                    {t('channel.edit.buttons.clear_failed')}
                   </Button>
                   <Button
                     type='button'

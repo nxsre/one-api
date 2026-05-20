@@ -73,10 +73,10 @@ const ChannelsTable = () => {
   const [showDetail, setShowDetail] = useState(isShowDetail());
 
   const processChannelData = (channel) => {
-    if (channel.models === '') {
+    if (channel.models === '' || channel.models == null) {
       channel.models = [];
       channel.test_model = '';
-    } else {
+    } else if (typeof channel.models === 'string') {
       channel.models = channel.models.split(',');
       if (channel.models.length > 0) {
         channel.test_model = channel.models[0];
@@ -426,16 +426,18 @@ const ChannelsTable = () => {
       </Form>
       {showPrompt && (
         <Message
+          info
+          className='channels-table-notice'
           onDismiss={() => {
             setShowPrompt(false);
             setPromptShown(promptID);
           }}
         >
-          {t('channel.balance_notice')}
-          <br />
-          {t('channel.test_notice')}
-          <br />
-          {t('channel.detail_notice')}
+          <Message.Content>
+            <p>{t('channel.balance_notice')}</p>
+            <p>{t('channel.test_notice')}</p>
+            <p>{t('channel.detail_notice')}</p>
+          </Message.Content>
         </Message>
       )}
       <Table basic={'very'} compact size='small'>

@@ -3,6 +3,7 @@
     "home": "首页",
     "channel": "渠道",
     "model_catalog": "模型目录",
+    "operations_management": "运营管理",
     "routing": "智能路由",
     "token": "令牌",
     "redemption": "兑换",
@@ -40,6 +41,17 @@
     "nacos_a2a": "Nacos A2A",
     "nacos_prompts": "Nacos Prompt",
     "nacos_pipelines": "Nacos 流水线",
+    "tenant_platform": "租户平台",
+    "tenant_platform_mgmt": "平台管理",
+    "tenant_platform_console": "租户控制台",
+    "tenant_upgrades": "租户申请审核",
+    "tenant_management": "租户管理",
+    "tenant_reports": "财务报表",
+    "tenant_billing_reports": "账单与报表",
+    "tenant_console": "租户控制台",
+    "tenant_console_acting": "租户控制台（代管）",
+    "tenant_subusers": "子账号",
+    "tenant_channels": "租户渠道",
     "sidebar_collapse": "收起侧栏",
     "sidebar_expand": "展开侧栏"
   },
@@ -92,6 +104,11 @@
     "combo_add_custom": "回车添加未列出的值",
     "chart_show_all_models": "显示全部模型（含其他渠道已开通名称）",
     "chart_models_hint": "已选渠道时默认仅列出该渠道「已开通模型」；勾选此项可查看合并后的全量目录。",
+    "chart_empty": "选择渠道与模型后点击「刷新」加载曲线",
+    "chart_axis_latency": "延迟 (ms)",
+    "chart_axis_error": "错误率",
+    "chart_legend_latency": "平均延迟",
+    "chart_legend_err": "错误率",
     "json_format": "格式化",
     "json_minify": "压缩",
     "json_copy": "复制",
@@ -219,7 +236,7 @@
     "cs_diff_title": "配置内容对比",
     "pipelines_json_view": "详情（JSON）",
     "perm_title": "用户 Nacos 权限",
-    "perm_hint": "仅 Root 可保存。勾选为允许；管理员无 ACL 记录时默认全权限，普通用户无记录则无权限（仍受匿名读影响）。",
+    "perm_hint": "Root、平台管理员或本租户管理员 / 具备 manage_nacos 的委派子账号可为「本租户用户」保存 ACL。勾选为允许；管理员无 ACL 记录时默认全权限，普通用户无记录则无权限（仍受匿名读影响）。",
     "perm_search_placeholder": "用户名 / 邮箱 / 显示名（至少 1 个字符）",
     "perm_search_btn": "搜索用户",
     "perm_search_need_keyword": "请输入至少 1 个字符再搜索",
@@ -452,6 +469,8 @@
     "ns_total": "共 {{total}} 个命名空间",
     "ns_col_name": "命名空间名称",
     "ns_col_id": "命名空间 ID",
+    "ns_col_tenant_id": "租户 ID",
+    "ns_col_tenant_name": "租户名称",
     "ns_col_desc": "描述",
     "ns_col_config_count": "配置数",
     "ns_col_actions": "操作",
@@ -501,8 +520,11 @@
   },
   "model_catalog": {
     "title": "模型目录管理",
-    "hint": "与适配器内置列表合并后用于渠道编辑页、/v1/models 及路由候选。enabled=false 可从全局列表中隐藏该模型 id（含内置项）；enabled=true 可增补或覆盖 owned_by。从 Models.dev 同步会写入与 api.json 模型对象对齐的各列（手工项这些列为空）。",
-    "search_placeholder": "筛选（模型 ID、展示名称、提供方键/名称、系列、输入/输出模态）；多个关键词用空格分隔表示「同时包含」",
+    "filter_ph_contains": "包含…",
+    "filter_ph_provider": "提供方键或名称",
+    "filter_provider_label": "提供方",
+    "provider_no_results": "无匹配提供方，可直接输入",
+    "filter_clear": "清空筛选",
     "visible_rows": "当前匹配 {{matched}} 条，库中共 {{grand_total}} 条",
     "page_size_label": "每页行数",
     "page_range": "当前页 {{start}}–{{end}} / 筛选后共 {{total}} 条",
@@ -548,13 +570,29 @@
     "modal_sync_title": "同步上游模型列表",
     "sync_source": "同步源",
     "sync_src_models_dev": "Models.dev（匿名，无需 API Key）",
+    "sync_src_basellm": "BaseLLM LLM Metadata（匿名，无需 API Key）",
     "sync_src_openai": "OpenAI 兼容（/v1/models）",
     "sync_src_openrouter": "OpenRouter",
     "sync_src_anthropic": "Anthropic",
     "sync_src_gemini": "Google Gemini",
     "sync_src_channel": "已配置渠道（服务端用密钥请求）",
+    "sync_src_aliapi": "aliapi.me",
+    "sync_src_anyfast": "Anyfast（/api/pricing）",
+    "sync_aliapi_url_hint": "从 aliapi.me 匿名抓取模型数据（无需鉴权）",
+    "sync_aliapi_url_label": "基础 URL（可选）",
+    "sync_anyfast_url_hint": "从 Anyfast /api/pricing 匿名拉取模型与价目（无需鉴权）",
+    "sync_anyfast_url_label": "站点根 URL（可选）",
+    "sync_src_new_api_models": "New API（/api/models）",
+    "sync_new_api_models_hint": "拉取 New API 兼容站点的管理端模型树。需控制台 Access Token 与用户 ID（New-Api-User），不能使用 sk- 密钥。",
+    "sync_new_api_url_label": "站点根 URL（可选）",
+    "sync_new_api_user_id": "用户 ID（New-Api-User）",
+    "sync_new_api_token": "Access Token",
+    "sync_new_api_token_required": "请填写 Access Token",
+    "sync_new_api_user_required": "请填写用户 ID（New-Api-User）",
     "sync_models_dev_url_hint": "可选：镜像根 URL（自动补 /api.json）或完整 JSON 地址；留空为官方 https://models.dev/api.json",
     "sync_models_dev_url_label": "自定义地址（可选）",
+    "sync_basellm_url_hint": "可选：镜像根 URL（自动补 /api/all.json）或完整 JSON 地址；留空为官方 https://basellm.github.io/llm-metadata/api/all.json",
+    "sync_basellm_url_label": "自定义地址（可选）",
     "base_url": "Base URL（可空=官方 api.openai.com/v1）",
     "api_key": "API Key",
     "channel_id": "渠道 ID",
@@ -566,7 +604,15 @@
     "yes": "是",
     "no": "否",
     "btn_cancel": "取消",
-    "btn_save": "保存"
+    "btn_save": "保存",
+    "col_tags": "标签",
+    "form_section_basic": "基本信息",
+    "form_section_provider": "厂商与系列",
+    "form_section_capability": "能力与限制",
+    "form_section_pricing": "参考价（$/M tokens）",
+    "form_section_meta": "元数据与链接",
+    "form_model_name_ph": "默认同模型 ID",
+    "form_tags_ph": "逗号分隔，如 ImageGeneration,Code"
   },
   "channel": {
     "title": "管理渠道",
@@ -667,10 +713,24 @@
         "fill_models": "填入相关模型",
         "fill_all": "填入所有模型",
         "clear": "清除所有模型",
+        "clear_failed": "清除无效模型",
         "fetch_upstream_models": "从上游获取模型",
+        "test_models": "测试所有模型",
+        "test_models_concurrency": "并发数",
         "add_custom": "填入",
         "custom_placeholder": "多条用英文逗号、中文逗号、分号或换行分隔，例如：claude-haiku-4-5-20251001,claude-opus-4-7"
       },
+      "fill_catalog_title": "从模型目录填入",
+      "fill_catalog_hint": "按提供方筛选模型目录中已启用的模型，并填入下方模型列表。",
+      "fill_catalog_provider_ph": "搜索或选择提供方，例如 Google",
+      "fill_catalog_provider_required": "请选择或输入提供方",
+      "fill_catalog_preview": "将填入 {{count}} 个模型",
+      "fill_catalog_confirm": "填入",
+      "fill_catalog_cancel": "取消",
+      "fill_catalog_ok": "已从模型目录填入 {{count}} 个模型",
+      "fill_catalog_empty": "模型目录中未找到匹配的模型",
+      "fill_catalog_fail": "从模型目录加载失败",
+      "fill_all_ok": "已从模型目录填入全部 {{count}} 个模型",
       "messages": {
         "name_required": "请填写渠道名称和渠道密钥！",
         "models_required": "请至少选择一个模型！",
@@ -679,9 +739,22 @@
         "update_success": "渠道更新成功！",
         "create_success": "渠道创建成功！",
         "custom_models_all_exist": "输入的模型均已存在于列表中",
-        "upstream_fetch_need_key": "请先填写密钥；若渠道已保存且密钥未展示，可直接点击（将使用服务器已保存的密钥与 Base URL）。",
+        "upstream_fetch_need_key": "请先填写密钥；若渠道已保存且密钥未展示，可直接点击「测试所有模型」（将使用服务器已保存的密钥）。",
         "upstream_fetch_empty": "上游未返回可用模型。",
-        "upstream_fetch_success": "已从上游合并 {{count}} 个模型到列表。"
+        "upstream_fetch_success": "已从上游合并 {{count}} 个模型到列表。",
+        "test_models_empty": "请先添加要测试的模型",
+        "test_models_fail": "模型测试请求失败",
+        "test_models_done": "测试完成：{{ok}}/{{total}} 通过，{{fail}} 失败",
+        "test_models_all_ok": "全部 {{count}} 个模型测试通过",
+        "test_models_partial": "{{ok}} 个通过，{{fail}} 个失败（红色标签可悬停查看错误）",
+        "test_models_history_ok": "历史记录：当前 Base URL 下 {{count}} 个模型上次测试通过",
+        "test_models_history_fail": "历史记录：当前 Base URL 下 {{count}} 个模型上次测试失败",
+        "test_models_history_mixed": "历史记录：当前 Base URL 下 {{ok}} 通过 / {{fail}} 失败（共 {{total}} 个有记录）",
+        "test_models_running": "正在测试 {{completed}}/{{total}}，当前：{{model}}",
+        "test_models_progress": "测试进度 {{completed}}/{{total}} · 当前模型 {{model}}",
+        "test_models_already_running": "当前渠道与 Base URL 已有测试任务在运行，请等待完成",
+        "clear_failed_empty": "没有测试失败的模型可清除",
+        "clear_failed_done": "已清除 {{count}} 个无效模型"
       },
       "spark_version": "模型版本",
       "spark_version_placeholder": "请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1",
@@ -823,7 +896,12 @@
         "update_success": "令牌更新成功！",
         "create_success": "令牌创建成功，请在列表页面点击复制获取令牌！",
         "expire_time_invalid": "过期时间格式错误！"
-      }
+      },
+      "model_legacy_suffix": "已保存",
+      "model_channel_sep": " · ",
+      "bulk_channels_label": "按渠道批量添加模型",
+      "bulk_channels_placeholder": "选择一个或多个渠道…",
+      "bulk_channels_button": "加入模型范围"
     },
     "copy_options": {
       "raw": "复制原始令牌",
@@ -913,8 +991,11 @@
       "usage": "消费",
       "admin": "管理",
       "system": "系统",
-      "test": "测试"
+      "test": "测试",
+      "error": "错误",
+      "refund": "退款"
     },
+    "show_failed": "显示失败记录（含访问错误）",
     "table": {
       "time": "时间",
       "channel": "渠道",
@@ -937,11 +1018,25 @@
       "quota": "额度",
       "use_time": "用时(s)",
       "detail": "详情",
+      "http_status": "HTTP状态码",
+      "user_input": "用户输入",
+      "no_user_input_hint": "无用户输入记录，点击展开查看上游信息",
+      "upstream_meta": "上游元数据",
       "detail_expand": "查看完整详情",
       "detail_copy": "复制全文",
       "detail_close": "关闭",
       "detail_copied": "已复制到剪贴板",
       "detail_copy_failed": "复制失败"
+    },
+    "detail": {
+      "meta": "连接信息",
+      "client_ip": "客户端 IP",
+      "request_body_bytes": "请求体大小",
+      "response_body_bytes": "响应体大小",
+      "client_request_headers": "客户端请求 Header",
+      "client_response_headers": "响应客户端 Header",
+      "upstream_request_headers": "上游请求 Header",
+      "upstream_response_headers": "上游响应 Header"
     },
     "buttons": {
       "query": "操作",
@@ -998,9 +1093,19 @@
       "role_types": {
         "normal": "普通用户",
         "admin": "管理员",
+        "tenant_admin": "租户管理员",
         "super_admin": "超级管理员",
+        "root": "系统管理员",
         "unknown": "未知身份"
       },
+      "scope": {
+        "independent": "独立用户",
+        "tenant": "租户用户",
+        "all": "全部用户"
+      },
+      "tenant": "租户",
+      "select_tenant": "选择租户",
+      "filter_role": "筛选角色",
       "status_types": {
         "activated": "已激活",
         "banned": "已封禁",
@@ -1022,7 +1127,9 @@
       "disable": "禁用",
       "edit": "编辑",
       "promote": "提升",
-      "demote": "降级"
+      "promote_super_admin": "升为超级管理员",
+      "demote": "降级",
+      "demote_super_admin": "撤销超级管理员"
     }
   },
   "dashboard": {
@@ -1130,16 +1237,25 @@
           "update": "更新服务器地址"
         }
       },
-      "outbound_whitelist": {
-        "title": "出站 HTTP 白名单（缓解 SSRF）",
-        "subtitle": "开启后，中继等出站请求仅允许访问下方配置的域名或解析到的 IP/CIDR（由全局 HTTP 客户端校验）。用于防止恶意配置将本服务作为跳板探测内网或任意公网。开启后必须至少填写「域名」或「IP/CIDR」之一，否则所有出站请求会被拒绝。",
-        "enable": "启用出站 URL 白名单",
-        "domains": "允许的域名",
-        "domains_placeholder": "每行一个，或英文逗号、分号分隔。支持精确匹配与 *.example.com 形式通配后缀。",
-        "ips": "允许的 IP / CIDR",
-        "ips_placeholder": "每行一个，或英文逗号、分号分隔。支持单 IP 与 CIDR（如 10.0.0.0/8）。域名解析出的 IP 也会按此列表校验。",
-        "buttons": {
-          "save": "保存域名与 IP 白名单"
+      "security": {
+        "title": "安全配置",
+        "subtitle": "控制中继与后台任务出站 HTTP 请求的安全策略。SSRF 防护与出站白名单相互独立，可按环境分别开启。",
+        "ssrf": {
+          "title": "出站 SSRF 防护",
+          "subtitle": "开启后，在发起请求前解析域名并拒绝连接至内网、回环、链路本地及 198.18.0.0/15 等保留地址（含 Clash fake-ip 等异常解析）。用于降低恶意渠道 Base URL 探测内网的风险。若使用代理/TUN 导致公网域名被解析到 198.18.x.x，可临时关闭此项（仍建议保留出站白名单）。",
+          "enable": "启用出站 SSRF 防护（禁止内网/保留地址）"
+        },
+        "outbound_whitelist": {
+          "title": "出站 HTTP 白名单",
+          "subtitle": "开启后，中继等出站请求仅允许访问下方配置的域名或解析到的 IP/CIDR（由全局 HTTP 客户端校验）。用于限制可访问的上游范围。开启后必须至少填写「域名」或「IP/CIDR」之一，否则所有出站请求会被拒绝。",
+          "enable": "启用出站 URL 白名单",
+          "domains": "允许的域名",
+          "domains_placeholder": "每行一个，或英文逗号、分号分隔。支持精确匹配与 *.example.com 形式通配后缀。",
+          "ips": "允许的 IP / CIDR",
+          "ips_placeholder": "每行一个，或英文逗号、分号分隔。支持单 IP 与 CIDR（如 10.0.0.0/8）。域名解析出的 IP 也会按此列表校验。",
+          "buttons": {
+            "save": "保存域名与 IP 白名单"
+          }
         }
       },
       "login": {
@@ -1153,7 +1269,8 @@
         "lark_oauth": "允许通过飞书账户登录 & 注册",
         "wechat_login": "允许通过微信登录 & 注册",
         "registration": "允许新用户注册（此项为否时，新用户将无法以任何方式进行注册）",
-        "turnstile": "启用 Turnstile 用户校验"
+        "turnstile": "启用 Turnstile 用户校验",
+        "login_captcha": "要求登录时输入图形验证码（未启用 Turnstile 时生效；默认开启）"
       },
       "nacos": {
         "title": "Nacos 注册表",
@@ -1285,17 +1402,208 @@
           "title": "补全倍率",
           "placeholder": "为一个 JSON 文本，键为模型名称，值为倍率，此处的倍率设置是模型补全倍率相较于提示倍率的比例，使用该设置可强制覆盖 One API 的内部比例"
         },
+        "model_price": {
+          "title": "模型固定价格（美元/次）",
+          "placeholder": "JSON：模型名 → 美元单价；配置后按次计费，优先于模型倍率"
+        },
+        "cache": {
+          "title": "提示缓存倍率",
+          "placeholder": "JSON：模型名 → 缓存命中 token 相对输入的倍率"
+        },
+        "create_cache": {
+          "title": "缓存创建倍率",
+          "placeholder": "JSON：模型名 → 写入缓存 token 的倍率"
+        },
+        "image": {
+          "title": "图片输入倍率",
+          "placeholder": "JSON：模型名 → 图片 token 相对普通输入的倍率"
+        },
+        "audio": {
+          "title": "音频输入倍率",
+          "placeholder": "JSON：模型名 → 音频输入 token 倍率"
+        },
+        "audio_completion": {
+          "title": "音频补全倍率",
+          "placeholder": "JSON：模型名 → 音频输出相对输入的倍率"
+        },
         "group": {
           "title": "分组倍率",
           "placeholder": "为一个 JSON 文本，键为分组名称，值为倍率"
         },
+        "group_group": {
+          "title": "分组间倍率",
+          "placeholder": "JSON：用户分组 → { 使用分组: 倍率 }，例如 {\"vip\":{\"default\":0.9}}",
+          "col_user_group": "用户分组",
+          "col_use_group": "使用分组"
+        },
+        "topup_group": {
+          "title": "充值分组倍率",
+          "placeholder": "JSON：分组名 → 充值金额换算倍率"
+        },
+        "billing_mode": {
+          "title": "计费模式（分层/倍率）",
+          "placeholder": "JSON：模型名 → ratio 或 tiered_expr",
+          "help": {
+            "intro_title": "用途",
+            "intro": "为指定模型选择计费方式。未列出的模型默认使用 ratio（走上方「模型倍率 / 补全倍率」等倍率表）。",
+            "values_title": "取值说明",
+            "ratio_desc": "使用传统倍率表计费（模型倍率 × 补全倍率 × 分组倍率 × token）。",
+            "tiered_desc": "使用下方「分层计费表达式」按美元/百万 token 计价；须同时配置表达式。",
+            "example_title": "配置示例",
+            "example_note": "模型名须与请求中的模型名一致（与模型倍率表中的键相同）。"
+          }
+        },
+        "billing_expr": {
+          "title": "分层计费表达式",
+          "placeholder": "JSON：模型名 → expr 字符串（tiered_expr 模型必填）",
+          "help": {
+            "intro_title": "用途",
+            "intro": "仅当该模型在「计费模式」中设为 tiered_expr 时必填。一条表达式定义该模型的全部计价规则（分档、缓存、图片/音频分项等），系数为厂商公布的美元/百万 token。",
+            "vars_title": "常用变量",
+            "var_col": "变量",
+            "meaning_col": "含义",
+            "var_pc": "输入 / 输出 token（未在表达式中单独定价的部分）",
+            "var_len": "输入总长度；做分档条件时请用 len，不要用 p（避免缓存命中导致误判档位）",
+            "var_cache": "缓存读 cr、缓存写 cc（5 分钟）、cc1h（1 小时，Claude）",
+            "var_media": "图片 / 音频输入输出 token",
+            "vars_note": "若表达式未使用 cr、img 等变量，对应 token 会并入 p/c 按基础单价计费。",
+            "tier_title": "tier() 函数",
+            "tier_desc": "计价公式须用 tier 包裹，档位名会写入消费日志：",
+            "price_unit": "表达式结果 × 分组倍率后，再按「单位货币额度」换算为系统额度。",
+            "examples_title": "示例",
+            "ex1_label": "统一价 + 缓存分项：",
+            "ex2_label": "按上下文长度分档（≤20 万 / 超长）：",
+            "relation": "tiered_expr 模型不再读取模型倍率/补全倍率，仍乘分组倍率；与倍率表二选一。"
+          }
+        },
+        "upstream_sync": {
+          "title": "上游倍率同步",
+          "fetch": "拉取上游价目",
+          "hint": "拉取在后台执行并生成批次；差异分页查看，勾选后保存到临时表，再写入本地价目版本。支持批次/当前/历史版本对比。",
+          "select_upstream": "请至少选择一个上游",
+          "select_placeholder": "选择渠道或预设",
+          "fetch_ok": "拉取完成",
+          "fetch_partial": "拉取完成（部分上游失败，见详情）",
+          "fetch_fail": "拉取失败",
+          "fetch_timeout": "拉取超时，请稍后在批次历史中查看",
+          "diff_title": "价目差异对比",
+          "batch_history": "上游拉取批次",
+          "batch_select": "查看批次",
+          "open_latest_batch": "查看最新批次 #{{id}}",
+          "review_batch": "查看差异",
+          "col_status": "状态",
+          "col_diff_count": "差异项",
+          "model_search": "按模型筛选",
+          "save_selections": "暂存勾选",
+          "select_all_ok": "已全选本批次差异",
+          "select_all_batch": "全选本批次",
+          "selections_saved": "已暂存到草稿表",
+          "apply_from_batch": "确认入库",
+          "apply_no_saved": "请先勾选差异并点击「暂存勾选」",
+          "compare_open": "版本/批次对比",
+          "compare_title": "价目对比",
+          "compare_left": "基准（左侧）",
+          "compare_right": "对比目标（右侧）",
+          "compare_run": "开始对比",
+          "compare_summary": "共 {{total}} 项差异",
+          "compare_empty": "请选择对比端并点击开始对比",
+          "no_diff": "未发现与本地不一致的价目项",
+          "default_upstream": "默认采用上游",
+          "apply_source": "版本来源备注",
+          "activate_on_apply": "写入后立即设为生效版本",
+          "col_field": "字段",
+          "col_local": "本地",
+          "col_upstream": "将采用",
+          "col_change": "变更",
+          "col_pick": "上游来源",
+          "diff_summary": "共 {{total}} 项差异，已选 {{selected}} 项",
+          "page_info": "第 {{page}} / {{totalPages}} 页（共 {{total}} 条）",
+          "page_prev": "上一页",
+          "page_next": "下一页",
+          "low_confidence": "可信度低",
+          "close": "关闭",
+          "apply_none": "请至少勾选一项差异",
+          "apply_invalid": "{{model}} / {{field}} 无有效上游值",
+          "apply_ok": "已写入本地",
+          "apply_fail": "写入失败",
+          "apply_selected": "写入已选 ({{count}})",
+          "apply_label_default": "上游同步",
+          "versions_title": "价目配置版本",
+          "versions_loading": "加载版本信息…",
+          "col_block": "配置块",
+          "col_active": "生效版本",
+          "col_count": "历史版本数",
+          "manage_versions": "查看 / 切换",
+          "version_history": "版本历史",
+          "no_versions": "暂无历史版本",
+          "col_label": "说明",
+          "col_source": "来源",
+          "col_time": "创建时间",
+          "active": "生效中",
+          "set_active": "设为生效",
+          "version_activated": "已切换生效版本"
+        },
+        "expose_enabled": "对外公开倍率配置（GET /api/ratio_config）",
+        "editor": {
+          "tab_form": "表单",
+          "tab_json": "JSON",
+          "col_key": "键",
+          "col_value": "倍率",
+          "col_model": "模型名称",
+          "col_group": "分组名称",
+          "key_placeholder": "例如 claude-sonnet-4-6",
+          "value_placeholder": "数字，如 3",
+          "filter_placeholder": "搜索键或倍率…",
+          "search": "搜索",
+          "empty": "暂无记录",
+          "row_saved": "已保存",
+          "value_required": "值不能为空",
+          "create_invalid": "请填写完整",
+          "confirm_delete": "确定删除此条记录？",
+          "page": "页",
+          "add_row": "添加一行",
+          "remove_row": "删除",
+          "edit_json": "编辑 JSON",
+          "format_json": "格式化",
+          "apply_json": "应用 JSON",
+          "cancel_json": "返回表单",
+          "entry_count": "共 {{total}} 条",
+          "block_entry_count": "{{count}} 条",
+          "expand_all": "全部展开",
+          "collapse_all": "全部折叠",
+          "json_invalid": "JSON 格式无效",
+          "json_not_number_object": "须为「字符串键 → 数字」的 JSON 对象",
+          "json_not_group_group": "须为「用户分组 → { 使用分组: 倍率 }」的嵌套 JSON",
+          "select_key": "选择或输入",
+          "select_group": "选择或输入分组",
+          "add_custom_key": "添加："
+        },
         "buttons": {
-          "save": "保存倍率设置"
+          "save": "保存倍率设置",
+          "save_expose": "保存公开设置"
+        },
+        "save_success": "倍率设置已保存",
+        "save_no_changes": "没有检测到修改，无需保存",
+        "save_error": {
+          "model": "模型倍率不是合法的 JSON 对象",
+          "model_price": "模型固定价格不是合法的 JSON 对象",
+          "completion": "补全倍率不是合法的 JSON 对象",
+          "cache": "提示缓存倍率不是合法的 JSON 对象",
+          "create_cache": "缓存创建倍率不是合法的 JSON 对象",
+          "image": "图片倍率不是合法的 JSON 对象",
+          "audio": "音频倍率不是合法的 JSON 对象",
+          "audio_completion": "音频补全倍率不是合法的 JSON 对象",
+          "group": "分组倍率不是合法的 JSON 对象",
+          "group_group": "分组间倍率不是合法的嵌套 JSON 对象",
+          "topup_group": "充值分组倍率不是合法的 JSON 对象",
+          "billing_mode": "计费模式不是合法的 JSON 对象",
+          "billing_expr": "分层计费表达式不是合法的 JSON 对象"
         }
       },
       "log": {
         "title": "日志设置",
         "enable_consume": "启用额度消费日志记录",
+        "enable_error": "记录访问失败到操作日志",
         "target_time": "目标时间",
         "buttons": {
           "clean": "清理历史日志"
@@ -1431,6 +1739,7 @@
     },
     "login": {
       "title": "用户登录",
+      "tenant_title": "租户登录",
       "username": "用户名 / 邮箱地址",
       "password": "密码",
       "button": "登录",
@@ -1452,6 +1761,11 @@
       "reset_password": "点击重置",
       "no_account": "没有账户？",
       "register": "点击注册",
+      "tenant_login_link": "租户管理员登录",
+      "tenant_portal_hint": "租户管理员与子账号均在此登录（与平台同一套账号）。子账号须在下方填写「租户 ID」，请向管理员索取（租户控制台首页可复制）。",
+      "tenant_footer_reset": "忘记密码？重置",
+      "platform_login_link": "平台管理员登录",
+      "platform_admin_question": "需要使用平台管理后台？",
       "other_methods": "使用其他方式登录",
       "wechat": {
         "entry": "微信登录",
@@ -1490,6 +1804,96 @@
         "button_disabled": "密码重置完成",
         "notice": "新密码已生成，请点击密码框或上方按钮复制。请及时登录并修改密码！"
       }
+    }
+  },
+  "tenant_console": {
+    "channel_not_found": "未找到渠道",
+    "upstream_fetch_disabled": "租户控制台不支持从上游拉取模型列表",
+    "impersonate": {
+      "banner": "正以平台管理员身份代管租户空间，请在右侧选择目标租户。",
+      "pick_tenant": "选择租户",
+      "need_select": "请选择租户后再管理子账号与租户渠道。",
+      "empty": "暂无租户记录；如需新建租户请联系 Root 使用创建租户接口。",
+      "load_failed": "加载租户列表失败"
+    },
+    "home": {
+      "title": "租户控制台",
+      "subtitle": "管理本子账号、访问令牌与租户渠道"
+    },
+    "users": {
+      "title": "子账号",
+      "search_placeholder": "用户名 / 邮箱 / 显示名",
+      "search": "搜索",
+      "add": "新建子账号",
+      "edit": "编辑",
+      "tokens": "令牌",
+      "delete": "删除",
+      "cancel": "取消",
+      "delete_success": "已删除",
+      "delete_confirm_title": "确认删除",
+      "delete_confirm_body": "确定删除用户 {{name}}？此操作不可撤销。",
+      "col_username": "用户名",
+      "col_display_name": "显示名",
+      "col_group": "分组",
+      "col_quota": "额度",
+      "col_actions": "操作",
+      "prev": "上一页",
+      "next": "下一页",
+      "page_hint": "第 {{n}} 页"
+    },
+    "edit_user": {
+      "title_create": "新建子账号",
+      "title_edit": "编辑子账号",
+      "section_basic": "基本信息",
+      "section_acl": "可用模型与渠道",
+      "acl_hint": "留空表示不额外限制（仍受分组能力与令牌配置约束）。渠道白名单选项随上方「分组」变化：包含本租户私有渠道，以及平台管理员配置的、且渠道分组包含当前子账号分组的渠道；若填写渠道白名单，模型列表会与所选渠道上已启用能力求交。",
+      "username": "用户名",
+      "password": "密码",
+      "password_unchanged_hint": "留空则不修改密码",
+      "display_name": "显示名",
+      "email": "邮箱",
+      "group": "分组",
+      "group_add": "新增分组：",
+      "quota": "额度",
+      "status": "状态",
+      "status_enabled": "启用",
+      "status_disabled": "禁用",
+      "allowed_models": "可用模型白名单",
+      "allowed_models_ph": "不选表示不限",
+      "allowed_channels": "可用渠道白名单",
+      "allowed_channels_ph": "不选表示不限",
+      "channel_platform_badge": "平台",
+      "cancel": "取消",
+      "submit": "保存",
+      "create_success": "创建成功",
+      "update_success": "保存成功",
+      "need_credentials": "请填写用户名和密码"
+    },
+    "channels": {
+      "title": "租户渠道",
+      "add": "新建渠道",
+      "edit": "编辑",
+      "col_name": "名称",
+      "col_type": "类型",
+      "col_status": "状态",
+      "col_priority": "优先级",
+      "col_actions": "操作"
+    },
+    "tokens": {
+      "title": "子账号令牌",
+      "back_users": "返回子账号",
+      "add": "新建令牌",
+      "col_name": "名称",
+      "col_status": "状态",
+      "col_created": "创建时间",
+      "col_key": "密钥",
+      "col_actions": "操作",
+      "copy_sk": "复制 sk-",
+      "copied": "已复制",
+      "enable": "启用",
+      "disable": "禁用",
+      "edit": "编辑",
+      "status_updated": "状态已更新"
     }
   },
   "messages": {

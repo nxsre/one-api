@@ -19,7 +19,7 @@ func LoginCaptchaChallenge(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "密码登录已关闭"})
 		return
 	}
-	if config.TurnstileCheckEnabled || !common.LoginMathCaptchaEnabled {
+	if config.TurnstileCheckEnabled || !common.LoginMathCaptchaEnabled || !config.LoginCaptchaEnabled {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "当前未启用图形验证码登录"})
 		return
 	}

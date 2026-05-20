@@ -16,7 +16,7 @@ func resolveLoginPasswordAndCaptcha(c *gin.Context, req LoginRequest) (password 
 			// 忽略多余字段，兼容旧客户端
 		}
 		password = req.Password
-		if common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled {
+		if common.LoginMathCaptchaEnabled && config.LoginCaptchaEnabled && !config.TurnstileCheckEnabled {
 			if req.CaptchaDotsEnc == "" {
 				return "", nil, i18n.Translate(c, "invalid_parameter")
 			}
@@ -41,7 +41,7 @@ func resolveLoginPasswordAndCaptcha(c *gin.Context, req LoginRequest) (password 
 		return "", nil, i18n.Translate(c, "invalid_parameter")
 	}
 	password = plain
-	if common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled {
+	if common.LoginMathCaptchaEnabled && config.LoginCaptchaEnabled && !config.TurnstileCheckEnabled {
 		if req.CaptchaDotsEnc == "" {
 			return "", nil, i18n.Translate(c, "invalid_parameter")
 		}

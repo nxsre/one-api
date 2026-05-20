@@ -458,7 +458,7 @@ func httpClient() *http.Client {
 	if client.HTTPClient != nil {
 		return client.HTTPClient
 	}
-	return http.DefaultClient
+	return client.NewOutboundHTTPClient(0)
 }
 
 func apiKey(meta *meta.Meta) string {

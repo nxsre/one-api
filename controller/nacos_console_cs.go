@@ -33,7 +33,10 @@ func nacosCsOperatorFromCtx(c *gin.Context) *service.NacosCsOperator {
 
 // ListNacosCsConfigsAdmin GET /api/nacos/cs/configs
 func ListNacosCsConfigsAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, c.DefaultQuery("namespace", "public"))
+	if !ok {
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "50"))
 	data, err := service.NacosCsList(ns, c.Query("dataId"), c.Query("groupName"), c.Query("search"), page, size)
@@ -46,7 +49,10 @@ func ListNacosCsConfigsAdmin(c *gin.Context) {
 
 // GetNacosCsConfigDetailAdmin GET /api/nacos/cs/configs/detail
 func GetNacosCsConfigDetailAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, c.DefaultQuery("namespace", "public"))
+	if !ok {
+		return
+	}
 	dataID := strings.TrimSpace(c.Query("dataId"))
 	group := strings.TrimSpace(c.Query("groupName"))
 	if dataID == "" || group == "" {
@@ -84,6 +90,10 @@ func PublishNacosCsConfigAdmin(c *gin.Context) {
 	if strings.TrimSpace(ns) == "" {
 		ns = "public"
 	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
+	}
 	if strings.TrimSpace(body.DataID) == "" || strings.TrimSpace(body.GroupName) == "" {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "dataId 与 groupName 必填"})
 		return
@@ -99,7 +109,10 @@ func PublishNacosCsConfigAdmin(c *gin.Context) {
 
 // ListNacosCsConfigHistoryAdmin GET /api/nacos/cs/configs/history
 func ListNacosCsConfigHistoryAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, c.DefaultQuery("namespace", "public"))
+	if !ok {
+		return
+	}
 	dataID := strings.TrimSpace(c.Query("dataId"))
 	group := strings.TrimSpace(c.Query("groupName"))
 	if dataID == "" || group == "" {
@@ -138,6 +151,10 @@ func RollbackNacosCsConfigAdmin(c *gin.Context) {
 	if strings.TrimSpace(ns) == "" {
 		ns = "public"
 	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
+	}
 	if body.HistoryId <= 0 {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "historyId 必填"})
 		return
@@ -152,7 +169,10 @@ func RollbackNacosCsConfigAdmin(c *gin.Context) {
 
 // DeleteNacosCsConfigAdmin DELETE /api/nacos/cs/configs/item
 func DeleteNacosCsConfigAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, c.DefaultQuery("namespace", "public"))
+	if !ok {
+		return
+	}
 	dataID := strings.TrimSpace(c.Query("dataId"))
 	group := strings.TrimSpace(c.Query("groupName"))
 	if dataID == "" || group == "" {

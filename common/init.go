@@ -57,6 +57,7 @@ func Init() {
 	}
 	logger.LogDir = cfg.LogDir
 
+	InitIdGenerator()
 	InitSecurityEnv()
 	InitS3Config()
 }

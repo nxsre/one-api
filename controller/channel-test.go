@@ -28,6 +28,7 @@ import (
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/monitor"
 	"github.com/songquanpeng/one-api/relay"
+	"github.com/songquanpeng/one-api/relay/adaptor"
 	"github.com/songquanpeng/one-api/relay/adaptor/amap"
 	"github.com/songquanpeng/one-api/relay/adaptor/aippt"
 	"github.com/songquanpeng/one-api/relay/adaptor/deepresearch"
@@ -36,22 +37,10 @@ import (
 	relayctl "github.com/songquanpeng/one-api/relay/controller"
 	"github.com/songquanpeng/one-api/relay/meta"
 	relaymodel "github.com/songquanpeng/one-api/relay/model"
-	"github.com/songquanpeng/one-api/relay/relaymode"
 )
 
 func buildTestRequest(model string) *relaymodel.GeneralOpenAIRequest {
-	if model == "" {
-		model = "gpt-3.5-turbo"
-	}
-	testRequest := &relaymodel.GeneralOpenAIRequest{
-		Model: model,
-	}
-	testMessage := relaymodel.Message{
-		Role:    "user",
-		Content: config.TestPrompt,
-	}
-	testRequest.Messages = append(testRequest.Messages, testMessage)
-	return testRequest
+	return buildChatTestRequest(model)
 }
 
 func parseTestResponse(resp string) (*openai.TextResponse, string, error) {
@@ -120,7 +109,7 @@ func recordChannelTestLog(ctx context.Context, channel *model.Channel, modelName
 	go model.RecordTestLog(ctx, lg)
 }
 
-func testChannel(ctx context.Context, channel *model.Channel, request *relaymodel.GeneralOpenAIRequest) (responseMessage string, err error, openaiErr *relaymodel.Error) {
+func testChannelByModel(ctx context.Context, channel *model.Channel, logicalModel string) (responseMessage string, err error, openaiErr *relaymodel.Error) {
 	if channel != nil && channel.Type == channeltype.AiPPT {
 		t0 := time.Now()
 		app, sec, uid, err := aippt.ParseChannelKey(channel.Key)
@@ -194,6 +183,21 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		recordChannelTestLog(ctx, channel, deepresearch.ModelDeepResearch, fmt.Sprintf("渠道 %s Deep Research：密钥与 Base URL 已配置（上游为 SSE，未自动拉流探测）", channel.Name), t0, other)
 		return "深知 Deep Research：密钥与 Base URL 已配置（上游 SSE，未自动探测）", nil, nil
 	}
+
+	spec := classifyModelTestSpec(logicalModel)
+	if spec.Kind == modelTestKindSkip {
+		t0 := time.Now()
+		msg := spec.SkipReason
+		other := mergeTestLogOther(nil, map[string]interface{}{
+			"test_mode":     "skip",
+			"test_kind":     modelTestKindLabel(spec.Kind),
+			"logical_model": logicalModel,
+			"detail":        msg,
+		})
+		recordChannelTestLog(ctx, channel, logicalModel, fmt.Sprintf("渠道 %s 模型 %s：%s", channel.Name, logicalModel, msg), t0, other)
+		return msg, nil, nil
+	}
+
 	startTime := time.Now()
 	var usage *relaymodel.Usage
 	var httpStatus int
@@ -205,7 +209,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	c, _ := gin.CreateTestContext(w)
 	c.Request = &http.Request{
 		Method: "POST",
-		URL:    &url.URL{Path: "/v1/chat/completions"},
+		URL:    &url.URL{Path: spec.Path},
 		Body:   nil,
 		Header: make(http.Header),
 	}
@@ -216,22 +220,23 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	c.Set(ctxkey.BaseURL, channel.GetBaseURL())
 	cfg, _ := channel.LoadConfig()
 	c.Set(ctxkey.Config, cfg)
-	middleware.SetupContextForSelectedChannel(c, channel, "")
+	middleware.SetupContextForSelectedChannel(c, channel, logicalModel)
 	meta := meta.GetByContext(c)
 	apiType := channeltype.ToAPIType(channel.Type)
 	adaptor := relay.GetAdaptor(apiType)
 	if adaptor == nil {
 		other := mergeTestLogOther(nil, map[string]interface{}{
-			"test_mode":      "http_relay",
-			"error":          fmt.Sprintf("invalid api type: %d, adaptor is nil", apiType),
-			"channel_type":   channel.Type,
-			"logical_model":  request.Model,
+			"test_mode":     "http_relay",
+			"test_kind":     modelTestKindLabel(spec.Kind),
+			"error":         fmt.Sprintf("invalid api type: %d, adaptor is nil", apiType),
+			"channel_type":  channel.Type,
+			"logical_model": logicalModel,
 		})
-		recordChannelTestLog(ctx, channel, request.Model, fmt.Sprintf("渠道 %s 测试失败：无效的 API 类型 %d", channel.Name, apiType), startTime, other)
+		recordChannelTestLog(ctx, channel, logicalModel, fmt.Sprintf("渠道 %s 测试失败：无效的 API 类型 %d", channel.Name, apiType), startTime, other)
 		return "", fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), nil
 	}
 	adaptor.Init(meta)
-	modelName := request.Model
+	modelName := logicalModel
 	modelMap := channel.GetModelMapping()
 	if modelName == "" || !strings.Contains(channel.Models, modelName) {
 		modelNames := strings.Split(channel.Models, ",")
@@ -242,8 +247,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	if modelMap != nil && modelMap[modelName] != "" {
 		modelName = modelMap[modelName]
 	}
-	meta.OriginModelName, meta.ActualModelName = request.Model, modelName
-	request.Model = modelName
+	meta.OriginModelName, meta.ActualModelName = logicalModel, modelName
 	defer func() {
 		logContent := fmt.Sprintf("渠道 %s 测试成功，响应：%s", channel.Name, responseMessage)
 		if err != nil || openaiErr != nil {
@@ -257,6 +261,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		}
 		extras := map[string]interface{}{
 			"test_mode":          "http_relay",
+			"test_kind":          modelTestKindLabel(spec.Kind),
 			"logical_model":      meta.OriginModelName,
 			"mapped_model":       modelName,
 			"test_http_status":   httpStatus,
@@ -288,11 +293,8 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		}
 		go model.RecordTestLog(ctx, lg)
 	}()
-	convertedRequest, err := adaptor.ConvertRequest(c, relaymode.ChatCompletions, request)
-	if err != nil {
-		return "", err, nil
-	}
-	jsonData, err := json.Marshal(convertedRequest)
+
+	jsonData, err := marshalModelTestPayload(adaptor, c, spec, logicalModel, modelName)
 	if err != nil {
 		return "", err, nil
 	}
@@ -324,29 +326,89 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		}
 		return "", fmt.Errorf("http status code: %d%s", errWith.StatusCode, errorMessage), &errWith.Error
 	}
+
+	if spec.Kind == modelTestKindTTS {
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return "", readErr, nil
+		}
+		respBodyForLog = truncateForTestLog(fmt.Sprintf("<binary %d bytes>", len(body)))
+		if len(body) == 0 {
+			return "", errors.New("tts response body is empty"), nil
+		}
+		responseMessage = summarizeModelTestSuccess(spec, "")
+		return responseMessage, nil, nil
+	}
+
 	var respErr *relaymodel.ErrorWithStatusCode
 	usage, respErr = adaptor.DoResponse(c, resp, meta)
 	if respErr != nil {
 		return "", fmt.Errorf("%s", respErr.Error.Message), &respErr.Error
 	}
-	if usage == nil {
-		return "", errors.New("usage is nil"), nil
-	}
 	rawResponse := w.Body.String()
-	respBodyForLog = truncateForTestLog(rawResponse)
-	_, responseMessage, err = parseTestResponse(rawResponse)
-	if err != nil {
-		logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse))
-		return "", err, nil
+	if rawResponse != "" {
+		respBodyForLog = truncateForTestLog(rawResponse)
+	}
+	if spec.Kind == modelTestKindChat {
+		if usage == nil {
+			return "", errors.New("usage is nil"), nil
+		}
+		_, responseMessage, err = parseTestResponse(rawResponse)
+		if err != nil {
+			logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse))
+			return "", err, nil
+		}
+	} else {
+		responseMessage = summarizeModelTestSuccess(spec, rawResponse)
 	}
 	result := w.Result()
-	// print result.Body
 	respBody, err := io.ReadAll(result.Body)
 	if err != nil {
 		return "", err, nil
 	}
 	logger.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	return responseMessage, nil, nil
+}
+
+func marshalModelTestPayload(adaptor adaptor.Adaptor, c *gin.Context, spec modelTestSpec, logicalModel, mappedModel string) ([]byte, error) {
+	switch spec.Kind {
+	case modelTestKindImage:
+		imageReq := buildImageTestRequest(logicalModel)
+		imageReq.Model = mappedModel
+		converted, err := adaptor.ConvertImageRequest(imageReq)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(converted)
+	case modelTestKindTTS:
+		ttsReq := buildTTSTestRequest(mappedModel)
+		return json.Marshal(ttsReq)
+	default:
+		var generalReq *relaymodel.GeneralOpenAIRequest
+		switch spec.Kind {
+		case modelTestKindEmbedding:
+			generalReq = buildEmbeddingTestRequest(logicalModel)
+		case modelTestKindModeration:
+			generalReq = buildModerationTestRequest(logicalModel)
+		default:
+			generalReq = buildChatTestRequest(logicalModel)
+		}
+		generalReq.Model = mappedModel
+		converted, err := adaptor.ConvertRequest(c, spec.RelayMode, generalReq)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(converted)
+	}
+}
+
+func testChannel(ctx context.Context, channel *model.Channel, request *relaymodel.GeneralOpenAIRequest) (responseMessage string, err error, openaiErr *relaymodel.Error) {
+	modelName := ""
+	if request != nil {
+		modelName = request.Model
+	}
+	return testChannelByModel(ctx, channel, modelName)
 }
 
 func TestChannel(c *gin.Context) {
@@ -373,7 +435,7 @@ func TestChannel(c *gin.Context) {
 	}
 	testRequest := buildTestRequest(modelName)
 	tik := time.Now()
-	responseMessage, err, _ := testChannel(ctx, channel, testRequest)
+	responseMessage, err, _ := testChannelByModel(ctx, channel, testRequest.Model)
 	tok := time.Now()
 	milliseconds := tok.Sub(tik).Milliseconds()
 	if err != nil {

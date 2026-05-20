@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/controller"
@@ -31,10 +32,8 @@ func getWeChatIdByCode(code string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Authorization", config.WeChatServerToken)
-	client := http.Client{
-		Timeout: 5 * time.Second,
-	}
-	httpResponse, err := client.Do(req)
+	httpClient := client.NewOutboundHTTPClient(5 * time.Second)
+	httpResponse, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}

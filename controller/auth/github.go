@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/common/random"
@@ -46,10 +47,8 @@ func getGitHubUserInfoByCode(code string) (*GitHubUser, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	client := http.Client{
-		Timeout: 5 * time.Second,
-	}
-	res, err := client.Do(req)
+	httpClient := client.NewOutboundHTTPClient(5 * time.Second)
+	res, err := httpClient.Do(req)
 	if err != nil {
 		logger.SysLog(err.Error())
 		return nil, errors.New("无法连接至 GitHub 服务器，请稍后重试！")
@@ -65,7 +64,7 @@ func getGitHubUserInfoByCode(code string) (*GitHubUser, error) {
 		return nil, err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", oAuthResponse.AccessToken))
-	res2, err := client.Do(req)
+	res2, err := httpClient.Do(req)
 	if err != nil {
 		logger.SysLog(err.Error())
 		return nil, errors.New("无法连接至 GitHub 服务器，请稍后重试！")

@@ -2,7 +2,6 @@ import './monaco-setup';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { Container } from 'semantic-ui-react';
 import App from './App';
 import SidebarLayout from './components/SidebarLayout';
 import 'semantic-ui-css/semantic.min.css';
@@ -26,9 +25,9 @@ root.render(
         <BrowserRouter>
           <div className='app-root-fill'>
             <SidebarLayout>
-              <Container className={'main-content'}>
+              <div className='main-content app-page-root'>
                 <App />
-              </Container>
+              </div>
             </SidebarLayout>
             <ToastContainer position='top-right' autoClose={3000} />
           </div>

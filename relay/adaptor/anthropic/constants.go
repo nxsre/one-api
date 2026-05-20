@@ -10,4 +10,10 @@ var ModelList = []string{
 	"claude-3-5-sonnet-20240620",
 	"claude-3-5-sonnet-20241022",
 	"claude-3-5-sonnet-latest",
+	"claude-sonnet-4-5-20250929",
+	"claude-sonnet-4-6",
+	"claude-opus-4-5-20251101",
+	"claude-opus-4-6",
+	"claude-opus-4-7",
+	"claude-haiku-4-5-20251001",
 }

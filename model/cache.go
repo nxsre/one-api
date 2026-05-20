@@ -53,6 +53,31 @@ func CacheGetTokenByKey(key string) (*Token, error) {
 	return &token, err
 }
 
+// CacheInvalidateTokenByKey 删除 Redis 中的令牌缓存；更新/删除令牌后必须调用，否则鉴权仍用旧 models 等字段。
+func CacheInvalidateTokenByKey(key string) {
+	if !common.RedisEnabled {
+		return
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	if err := common.RedisDel(fmt.Sprintf("token:%s", key)); err != nil {
+		logger.SysError("Redis del token cache error: " + err.Error())
+	}
+}
+
+func CacheInvalidateTokenById(id int) {
+	if id <= 0 || !common.RedisEnabled {
+		return
+	}
+	token, err := GetTokenById(id)
+	if err != nil {
+		return
+	}
+	CacheInvalidateTokenByKey(token.Key)
+}
+
 func CacheGetUserGroup(id int) (group string, err error) {
 	if !common.RedisEnabled {
 		return GetUserGroup(id)
@@ -186,6 +211,9 @@ func InitChannelCache() {
 		newGroup2model2channels[group] = make(map[string][]*Channel)
 	}
 	for _, channel := range channels {
+		if channel.TenantID != nil {
+			continue
+		}
 		groups := strings.Split(channel.Group, ",")
 		for _, group := range groups {
 			models := strings.Split(channel.Models, ",")
@@ -223,9 +251,9 @@ func SyncChannelCache(frequency int) {
 }
 
 // LoadSortedChannelsForGroupModel 加载排序后的候选渠道列表（供路由层加权/一致性哈希/熔断过滤）。
-func LoadSortedChannelsForGroupModel(group, model string) ([]*Channel, error) {
-	if !config.MemoryCacheEnabled {
-		channels, err := QueryEnabledChannelsForGroupModel(group, model)
+func LoadSortedChannelsForGroupModel(group, model string, userTenantID int) ([]*Channel, error) {
+	if !config.MemoryCacheEnabled || userTenantID != 0 {
+		channels, err := QueryEnabledChannelsForGroupModel(group, model, userTenantID)
 		if err != nil {
 			return nil, err
 		}

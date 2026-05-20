@@ -10,6 +10,7 @@ import (
 	"github.com/go-redis/redis/v8"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/metrics"
 )
 
 type circuitState struct {
@@ -94,6 +95,9 @@ func RecordCircuitSuccess(channelID int) {
 
 // RecordCircuitFailure 累计失败并可能在达到阈值时打开熔断。
 func RecordCircuitFailure(channelID int) {
+	if channelID > 0 {
+		metrics.CircuitFailureTotal.WithLabelValues(fmt.Sprintf("%d", channelID)).Inc()
+	}
 	if !common.RedisEnabled || common.RDB == nil {
 		return
 	}

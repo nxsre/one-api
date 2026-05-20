@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
-	"net/http"
+	"time"
 )
 
 type request struct {
@@ -36,7 +37,8 @@ func SendMessage(title string, description string, content string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post(config.MessagePusherAddress,
+	resp, err := client.NewOutboundHTTPClient(30 * time.Second).Post(
+		config.MessagePusherAddress,
 		"application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err

@@ -33,6 +33,8 @@ type Token struct {
 	UnlimitedQuota bool    `json:"unlimited_quota" gorm:"default:false"`
 	UsedQuota      int64   `json:"used_quota" gorm:"bigint;default:0"` // used quota
 	Models         *string `json:"models" gorm:"type:text"`            // allowed models
+	// Group 非空时中继按该分组选路，覆盖用户默认分组（仍须与渠道 abilities 中的分组匹配）。
+	Group          *string `json:"group" gorm:"size:64;column:token_group"`
 	Subnet         *string `json:"subnet" gorm:"default:''"`           // allowed subnet
 }
 
@@ -132,18 +134,28 @@ func (t *Token) Insert() error {
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (t *Token) Update() error {
 	var err error
-	err = DB.Model(t).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "models", "subnet").Updates(t).Error
+	err = DB.Model(t).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "models", "subnet", "token_group").Updates(t).Error
+	if err == nil {
+		CacheInvalidateTokenByKey(t.Key)
+	}
 	return err
 }
 
 func (t *Token) SelectUpdate() error {
 	// This can update zero values
-	return DB.Model(t).Select("accessed_time", "status").Updates(t).Error
+	err := DB.Model(t).Select("accessed_time", "status").Updates(t).Error
+	if err == nil {
+		CacheInvalidateTokenByKey(t.Key)
+	}
+	return err
 }
 
 func (t *Token) Delete() error {
 	var err error
 	err = DB.Delete(t).Error
+	if err == nil {
+		CacheInvalidateTokenByKey(t.Key)
+	}
 	return err
 }
 
@@ -189,6 +201,9 @@ func increaseTokenQuota(id int, quota int64) (err error) {
 			"accessed_time": helper.GetTimestamp(),
 		},
 	).Error
+	if err == nil {
+		CacheInvalidateTokenById(id)
+	}
 	return err
 }
 
@@ -211,6 +226,9 @@ func decreaseTokenQuota(id int, quota int64) (err error) {
 			"accessed_time": helper.GetTimestamp(),
 		},
 	).Error
+	if err == nil {
+		CacheInvalidateTokenById(id)
+	}
 	return err
 }
 

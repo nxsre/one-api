@@ -21,7 +21,7 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.AIProxyLibrary
 	case Tencent:
 		apiType = apitype.Tencent
-	case Gemini:
+	case Gemini, GeminiNativeCompatible:
 		apiType = apitype.Gemini
 	case Ollama:
 		apiType = apitype.Ollama

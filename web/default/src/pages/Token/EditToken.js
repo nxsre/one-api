@@ -10,9 +10,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   API,
   copy,
+  buildTokenModelOptionsFromDetail,
+  distinctChannelsFromModelDetailItems,
   showError,
   showSuccess,
   timestamp2string,
+  noAutofillDropdownProps,
+  noAutofillFormProps,
+  noAutofillTextProps,
 } from '../../helpers';
 import { renderQuotaWithPrompt } from '../../helpers/render';
 import SettingMonacoField from '../../components/SettingMonacoField';
@@ -28,6 +33,8 @@ const EditToken = () => {
   const isEdit = tokenId !== undefined;
   const [loading, setLoading] = useState(isEdit);
   const [modelOptions, setModelOptions] = useState([]);
+  const [modelDetailItems, setModelDetailItems] = useState([]);
+  const [bulkChannelIds, setBulkChannelIds] = useState([]);
   const originInputs = {
     name: '',
     remain_quota: isEdit ? 0 : 500000,
@@ -67,23 +74,41 @@ const EditToken = () => {
     setInputs({ ...inputs, unlimited_quota: !unlimited_quota });
   };
 
-  const loadToken = async () => {
+  const loadPage = async () => {
+    setLoading(isEdit);
     try {
-      let res = await API.get(`/api/token/${tokenId}`);
-      const { success, message, data } = res.data || {};
-      if (success && data) {
-        if (data.expired_time !== -1) {
-          data.expired_time = timestamp2string(data.expired_time);
-        }
-        if (data.models === '') {
-          data.models = [];
+      const detailReq = API.get(`/api/user/available_models_detail`);
+      let parsedModels = [];
+      if (isEdit) {
+        const tr = await API.get(`/api/token/${tokenId}`);
+        const trBody = tr.data || {};
+        if (trBody.success && trBody.data) {
+          const data = { ...trBody.data };
+          if (data.expired_time !== -1) {
+            data.expired_time = timestamp2string(data.expired_time);
+          }
+          if (data.models === '' || data.models == null) {
+            data.models = [];
+          } else if (typeof data.models === 'string') {
+            data.models = data.models.split(',').map((s) => s.trim()).filter(Boolean);
+          }
+          parsedModels = Array.isArray(data.models) ? data.models : [];
+          setInputs(data);
+          setInputBaseline(buildTokenBaseline(data));
         } else {
-          data.models = data.models.split(',');
+          showError(trBody.message || 'Failed to load token');
         }
-        setInputs(data);
-        setInputBaseline(buildTokenBaseline(data));
+      }
+      const dr = await detailReq;
+      const dBody = dr.data || {};
+      const items = Array.isArray(dBody.data?.items) ? dBody.data.items : [];
+      if (dBody.success) {
+        setModelDetailItems(items);
+        setModelOptions(
+          buildTokenModelOptionsFromDetail(items, parsedModels, t)
+        );
       } else {
-        showError(message || 'Failed to load token');
+        showError(dBody.message || 'Failed to load models');
       }
     } catch (error) {
       showError(error.message || 'Network error');
@@ -91,38 +116,13 @@ const EditToken = () => {
     setLoading(false);
   };
 
-  const loadAvailableModels = async () => {
-    try {
-      let res = await API.get(`/api/user/available_models`);
-      const { success, message, data } = res.data || {};
-      if (success && data) {
-        let options = data.map((model) => {
-          return {
-            key: model,
-            text: model,
-            value: model,
-          };
-        });
-        setModelOptions(options);
-      } else {
-        showError(message || 'Failed to load models');
-      }
-    } catch (error) {
-      showError(error.message || 'Network error');
-    }
-  };
-
   useEffect(() => {
-    if (isEdit) {
-      loadToken().catch((error) => {
-        showError(error.message || 'Failed to load token');
-        setLoading(false);
-      });
-    }
-    loadAvailableModels().catch((error) => {
-      showError(error.message || 'Failed to load models');
+    loadPage().catch((error) => {
+      showError(error.message || 'Failed to load page');
+      setLoading(false);
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenId]);
 
   const submit = async () => {
     if (!isEdit && inputs.name === '') return;
@@ -154,6 +154,7 @@ const EditToken = () => {
         showSuccess(t('token.edit.messages.create_success'));
         setInputs(originInputs);
         setInputBaseline(buildTokenBaseline(originInputs));
+        setBulkChannelIds([]);
       }
     } else {
       showError(message);
@@ -167,7 +168,7 @@ const EditToken = () => {
           <Card.Header className='header'>
             {isEdit ? t('token.edit.title_edit') : t('token.edit.title_create')}
           </Card.Header>
-          <Form loading={loading} autoComplete='off'>
+          <Form loading={loading} {...noAutofillFormProps}>
             <Form.Field>
               <Form.Input
                 label={t('token.edit.name')}
@@ -175,7 +176,7 @@ const EditToken = () => {
                 name='name'
                 value={name}
                 onChange={handleInputChange}
-                autoComplete='off'
+                {...noAutofillTextProps}
               />
             </Form.Field>
             <Form.Field>
@@ -192,9 +193,52 @@ const EditToken = () => {
                 selection
                 onChange={handleInputChange}
                 value={inputs.models}
-                autoComplete='new-password'
+                {...noAutofillDropdownProps}
                 options={modelOptions}
               />
+            </Form.Field>
+            <Form.Field>
+              <label>{t('token.edit.bulk_channels_label')}</label>
+              <div
+                style={{
+                  alignItems: 'flex-start',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
+                <Form.Dropdown
+                  placeholder={t('token.edit.bulk_channels_placeholder')}
+                  fluid
+                  multiple
+                  search
+                  selection
+                  clearable
+                  options={distinctChannelsFromModelDetailItems(modelDetailItems)}
+                  value={bulkChannelIds}
+                  onChange={(e, { value }) => setBulkChannelIds(value || [])}
+                  style={{ flex: '1 1 280px', minWidth: 200 }}
+                />
+                <Button
+                  type='button'
+                  disabled={!bulkChannelIds?.length}
+                  onClick={() => {
+                    const ids = new Set(bulkChannelIds || []);
+                    const next = new Set(inputs.models || []);
+                    for (const row of modelDetailItems) {
+                      if (ids.has(row.channel_id)) next.add(row.model);
+                    }
+                    setInputs((prev) => ({
+                      ...prev,
+                      models: Array.from(next).sort((a, b) =>
+                        String(a).localeCompare(String(b))
+                      ),
+                    }));
+                  }}
+                >
+                  {t('token.edit.bulk_channels_button')}
+                </Button>
+              </div>
             </Form.Field>
             <SettingMonacoField
               label={t('token.edit.ip_limit')}
@@ -213,7 +257,7 @@ const EditToken = () => {
                 placeholder={t('token.edit.expire_time_placeholder')}
                 onChange={handleInputChange}
                 value={expired_time}
-                autoComplete='new-password'
+                {...noAutofillTextProps}
                 type='datetime-local'
               />
             </Form.Field>
@@ -269,7 +313,7 @@ const EditToken = () => {
                 placeholder={t('token.edit.quota_placeholder')}
                 value={String(remain_quota ?? '')}
                 readOnly={unlimited_quota}
-                autoComplete='off'
+                {...noAutofillTextProps}
                 onChange={(e, { value: v }) => {
                   if (unlimited_quota) return;
                   const n = v.trim() === '' ? 0 : parseInt(v, 10);

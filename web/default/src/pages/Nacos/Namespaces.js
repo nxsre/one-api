@@ -243,6 +243,8 @@ const NacosNamespaces = () => {
                 <Table.Row>
                   <Table.HeaderCell>{t('nacos.ns_col_name')}</Table.HeaderCell>
                   <Table.HeaderCell>{t('nacos.ns_col_id')}</Table.HeaderCell>
+                  <Table.HeaderCell>{t('nacos.ns_col_tenant_id')}</Table.HeaderCell>
+                  <Table.HeaderCell>{t('nacos.ns_col_tenant_name')}</Table.HeaderCell>
                   <Table.HeaderCell>{t('nacos.ns_col_desc')}</Table.HeaderCell>
                   <Table.HeaderCell textAlign='center'>
                     {t('nacos.ns_col_config_count')}
@@ -265,6 +267,16 @@ const NacosNamespaces = () => {
                     </Table.Cell>
                     <Table.Cell>
                       <code style={{ fontSize: 12 }}>{ns.namespace || '(public)'}</code>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {ns.ownerTenantId != null && ns.ownerTenantId > 0 ? (
+                        <code style={{ fontSize: 12 }}>{ns.ownerTenantId}</code>
+                      ) : (
+                        '—'
+                      )}
+                    </Table.Cell>
+                    <Table.Cell title={ns.ownerTenantName || ''}>
+                      {ns.ownerTenantName || '—'}
                     </Table.Cell>
                     <Table.Cell
                       style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}
@@ -422,6 +434,18 @@ const NacosNamespaces = () => {
                   <Table.Cell>
                     <code>{detailData.namespace || '(public)'}</code>
                   </Table.Cell>
+                </Table.Row>
+                <Table.Row>
+                  <Table.Cell><strong>{t('nacos.ns_col_tenant_id')}</strong></Table.Cell>
+                  <Table.Cell>
+                    {detailData.ownerTenantId != null && detailData.ownerTenantId > 0
+                      ? detailData.ownerTenantId
+                      : '—'}
+                  </Table.Cell>
+                </Table.Row>
+                <Table.Row>
+                  <Table.Cell><strong>{t('nacos.ns_col_tenant_name')}</strong></Table.Cell>
+                  <Table.Cell>{detailData.ownerTenantName || '—'}</Table.Cell>
                 </Table.Row>
                 <Table.Row>
                   <Table.Cell><strong>{t('nacos.ns_config_quota_label')}</strong></Table.Cell>

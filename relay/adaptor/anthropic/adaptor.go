@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/relay/adaptor"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
@@ -38,6 +39,16 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *me
 	// claude-3-5-sonnet can support 8k context
 	if strings.HasPrefix(meta.ActualModelName, "claude-3-5-sonnet") {
 		req.Header.Set("anthropic-beta", "max-tokens-3-5-sonnet-2024-07-15")
+	}
+	if v, ok := c.Get(ctxkey.AnthropicModelVariant); ok {
+		if beta := BetaForClientVariant(v.(string)); beta != "" {
+			cur := strings.TrimSpace(req.Header.Get("anthropic-beta"))
+			if cur == "" {
+				req.Header.Set("anthropic-beta", beta)
+			} else if !strings.Contains(cur, beta) {
+				req.Header.Set("anthropic-beta", cur+","+beta)
+			}
+		}
 	}
 
 	return nil

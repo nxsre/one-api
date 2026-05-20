@@ -44,16 +44,29 @@ function rowsToMappingJson(rows) {
   return JSON.stringify(o, null, 2);
 }
 
-/** @param {{ value: string, onChange: (v: string) => void, exampleHint?: string }} props */
+/** @param {{ value: string, onChange: (v: string) => void, exampleHint?: string, upstreamModelOptions?: string[] }} props */
 export default function ChannelModelMappingEditor({
   value,
   onChange,
   exampleHint,
+  upstreamModelOptions = [],
 }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState(() => parseMappingToRows(value));
   const [jsonRaw, setJsonRaw] = useState('');
   const [jsonMode, setJsonMode] = useState(false);
+
+  const upstreamOptions = React.useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    (upstreamModelOptions || []).forEach((id) => {
+      const s = String(id || '').trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      out.push({ key: s, value: s, text: s });
+    });
+    return out;
+  }, [upstreamModelOptions]);
 
   useEffect(() => {
     setRows(parseMappingToRows(value));
@@ -144,14 +157,39 @@ export default function ChannelModelMappingEditor({
                     />
                   </Table.Cell>
                   <Table.Cell>
-                    <Form.Input
-                      fluid
-                      placeholder={t(
-                        'channel.edit.model_mapping_ph_upstream'
-                      )}
-                      value={r.to}
-                      onChange={(e, { value: v }) => updateRow(i, 'to', v)}
-                    />
+                    {upstreamOptions.length > 0 ? (
+                      <Form.Dropdown
+                        fluid
+                        search
+                        selection
+                        allowAdditions
+                        selectOnBlur={false}
+                        options={(() => {
+                          const current = String(r.to || '').trim();
+                          if (!current || upstreamOptions.some((o) => o.value === current)) {
+                            return upstreamOptions;
+                          }
+                          return [
+                            { key: `custom-${current}`, value: current, text: current },
+                            ...upstreamOptions,
+                          ];
+                        })()}
+                        value={r.to}
+                        placeholder={t(
+                          'channel.edit.model_mapping_ph_upstream'
+                        )}
+                        onChange={(_, { value: v }) => updateRow(i, 'to', v || '')}
+                      />
+                    ) : (
+                      <Form.Input
+                        fluid
+                        placeholder={t(
+                          'channel.edit.model_mapping_ph_upstream'
+                        )}
+                        value={r.to}
+                        onChange={(e, { value: v }) => updateRow(i, 'to', v)}
+                      />
+                    )}
                   </Table.Cell>
                   <Table.Cell>
                     <Button

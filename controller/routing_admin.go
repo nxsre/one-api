@@ -86,7 +86,7 @@ func GetRoutingChannelPreview(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "group 与 model 必填"})
 		return
 	}
-	chs, err := dbmodel.LoadSortedChannelsForGroupModel(group, modelName)
+	chs, err := dbmodel.LoadSortedChannelsForGroupModel(group, modelName, 0)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return

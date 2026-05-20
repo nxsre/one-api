@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Form, Card } from 'semantic-ui-react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { API, showError, showSuccess } from '../../helpers';
+import { API, showError, showSuccess, noAutofillFormProps, noAutofillPasswordProps, noAutofillTextProps, noAutofillDropdownProps, useNoAutofillUnlock } from '../../helpers';
 import { renderQuotaWithPrompt } from '../../helpers/render';
 
 function consumeSafeInternalRedirect(searchParams) {
@@ -33,6 +33,7 @@ const EditUser = () => {
     email: '',
     quota: 0,
     group: 'default',
+    role: 1,
   });
   const [groupOptions, setGroupOptions] = useState([]);
   const {
@@ -43,8 +44,10 @@ const EditUser = () => {
     wechat_id,
     email,
     quota,
+    role,
   } = inputs;
 
+  const autofillUnlock = useNoAutofillUnlock();
   const handleInputChange = (e, { name, value }) => {
     if (name === 'quota') {
       const trimmed = String(value).trim();
@@ -129,7 +132,7 @@ const EditUser = () => {
       <Card fluid className='chart-card'>
         <Card.Content>
           <Card.Header className='header'>{t('user.edit.title')}</Card.Header>
-          <Form loading={loading} autoComplete='new-password'>
+          <Form loading={loading} {...noAutofillFormProps}>
             <Form.Field>
               <Form.Input
                 label={t('user.edit.username')}
@@ -137,7 +140,8 @@ const EditUser = () => {
                 placeholder={t('user.edit.username_placeholder')}
                 onChange={handleInputChange}
                 value={username}
-                autoComplete='username'
+                {...noAutofillTextProps}
+                {...autofillUnlock}
               />
             </Form.Field>
             <Form.Field>
@@ -148,7 +152,8 @@ const EditUser = () => {
                 placeholder={t('user.edit.password_placeholder')}
                 onChange={handleInputChange}
                 value={password}
-                autoComplete='new-password'
+                {...noAutofillPasswordProps}
+                {...autofillUnlock}
               />
             </Form.Field>
             <Form.Field>
@@ -158,7 +163,7 @@ const EditUser = () => {
                 placeholder={t('user.edit.display_name_placeholder')}
                 onChange={handleInputChange}
                 value={display_name}
-                autoComplete='off'
+                {...noAutofillTextProps}
               />
             </Form.Field>
             {userId && (
@@ -175,8 +180,26 @@ const EditUser = () => {
                     additionLabel={t('user.edit.group_addition')}
                     onChange={handleInputChange}
                     value={inputs.group}
-                    autoComplete='new-password'
+                    {...noAutofillDropdownProps}
                     options={groupOptions}
+                  />
+                </Form.Field>
+                <Form.Field>
+                  <Form.Dropdown
+                    label={t('user.table.role_text', '角色')}
+                    placeholder={t('user.table.filter_role', '筛选角色')}
+                    name='role'
+                    fluid
+                    selection
+                    onChange={handleInputChange}
+                    value={inputs.role}
+                    options={[
+                      { key: 1, text: t('user.table.role_types.normal', '普通用户'), value: 1 },
+                      { key: 10, text: t('user.table.role_types.admin', '管理员'), value: 10 },
+                      { key: 20, text: t('user.table.role_types.tenant_admin', '租户管理员'), value: 20 },
+                      { key: 50, text: t('user.table.role_types.super_admin', '超级管理员'), value: 50 },
+                      { key: 100, text: t('user.table.role_types.root', '系统管理员'), value: 100 },
+                    ]}
                   />
                 </Form.Field>
                 <Form.Field>
@@ -195,7 +218,7 @@ const EditUser = () => {
                         ? ''
                         : String(inputs.quota)
                     }
-                    autoComplete='off'
+                    {...noAutofillTextProps}
                   />
                 </Form.Field>
               </>

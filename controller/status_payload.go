@@ -48,7 +48,7 @@ func buildPublicStatusData() gin.H {
 		"oidc":               config.OidcEnabled,
 		"oidc_client_id":     config.OidcClientId,
 		"oidc_authorization_endpoint": config.OidcAuthorizationEndpoint,
-		"login_math_captcha":          common.LoginMathCaptchaEnabled && !config.TurnstileCheckEnabled && config.PasswordLoginEnabled,
+		"login_math_captcha":          common.LoginMathCaptchaEnabled && config.LoginCaptchaEnabled && !config.TurnstileCheckEnabled && config.PasswordLoginEnabled,
 		"secure_password_login":       config.SecurePasswordLoginEnabled,
 	}
 }
@@ -58,6 +58,7 @@ func buildAuthenticatedStatusData() gin.H {
 	config.OptionMapRWMutex.RLock()
 	outboundURLWhitelistEnabled := config.OptionMap["OutboundURLWhitelistEnabled"] == "true"
 	config.OptionMapRWMutex.RUnlock()
+	outboundSSRFSProtectionEnabled := common.IsOutboundSSRFSProtectionEnabled()
 
 	data := buildPublicStatusData()
 	data["status_scope"] = "authenticated"
@@ -74,6 +75,7 @@ func buildAuthenticatedStatusData() gin.H {
 	data["secure_step_up_verify"] = true
 	data["global_access_mode"] = model.GetGlobalAccessMode()
 	data["outbound_url_whitelist_enabled"] = outboundURLWhitelistEnabled
+	data["outbound_ssrf_protection_enabled"] = outboundSSRFSProtectionEnabled
 	data["nacos_enabled"] = config.IsNacosEnabled()
 	return data
 }

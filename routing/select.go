@@ -16,6 +16,10 @@ type SelectOpts struct {
 	RequestModel        string
 	ExcludeChannelIDs   map[int]struct{}
 	SkipCircuitDisabled bool
+	// UserTenantID 令牌所属用户的租户；0 表示平台用户。非 0 时选路包含本租户渠道与同分组平台渠道。
+	UserTenantID int
+	// AllowedChannelIDs 非 nil 时仅允许选用集合内的渠道（租户子账号白名单）。
+	AllowedChannelIDs map[int]struct{}
 }
 
 // PickChannel 在已按优先级降序排好的渠道列表中选择一台（尊重优先级分层与 ignoreFirstPriority 语义）。
@@ -76,6 +80,11 @@ func filterCandidates(in []*dbmodel.Channel, opts SelectOpts) []*dbmodel.Channel
 		}
 		if opts.SkipCircuitDisabled && IsCircuitOpen(ch.Id) {
 			continue
+		}
+		if opts.AllowedChannelIDs != nil {
+			if _, ok := opts.AllowedChannelIDs[ch.Id]; !ok {
+				continue
+			}
 		}
 		out = append(out, ch)
 	}

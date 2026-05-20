@@ -196,3 +196,79 @@
   min-width: 100%;
   max-width: min(42rem, calc(100vw - 2rem));
 }
+
+.routing-tab-pane {
+  padding-top: 0.25rem;
+}
+
+.routing-tab-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.routing-tab-toolbar__form {
+  flex: 1 1 280px;
+  margin: 0 !important;
+}
+
+.routing-tab-toolbar .ui.button {
+  margin: 0 !important;
+}
+
+.routing-chart-toolbar {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(34, 36, 38, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.routing-chart-filters {
+  margin: 0 0 10px !important;
+}
+
+.routing-chart-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.routing-chart-toolbar__checkbox.field {
+  margin: 0 !important;
+}
+
+.routing-chart-toolbar__hint {
+  margin: 10px 0 0;
+  font-size: 0.88rem;
+  color: rgba(0, 0, 0, 0.52);
+  line-height: 1.45;
+}
+
+.routing-chart-panel {
+  min-height: 360px;
+  padding: 8px 4px 4px;
+  border: 1px solid rgba(34, 36, 38, 0.1);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.routing-chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+  color: rgba(0, 0, 0, 0.45);
+  text-align: center;
+  gap: 12px;
+}
+
+.routing-chart-empty p {
+  margin: 0;
+  font-size: 0.95rem;
+}

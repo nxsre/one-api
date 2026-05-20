@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/render"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/meta"
@@ -47,7 +48,7 @@ func ChatHandler(c *gin.Context, resp *http.Response) (
 			}
 
 			taskReq.Header.Set("Authorization", "Bearer "+meta.GetByContext(c).APIKey)
-			taskResp, err := http.DefaultClient.Do(taskReq)
+			taskResp, err := client.HTTPClient.Do(taskReq)
 			if err != nil {
 				return errors.Wrap(err, "get task")
 			}
@@ -124,7 +125,7 @@ func chatStreamHandler(c *gin.Context, streamUrl string) (responseText string, e
 	streamReq.Header.Set("Accept", "text/event-stream")
 	streamReq.Header.Set("Cache-Control", "no-store")
 
-	resp, err := http.DefaultClient.Do(streamReq)
+	resp, err := client.HTTPClient.Do(streamReq)
 	if err != nil {
 		return "", errors.Wrap(err, "do request to stream")
 	}

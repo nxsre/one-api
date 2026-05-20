@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Form, Card } from 'semantic-ui-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { API, downloadTextAsFile, showError, showSuccess } from '../../helpers';
+import { API, downloadTextAsFile, showError, showSuccess, noAutofillFormProps } from '../../helpers';
 import { renderQuotaWithPrompt } from '../../helpers/render';
 import SettingMonacoField from '../../components/SettingMonacoField';
 
@@ -97,7 +97,7 @@ const EditRedemption = () => {
           <Card.Header className='header'>
             {isEdit ? t('redemption.edit.title_edit') : t('redemption.edit.title_create')}
           </Card.Header>
-          <Form loading={loading} autoComplete='new-password'>
+          <Form loading={loading} {...noAutofillFormProps}>
             <SettingMonacoField
               label={t('redemption.edit.name')}
               hint={t('redemption.edit.name_placeholder')}

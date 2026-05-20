@@ -67,11 +67,32 @@
   min-width: 0;
 }
 
+.channel-edit-model-test-block {
+  margin: 0.35rem 0 1rem;
+}
+
+.channel-edit-model-test-summary {
+  margin: 0 0 0.5rem;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.channel-edit-model-test-progress {
+  margin: 0 !important;
+}
+
+.channel-edit-model-test-progress .bar {
+  min-width: 0;
+}
+
 .channel-edit-models-toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  margin-top: 0.25rem;
   margin-bottom: 0.75rem;
 }
 
@@ -125,20 +146,6 @@
   background-color: #fbbd08 !important;
   border-color: #fbbd08 !important;
   color: #1b1c1d !important;
-}
-
-.channel-edit-model-test-summary {
-  margin: 0.35rem 0 0.75rem;
-  color: rgba(0, 0, 0, 0.65);
-  font-size: 0.9rem;
-}
-
-.channel-edit-model-test-progress {
-  margin: 0.5rem 0 0.85rem !important;
-}
-
-.channel-edit-model-test-progress .bar {
-  min-width: 0;
 }
 
 /* Base URL 与密钥同一行（窄屏自动折行） */

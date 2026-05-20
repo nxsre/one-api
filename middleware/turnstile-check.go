@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	"net/http"
+	"time"
 	"net/url"
 )
 
@@ -32,7 +34,7 @@ func TurnstileCheck() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			rawRes, err := http.PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", url.Values{
+			rawRes, err := client.NewOutboundHTTPClient(15*time.Second).PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", url.Values{
 				"secret":   {config.TurnstileSecretKey},
 				"response": {response},
 				"remoteip": {c.ClientIP()},

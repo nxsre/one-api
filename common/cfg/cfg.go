@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -94,6 +95,16 @@ func setDefaults(v *viper.Viper) {
 	d("tls_key_file", "")
 	d("https_port", "3443")
 
+	d("acme_enabled", false)
+	d("acme_email", "")
+	d("acme_domains", "")
+	d("acme_ips", "")
+	d("acme_storage_dir", "data/acme")
+	d("acme_use_staging", false)
+	d("acme_http_port", 80)
+	d("acme_profile", "")
+	d("acme_disable_http_challenge", false)
+
 	d("force_2fa_for_all_users", false)
 	d("login_math_captcha_enabled", true)
 	d("login_brute_trust_x_forwarded_for", false)
@@ -116,6 +127,12 @@ func setDefaults(v *viper.Viper) {
 	d("nacos_cs_encryption_key", "")
 	d("nacos_cs_encryption_key_previous", "")
 	d("nacos_cs_client_get_return_ciphertext", false)
+
+	// 嵌入 Nacos 控制台「集群节点」：由 one-api 主实例上报心跳，超时由清扫任务标为 DOWN。
+	d("nacos_console_cluster_advertise_addr", "")
+	d("nacos_console_cluster_heartbeat_interval", 15)
+	d("nacos_console_cluster_stale_ttl_sec", 90)
+	d("nacos_console_cluster_stale_sweep_interval", 60)
 
 	d("request_audit_enabled", true)
 	d("request_audit_log_dir", "")
@@ -196,4 +213,30 @@ func EnsureLogDir() error {
 		}
 	}
 	return nil
+}
+
+// Nacos console cluster 心跳与节点维护相关配置读取。
+func GetNacosConsoleClusterAdvertiseAddr() string {
+	return strings.TrimSpace(V.GetString("nacos_console_cluster_advertise_addr"))
+}
+
+func GetNacosConsoleClusterHeartbeatInterval() int {
+	if v := V.GetInt("nacos_console_cluster_heartbeat_interval"); v > 0 {
+		return v
+	}
+	return 15
+}
+
+func GetNacosConsoleClusterStaleTTL() int {
+	if v := V.GetInt("nacos_console_cluster_stale_ttl_sec"); v > 0 {
+		return v
+	}
+	return 90
+}
+
+func GetNacosConsoleClusterStaleSweepInterval() int {
+	if v := V.GetInt("nacos_console_cluster_stale_sweep_interval"); v > 0 {
+		return v
+	}
+	return 60
 }

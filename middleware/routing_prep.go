@@ -8,17 +8,27 @@ import (
 
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/model"
+	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
 	"github.com/songquanpeng/one-api/routing"
 )
 
 // RoutingPrep 全局别名解析、模型维度限速、一致性哈希钉扎键。
 func RoutingPrep() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		userId := c.GetInt(ctxkey.Id)
+		userGroup, _ := model.CacheGetUserGroup(userId)
+		if g := strings.TrimSpace(c.GetString(ctxkey.TokenBoundGroup)); g != "" {
+			userGroup = g
+		}
+		c.Set(ctxkey.Group, userGroup)
+
 		raw := strings.TrimSpace(c.GetString(ctxkey.RequestModel))
 		if raw != "" {
 			c.Set(ctxkey.LogicalModel, raw)
-			userGroup, _ := model.CacheGetUserGroup(c.GetInt(ctxkey.Id))
-			c.Set(ctxkey.Group, userGroup)
+			if base, variant := anthropic.SplitClientModelVariant(raw); variant != "" {
+				c.Set(ctxkey.AnthropicModelVariant, variant)
+				raw = base
+			}
 			resolved, err := routing.ResolveModelAliasesForGroup(userGroup, raw)
 			if err != nil {
 				abortWithMessage(c, 400, err.Error())

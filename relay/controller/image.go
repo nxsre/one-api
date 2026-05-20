@@ -196,8 +196,16 @@ func RelayImageHelper(c *gin.Context, relayMode int) (bizErr *relaymodel.ErrorWi
 		requestBody = bytes.NewBuffer(jsonStr)
 	}
 
-	modelRatio := billingratio.GetModelRatio(imageModel, meta.ChannelType)
-	groupRatio := billingratio.GetGroupRatio(meta.Group)
+	modelRatio := billingratio.GetModelRatio(meta.OriginModelName, imageModel, meta.ChannelType)
+	userGroup := meta.UserGroup
+	if userGroup == "" {
+		userGroup = meta.Group
+	}
+	usingGroup := meta.UsingGroup
+	if usingGroup == "" {
+		usingGroup = meta.Group
+	}
+	groupRatio := billingratio.GetEffectiveGroupRatio(userGroup, usingGroup)
 	ratio := modelRatio * groupRatio
 	userQuota, _ := model.CacheGetUserQuota(ctx, meta.UserId)
 
@@ -252,7 +260,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) (bizErr *relaymodel.ErrorWi
 				TokenName:        tokenName,
 				Quota:            int(quota),
 				Content:          logContent,
-				Other:            requestaudit.UpstreamHeadersJSONForLog(c),
+				Other:            requestaudit.ConsumeLogOtherJSON(c),
 				ElapsedTime:      helper.CalcElapsedTime(meta.StartTime),
 			})
 			model.UpdateUserUsedQuotaAndRequestCount(meta.UserId, quota)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/common/requestaudit"
@@ -84,8 +85,7 @@ func asyncTask(taskID string, key string) (*TaskResponse, error, []byte) {
 
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
 		logger.SysError("aliAsyncTask client.Do err: " + err.Error())
 		return &aliResponse, err, nil
@@ -176,7 +176,7 @@ func responseAli2OpenAIImage(response *TaskResponse, responseFormat string) *ope
 }
 
 func getImageData(url string) ([]byte, error) {
-	response, err := http.Get(url)
+	response, err := client.UserContentRequestHTTPClient.Get(url)
 	if err != nil {
 		return nil, err
 	}

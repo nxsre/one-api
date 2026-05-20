@@ -26,16 +26,5 @@ func SeedNacosConsoleFacilityDefaults(db *gorm.DB) error {
 			return err
 		}
 	}
-	var n int64
-	if err := db.Model(&NacosConsoleClusterNode{}).Count(&n).Error; err != nil {
-		return err
-	}
-	if n == 0 {
-		if err := db.Create(&NacosConsoleClusterNode{
-			Address: "127.0.0.1:8848", Ip: "127.0.0.1", Port: 8848, State: "UP",
-		}).Error; err != nil {
-			return err
-		}
-	}
 	return nil
 }

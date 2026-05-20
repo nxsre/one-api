@@ -1,0 +1,74 @@
+.pricing-entry-block-panel {
+  border: 1px solid rgba(34, 36, 38, 0.12);
+  border-radius: 6px;
+  margin-bottom: 0.65rem;
+  background: #fff;
+}
+
+.pricing-entry-block-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: none;
+  background: #f8f9fa;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+}
+
+.pricing-entry-block-panel.is-expanded .pricing-entry-block-panel__header {
+  border-bottom: 1px solid rgba(34, 36, 38, 0.08);
+  border-radius: 6px 6px 0 0;
+}
+
+.pricing-entry-block-panel__header:hover {
+  background: #f1f3f5;
+}
+
+.pricing-entry-block-panel__title {
+  font-weight: 600;
+  flex: 1 1 auto;
+}
+
+.pricing-entry-block-panel__help {
+  flex: 0 0 auto;
+}
+
+.pricing-entry-block-panel__count {
+  margin: 0 !important;
+}
+
+.pricing-entry-block-panel__body {
+  padding: 0.65rem 0.85rem 0.85rem;
+}
+
+.pricing-entry-block-panel__body .pricing-entry-editor {
+  margin-bottom: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.pricing-entry-blocks-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+body.dark-theme .pricing-entry-block-panel {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-theme .pricing-entry-block-panel__header {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.dark-theme .pricing-entry-block-panel__header:hover {
+  background: rgba(255, 255, 255, 0.07);
+}

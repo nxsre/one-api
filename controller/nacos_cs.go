@@ -21,7 +21,7 @@ func NacosCsConfigListV3(c *gin.Context) {
 	data, err := service.NacosCsList(service.NormalizeNacosNamespaceID(c.Query("namespaceId")),
 		c.Query("dataId"), c.Query("groupName"), c.Query("search"), pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -69,17 +69,17 @@ func nacosCsConfigGetImpl(c *gin.Context, deliverCiphertext bool) {
 	dataID := c.Query("dataId")
 	group := c.Query("groupName")
 	if dataID == "" || group == "" {
-		nacosV3Err(c, 400, "dataId 与 groupName 必填")
+		nacosV3Err(c, 10000, "dataId 与 groupName 必填")
 		return
 	}
 	ns := service.NormalizeNacosNamespaceID(c.Query("namespaceId"))
 	item, err := service.NacosCsGetForClient(ns, dataID, group, deliverCiphertext)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "config 不存在")
+			nacosV3Err(c, 20004, "config 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, item)
@@ -91,12 +91,12 @@ func NacosCsConfigPublish(c *gin.Context) {
 	group := c.PostForm("groupName")
 	content := c.PostForm("content")
 	if dataID == "" || group == "" {
-		nacosV3Err(c, 400, "dataId 与 groupName 必填")
+		nacosV3Err(c, 10000, "dataId 与 groupName 必填")
 		return
 	}
 	ok, err := service.NacosCsPublish(service.NormalizeNacosNamespaceID(c.PostForm("namespaceId")), dataID, group, content, c.PostForm("type"))
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, ok)
@@ -109,16 +109,16 @@ func NacosCsConfigHistoryListV3(c *gin.Context) {
 	dataID := strings.TrimSpace(c.Query("dataId"))
 	group := strings.TrimSpace(c.Query("groupName"))
 	if dataID == "" || group == "" {
-		nacosV3Err(c, 400, "dataId 与 groupName 必填")
+		nacosV3Err(c, 10000, "dataId 与 groupName 必填")
 		return
 	}
 	data, err := service.NacosCsHistoryList(service.NormalizeNacosNamespaceID(c.Query("namespaceId")), dataID, group, pageNo, pageSize)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "config 不存在")
+			nacosV3Err(c, 20004, "config 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -134,15 +134,15 @@ type nacosCsRollbackV3Body struct {
 func NacosCsConfigRollbackV3(c *gin.Context) {
 	var body nacosCsRollbackV3Body
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if body.HistoryId <= 0 || strings.TrimSpace(body.DataID) == "" || strings.TrimSpace(body.GroupName) == "" {
-		nacosV3Err(c, 400, "dataId、groupName、historyId 必填")
+		nacosV3Err(c, 10000, "dataId、groupName、historyId 必填")
 		return
 	}
 	if err := service.NacosCsRollback(service.NormalizeNacosNamespaceID(c.Query("namespaceId")), body.DataID, body.GroupName, body.HistoryId, nil); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)

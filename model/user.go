@@ -22,8 +22,11 @@ import (
 const (
 	RoleGuestUser  = 0
 	RoleCommonUser = 1
-	RoleAdminUser  = 10
-	RoleRootUser   = 100
+	// RoleTenantAdmin 租户管理员：仅能使用租户控制台 API，管理本子账号与租户渠道；不可访问平台级 /api/channel 等。
+	RoleTenantAdmin = 20
+	RoleAdminUser   = 10
+	RoleSuperAdmin  = 50
+	RoleRootUser    = 100
 )
 
 const (
@@ -35,7 +38,7 @@ const (
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int     `json:"-" gorm:"primaryKey;autoIncrement"`
+	Id               int     `json:"-" gorm:"primaryKey"`
 	Uid              string  `json:"user_id" gorm:"column:uid;size:26" validate:"omitempty,len=26"`
 	Username         string  `json:"username" gorm:"unique;index" validate:"max=12"`
 	Password         string  `json:"password" gorm:"not null;" validate:"min=8,max=20"`
@@ -55,6 +58,14 @@ type User struct {
 	Group            string  `json:"group" gorm:"type:varchar(32);default:'default'"`
 	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	InviterId        int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	// TenantID 非空表示属于某租户（子账号或租户管理员）；平台管理员与 Root 应为 NULL。
+	TenantID *int `json:"tenant_id,omitempty" gorm:"column:tenant_id;index"`
+	// AllowedModels 租户子账号可用模型白名单；空表示不额外限制（仍受分组 abilities、令牌 models 约束）。
+	AllowedModels []string `json:"allowed_models,omitempty" gorm:"column:allowed_models;type:text;serializer:json"`
+	// AllowedChannelIDs 租户子账号可用渠道 ID 白名单；空表示不额外限制。
+	AllowedChannelIDs []int `json:"allowed_channel_ids,omitempty" gorm:"column:allowed_channel_ids;type:text;serializer:json"`
+	// TenantPermissions 租户内具体管理权限（例如：manage_users, manage_channels 等），授权普通子账号拥有租户控制台部分管理能力。
+	TenantPermissions []string `json:"tenant_permissions,omitempty" gorm:"column:tenant_permissions;type:text;serializer:json"`
 	S3Enabled        bool    `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
 	S3AccessKey      *string `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
 	S3SecretKey      *string `json:"-" gorm:"size:128;column:s3_secret_key"`
@@ -72,6 +83,7 @@ type UserListItem struct {
 	UsedQuota    int64  `json:"used_quota" gorm:"column:used_quota"`
 	RequestCount int    `json:"request_count" gorm:"column:request_count"`
 	Group        string `json:"group"`
+	TenantID     *int   `json:"tenant_id,omitempty" gorm:"column:tenant_id"`
 }
 
 // UserManageResult 用户管理操作（启用/禁用/升降级等）后的最小返回。
@@ -82,13 +94,78 @@ type UserManageResult struct {
 
 var userListSelectColumns = []string{
 	"uid", "username", "display_name", "role", "status", "email",
-	"quota", "used_quota", "request_count", "group",
+	"quota", "used_quota", "request_count", "group", "tenant_id",
 }
 
 func GetMaxUserId() int {
 	var user User
 	DB.Last(&user)
 	return user.Id
+}
+
+type UserQueryOptions struct {
+	Page     int
+	PageSize int
+	Order    string
+	Scope    string // "independent", "tenant", "all"
+	TenantID *int
+	Roles    []int
+	Status   *int
+	Keyword  string
+}
+
+func ListUsersPaged(opts UserQueryOptions) (items []UserListItem, total int64, err error) {
+	q := DB.Model(&User{}).Where("status != ?", UserStatusDeleted)
+
+	if opts.Scope == "independent" {
+		q = q.Where("tenant_id IS NULL")
+	} else if opts.Scope == "tenant" {
+		if opts.TenantID != nil {
+			q = q.Where("tenant_id = ?", *opts.TenantID)
+		} else {
+			q = q.Where("tenant_id IS NOT NULL")
+		}
+	}
+
+	if len(opts.Roles) > 0 {
+		q = q.Where("role IN ?", opts.Roles)
+	}
+	if opts.Status != nil {
+		q = q.Where("status = ?", *opts.Status)
+	}
+
+	kw := strings.TrimSpace(opts.Keyword)
+	if kw != "" {
+		pattern := kw + "%"
+		if _, perr := ulid.Parse(kw); perr == nil {
+			q = q.Where("(uid = ? OR username LIKE ? OR email LIKE ? OR display_name LIKE ?)", kw, pattern, pattern, pattern)
+		} else {
+			q = q.Where("(username LIKE ? OR email LIKE ? OR display_name LIKE ?)", pattern, pattern, pattern)
+		}
+	}
+
+	err = q.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	switch opts.Order {
+	case "quota":
+		q = q.Order("quota desc")
+	case "used_quota":
+		q = q.Order("used_quota desc")
+	case "request_count":
+		q = q.Order("request_count desc")
+	default:
+		q = q.Order("id desc")
+	}
+
+	if opts.PageSize > 0 {
+		q = q.Limit(opts.PageSize).Offset(opts.Page * opts.PageSize)
+	}
+
+	err = q.Select(userListSelectColumns).Find(&items).Error
+	return items, total, err
 }
 
 func GetAllUsers(startIdx int, num int, order string) (users []UserListItem, err error) {
@@ -110,6 +187,56 @@ func GetAllUsers(startIdx int, num int, order string) (users []UserListItem, err
 	}
 
 	err = query.Find(&users).Error
+	return users, err
+}
+
+// GetTenantSubUsers 租户控制台：本子账号列表（普通用户角色）。
+func GetTenantSubUsers(tenantID int, startIdx, num int, order string) (users []UserListItem, err error) {
+	if tenantID <= 0 {
+		return nil, errors.New("tenant id 无效")
+	}
+	query := DB.Model(&User{}).
+		Select(userListSelectColumns).
+		Limit(num).
+		Offset(startIdx).
+		Where("status != ?", UserStatusDeleted).
+		Where("tenant_id = ?", tenantID).
+		Where("(role = ? OR role = ?)", RoleCommonUser, RoleTenantAdmin)
+	switch order {
+	case "quota":
+		query = query.Order("quota desc")
+	case "used_quota":
+		query = query.Order("used_quota desc")
+	case "request_count":
+		query = query.Order("request_count desc")
+	default:
+		query = query.Order("id desc")
+	}
+	err = query.Find(&users).Error
+	return users, err
+}
+
+// SearchTenantSubUsers 在租户内搜索子账号（keyword 为空返回空列表）。
+func SearchTenantSubUsers(tenantID int, keyword string) (users []UserListItem, err error) {
+	if tenantID <= 0 {
+		return nil, errors.New("tenant id 无效")
+	}
+	kw := strings.TrimSpace(keyword)
+	if kw == "" {
+		return []UserListItem{}, nil
+	}
+	pattern := kw + "%"
+	q := DB.Model(&User{}).Select(userListSelectColumns).
+		Where("status != ?", UserStatusDeleted).
+		Where("tenant_id = ?", tenantID).
+		Where("(role = ? OR role = ?)", RoleCommonUser, RoleTenantAdmin)
+	if _, perr := ulid.Parse(kw); perr == nil {
+		err = q.Where("uid = ? OR username LIKE ? OR email LIKE ? OR display_name LIKE ?",
+			kw, pattern, pattern, pattern).Find(&users).Error
+		return users, err
+	}
+	err = q.Where("username LIKE ? OR email LIKE ? OR display_name LIKE ?",
+		pattern, pattern, pattern).Find(&users).Error
 	return users, err
 }
 
@@ -158,6 +285,13 @@ func DeleteUserById(id int) (err error) {
 	}
 	user := User{Id: id}
 	return user.Delete()
+}
+
+func (user *User) BeforeCreate(tx *gorm.DB) (err error) {
+	if user.Id == 0 {
+		user.Id = common.GetNextId()
+	}
+	return nil
 }
 
 func (user *User) Insert(ctx context.Context, inviterId int) error {
@@ -238,6 +372,24 @@ func (user *User) Delete() error {
 	return err
 }
 
+// LoginCredentialFailureReason 登录校验失败原因（用于服务端审计日志，客户端仍统一提示模糊文案）。
+type LoginCredentialFailureReason string
+
+const (
+	LoginFailUserNotFound LoginCredentialFailureReason = "user_not_found"
+	LoginFailBadPassword  LoginCredentialFailureReason = "bad_password"
+	LoginFailDisabled     LoginCredentialFailureReason = "account_disabled"
+)
+
+// LoginCredentialError 凭证校验失败（用户名/邮箱不存在、密码错误或账号未启用）。
+type LoginCredentialError struct {
+	Reason LoginCredentialFailureReason
+}
+
+func (e *LoginCredentialError) Error() string {
+	return "用户名或密码错误，或用户已被封禁"
+}
+
 // ValidateAndFill check password & user status
 func (user *User) ValidateAndFill() (err error) {
 	// When querying with struct, GORM will only query with non-zero fields,
@@ -253,12 +405,15 @@ func (user *User) ValidateAndFill() (err error) {
 		// consider this case: a malicious user set his username as other's email
 		err := DB.Where("email = ?", user.Username).First(user).Error
 		if err != nil {
-			return errors.New("用户名或密码错误，或用户已被封禁")
+			return &LoginCredentialError{Reason: LoginFailUserNotFound}
 		}
 	}
 	okay := common.ValidatePasswordAndHash(password, user.Password)
-	if !okay || user.Status != UserStatusEnabled {
-		return errors.New("用户名或密码错误，或用户已被封禁")
+	if !okay {
+		return &LoginCredentialError{Reason: LoginFailBadPassword}
+	}
+	if user.Status != UserStatusEnabled {
+		return &LoginCredentialError{Reason: LoginFailDisabled}
 	}
 	return nil
 }
@@ -360,12 +515,109 @@ func IsAdmin(userId int) bool {
 		return false
 	}
 	var user User
-	err := DB.Where("id = ?", userId).Select("role").Find(&user).Error
+	err := DB.Where("id = ?", userId).Select("role", "tenant_id").Find(&user).Error
 	if err != nil {
 		logger.SysError("no such user " + err.Error())
 		return false
 	}
-	return user.Role >= RoleAdminUser
+	if user.Role < RoleAdminUser {
+		return false
+	}
+	// 租户管理员不走「平台管理员」能力（例如 sk-key-channelId 指定渠道）。
+	if user.TenantID != nil {
+		return false
+	}
+	return true
+}
+
+// IsTenantConsoleAdmin 是否为租户管理员（可登录租户控制台）。
+func IsTenantConsoleAdmin(userId int) bool {
+	if userId == 0 {
+		return false
+	}
+	var user User
+	err := DB.Where("id = ?", userId).Select("role", "tenant_id").Find(&user).Error
+	if err != nil {
+		return false
+	}
+	return user.Role == RoleTenantAdmin && user.TenantID != nil
+}
+
+// IsPlatformConsoleOperator 平台控制台操作者（Root / 平台管理员且非租户账号）。
+func IsPlatformConsoleOperator(userId int) bool {
+	if userId == 0 {
+		return false
+	}
+	var user User
+	err := DB.Where("id = ?", userId).Select("role", "tenant_id").Find(&user).Error
+	if err != nil {
+		return false
+	}
+	if user.Role >= RoleRootUser {
+		return true
+	}
+	if user.Role >= RoleAdminUser && user.TenantID == nil {
+		return true
+	}
+	return false
+}
+
+// UserHasTenantPermission 子账号是否具备指定租户委派权限（租户管理员请在外层单独判断）。
+func UserHasTenantPermission(u *User, perm string) bool {
+	if u == nil || perm == "" {
+		return false
+	}
+	for _, p := range u.TenantPermissions {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
+// TenantConsoleAccessTenantID 返回有权访问租户控制台的用户（租户管理员，或具有具体管理权限的租户子账号）所属的租户 ID；否则返回 0。
+func TenantConsoleAccessTenantID(userId int) int {
+	if userId <= 0 {
+		return 0
+	}
+	var user User
+	err := DB.Where("id = ?", userId).Select("role", "tenant_id", "tenant_permissions").Find(&user).Error
+	if err != nil || user.TenantID == nil {
+		return 0
+	}
+	if user.Role == RoleTenantAdmin || (user.Role == RoleCommonUser && len(user.TenantPermissions) > 0) {
+		return *user.TenantID
+	}
+	return 0
+}
+
+// GetUserTenantIDNumeric 返回用户所属租户，平台用户为 0。
+func GetUserTenantIDNumeric(userId int) int {
+	if userId == 0 {
+		return 0
+	}
+	var user User
+	err := DB.Where("id = ?", userId).Select("tenant_id").Find(&user).Error
+	if err != nil || user.TenantID == nil {
+		return 0
+	}
+	return *user.TenantID
+}
+
+// LoadTenantSubRelayRestrictions 若为租户子账号则 ok 为 true，并返回该账号配置的模型/渠道白名单（切片为空表示该维度不限制）。
+func LoadTenantSubRelayRestrictions(userId int) (allowedModels []string, allowedChannelIDs []int, ok bool, err error) {
+	if userId == 0 {
+		return nil, nil, false, nil
+	}
+	var u User
+	err = DB.Where("id = ?", userId).Select("role", "tenant_id", "allowed_models", "allowed_channel_ids").First(&u).Error
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if u.TenantID == nil || u.Role != RoleCommonUser {
+		return nil, nil, false, nil
+	}
+	return u.AllowedModels, u.AllowedChannelIDs, true, nil
 }
 
 func IsUserEnabled(userId int) (bool, error) {

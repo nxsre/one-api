@@ -21,6 +21,7 @@ import (
 	"github.com/songquanpeng/one-api/relay/apitype"
 	"github.com/songquanpeng/one-api/relay/billing"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
+	"github.com/songquanpeng/one-api/setting/billing_setting"
 	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
@@ -77,14 +78,31 @@ func RelayTextHelper(c *gin.Context) (bizErr *model.ErrorWithStatusCode) {
 	// set system prompt if not empty
 	systemPromptReset := setSystemPrompt(ctx, textRequest, meta.ForcedSystemPrompt)
 	// get model ratio & group ratio
-	modelRatio := billingratio.GetModelRatio(textRequest.Model, meta.ChannelType)
-	groupRatio := billingratio.GetGroupRatio(meta.Group)
+	userGroup := meta.UserGroup
+	if userGroup == "" {
+		userGroup = meta.Group
+	}
+	usingGroup := meta.UsingGroup
+	if usingGroup == "" {
+		usingGroup = meta.Group
+	}
+	modelRatio := billingratio.GetModelRatio(meta.OriginModelName, textRequest.Model, meta.ChannelType)
+	groupRatio := billingratio.GetEffectiveGroupRatio(userGroup, usingGroup)
 	ratio := modelRatio * groupRatio
-	// pre-consume quota
 	promptTokens := getPromptTokens(textRequest, meta.Mode)
 	meta.PromptTokens = promptTokens
 	var preConsumedQuota int64
-	preConsumedQuota, bizErr = preConsumeQuota(ctx, textRequest, promptTokens, ratio, meta)
+	if billing_setting.GetBillingMode(meta.OriginModelName) == billing_setting.BillingModeTieredExpr {
+		var amount int64
+		amount, err = billing.EstimateTieredPreConsume(c, meta, textRequest, promptTokens)
+		if err != nil {
+			bizErr = openai.ErrorWrapper(err, "tiered_pre_consume_failed", http.StatusBadRequest)
+			return
+		}
+		preConsumedQuota, bizErr = preConsumeQuotaAmount(ctx, amount, meta)
+	} else {
+		preConsumedQuota, bizErr = preConsumeQuota(ctx, textRequest, promptTokens, ratio, meta)
+	}
 	if bizErr != nil {
 		logger.Warnf(ctx, "preConsumeQuota failed: %+v", *bizErr)
 		return
@@ -145,7 +163,7 @@ func RelayTextHelper(c *gin.Context) (bizErr *model.ErrorWithStatusCode) {
 
 	ra := requestaudit.FromContext(c)
 	if ra != nil && !ra.IsFinalized() {
-		quota := ComputeRelayConsumedQuota(usage, textRequest, meta, ratio)
+		quota := ComputeRelayConsumedQuota(c, usage, textRequest, meta, ratio)
 		thinking := requestaudit.InferThinkingStream(textRequest, auditRequestRaw(c))
 		requestaudit.FinalizeSuccess(c, ra, textRequest.Model, textRequest.Stream, thinking, systemPromptReset, quota)
 	}

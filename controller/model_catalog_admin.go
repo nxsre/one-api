@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,13 +30,21 @@ func GetModelCatalogAdmin(c *gin.Context) {
 	sortBy := strings.TrimSpace(c.Query("sort"))
 	order := strings.TrimSpace(strings.ToLower(c.DefaultQuery("order", "asc")))
 	sortDesc := order == "desc"
+	includeExpired := c.Query("include_expired") == "true"
 
 	rows, total, grandTotal, err := model.ListModelCatalogPaged(model.ModelCatalogListParams{
-		Page:     page,
-		PageSize: pageSize,
-		Search:   search,
-		SortBy:   sortBy,
-		SortDesc: sortDesc,
+		Page:                page,
+		PageSize:            pageSize,
+		Search:              search,
+		FilterModelID:       strings.TrimSpace(c.Query("filter_model_id")),
+		FilterModelName:     strings.TrimSpace(c.Query("filter_model_name")),
+		FilterProvider:      strings.TrimSpace(c.Query("filter_provider")),
+		FilterFamily:        strings.TrimSpace(c.Query("filter_family")),
+		FilterModalitiesIn:  strings.TrimSpace(c.Query("filter_modalities_in")),
+		FilterModalitiesOut: strings.TrimSpace(c.Query("filter_modalities_out")),
+		SortBy:              sortBy,
+		SortDesc:            sortDesc,
+		IncludeExpired:      includeExpired,
 	})
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -54,55 +63,123 @@ func GetModelCatalogAdmin(c *gin.Context) {
 	})
 }
 
-type modelCatalogCreate struct {
-	ModelId string `json:"model_id"`
-	OwnedBy string `json:"owned_by"`
-	Enabled *bool  `json:"enabled"`
-	Notes   string `json:"notes"`
+// modelCatalogWriteBody 管理端新增/编辑可写字段（与 ModelCatalog 对齐）。
+type modelCatalogWriteBody struct {
+	Id              int     `json:"id"`
+	ModelId         string  `json:"model_id"`
+	ModelName       string  `json:"model_name"`
+	OwnedBy         string  `json:"owned_by"`
+	Enabled         *bool   `json:"enabled"`
+	Source          string  `json:"source"`
+	Notes           string  `json:"notes"`
+	ProviderKey     string  `json:"provider_key"`
+	ProviderDisplay string  `json:"provider_display"`
+	Family          string  `json:"family"`
+	NpmPackage      string  `json:"npm_package"`
+	APIBase         string  `json:"api_base"`
+	DocURL          string  `json:"doc_url"`
+	ModalitiesIn    string  `json:"modalities_in"`
+	ModalitiesOut   string  `json:"modalities_out"`
+	ContextLimit    int     `json:"context_limit"`
+	OutputLimit     int     `json:"output_limit"`
+	CostInput       float64 `json:"cost_input"`
+	CostOutput      float64 `json:"cost_output"`
+	CostCacheRead   float64 `json:"cost_cache_read"`
+	CostCacheWrite  float64 `json:"cost_cache_write"`
+	Reasoning       bool    `json:"reasoning"`
+	ToolCall        bool    `json:"tool_call"`
+	TemperatureOK   bool    `json:"temperature_ok"`
+	AttachmentOK    bool    `json:"attachment_ok"`
+	OpenWeights     bool    `json:"open_weights"`
+	KnowledgeCutoff string  `json:"knowledge_cutoff"`
+	ReleaseDate     string  `json:"release_date"`
+	LastUpdatedDev  string  `json:"last_updated"`
+	Tags            string  `json:"tags"`
+}
+
+func trimCatalogStr(s string) string {
+	return strings.TrimSpace(s)
+}
+
+func applyModelCatalogWriteBody(row *model.ModelCatalog, body *modelCatalogWriteBody, forCreate bool) error {
+	if row == nil || body == nil {
+		return nil
+	}
+	body.ModelId = trimCatalogStr(body.ModelId)
+	if body.ModelId == "" {
+		return errors.New("model_id 不能为空")
+	}
+	row.ModelId = body.ModelId
+	row.ModelName = trimCatalogStr(body.ModelName)
+	if row.ModelName == "" {
+		row.ModelName = body.ModelId
+	}
+	row.OwnedBy = trimCatalogStr(body.OwnedBy)
+	if body.Enabled != nil {
+		row.Enabled = *body.Enabled
+	}
+	row.Notes = trimCatalogStr(body.Notes)
+	row.ProviderKey = trimCatalogStr(body.ProviderKey)
+	row.ProviderDisplay = trimCatalogStr(body.ProviderDisplay)
+	row.Family = trimCatalogStr(body.Family)
+	row.NpmPackage = trimCatalogStr(body.NpmPackage)
+	row.APIBase = trimCatalogStr(body.APIBase)
+	row.DocURL = trimCatalogStr(body.DocURL)
+	row.ModalitiesIn = trimCatalogStr(body.ModalitiesIn)
+	row.ModalitiesOut = trimCatalogStr(body.ModalitiesOut)
+	row.ContextLimit = body.ContextLimit
+	row.OutputLimit = body.OutputLimit
+	row.CostInput = body.CostInput
+	row.CostOutput = body.CostOutput
+	row.CostCacheRead = body.CostCacheRead
+	row.CostCacheWrite = body.CostCacheWrite
+	row.Reasoning = body.Reasoning
+	row.ToolCall = body.ToolCall
+	row.TemperatureOK = body.TemperatureOK
+	row.AttachmentOK = body.AttachmentOK
+	row.OpenWeights = body.OpenWeights
+	row.KnowledgeCutoff = trimCatalogStr(body.KnowledgeCutoff)
+	row.ReleaseDate = trimCatalogStr(body.ReleaseDate)
+	row.LastUpdatedDev = trimCatalogStr(body.LastUpdatedDev)
+	row.Tags = trimCatalogStr(body.Tags)
+	if src := trimCatalogStr(body.Source); src != "" {
+		row.Source = src
+	} else if forCreate {
+		row.Source = "manual"
+	}
+	return nil
 }
 
 // PostModelCatalogAdmin POST /api/model_catalog
 func PostModelCatalogAdmin(c *gin.Context) {
-	var body modelCatalogCreate
+	var body modelCatalogWriteBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	body.ModelId = strings.TrimSpace(body.ModelId)
-	if body.ModelId == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "model_id 不能为空"})
-		return
-	}
 	en := true
-	if body.Enabled != nil {
-		en = *body.Enabled
+	if body.Enabled == nil {
+		body.Enabled = &en
 	}
-	row := model.ModelCatalog{
-		ModelId: body.ModelId,
-		OwnedBy: strings.TrimSpace(body.OwnedBy),
-		Enabled: en,
-		Source:  "manual",
-		Notes:   strings.TrimSpace(body.Notes),
-	}
-	if err := row.Insert(); err != nil {
+	row := model.ModelCatalog{}
+	if err := applyModelCatalogWriteBody(&row, &body, true); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": row})
-}
 
-type modelCatalogUpdate struct {
-	Id      int    `json:"id"`
-	ModelId string `json:"model_id"`
-	OwnedBy string `json:"owned_by"`
-	Enabled bool   `json:"enabled"`
-	Source  string `json:"source"`
-	Notes   string `json:"notes"`
+	tx := model.DB.Begin()
+	if err := model.UpsertCatalogVersioned(tx, &row); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": row})
 }
 
 // PutModelCatalogAdmin PUT /api/model_catalog
 func PutModelCatalogAdmin(c *gin.Context) {
-	var body modelCatalogUpdate
+	var body modelCatalogWriteBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -116,22 +193,23 @@ func PutModelCatalogAdmin(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	body.ModelId = strings.TrimSpace(body.ModelId)
-	if body.ModelId == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "model_id 不能为空"})
-		return
+	enabled := existing.Enabled
+	if body.Enabled != nil {
+		enabled = *body.Enabled
 	}
-	existing.ModelId = body.ModelId
-	existing.OwnedBy = strings.TrimSpace(body.OwnedBy)
-	existing.Enabled = body.Enabled
-	existing.Notes = strings.TrimSpace(body.Notes)
-	if strings.TrimSpace(body.Source) != "" {
-		existing.Source = strings.TrimSpace(body.Source)
-	}
-	if err := existing.SaveUpdates(); err != nil {
+	body.Enabled = &enabled
+	if err := applyModelCatalogWriteBody(existing, &body, false); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+
+	tx := model.DB.Begin()
+	if err := model.UpsertCatalogVersioned(tx, existing); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	tx.Commit()
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": existing})
 }
 

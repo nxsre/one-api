@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   API,
   clearNacosEmbeddedConsoleLocalSession,
+  clearTenantConsoleActingTenantId,
   copy,
   showError,
   showInfo,
@@ -43,6 +44,13 @@ const PersonalSetting = () => {
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loading, setLoading] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [upgradeInputs, setUpgradeInputs] = useState({
+    name: '',
+    slug: '',
+    remark: '',
+  });
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [affLink, setAffLink] = useState('');
@@ -228,6 +236,7 @@ const PersonalSetting = () => {
       await API.get('/api/user/logout');
       userDispatch({ type: 'logout' });
       localStorage.removeItem('user');
+      clearTenantConsoleActingTenantId();
       clearNacosEmbeddedConsoleLocalSession();
       navigate('/login');
     } else {
@@ -285,6 +294,23 @@ const PersonalSetting = () => {
     setLoading(false);
   };
 
+  const submitUpgrade = async () => {
+    if (!upgradeInputs.name || !upgradeInputs.slug) {
+      showError('企业名称和租户标识为必填项');
+      return;
+    }
+    setUpgradeLoading(true);
+    const res = await API.post('/api/user/tenant_upgrade', upgradeInputs);
+    const { success, message } = res.data;
+    if (success) {
+      showSuccess('租户升级申请提交成功，请等待管理员审核。');
+      setUpgradeModalOpen(false);
+    } else {
+      showError(message || '提交失败');
+    }
+    setUpgradeLoading(false);
+  };
+
   return (
     <div className='settings-page-body'>
       <Header as='h3'>{t('setting.personal.general.title')}</Header>
@@ -299,6 +325,11 @@ const PersonalSetting = () => {
       <Button onClick={getAffLink}>
         {t('setting.personal.general.buttons.copy_invite')}
       </Button>
+      {userState?.user?.role === 1 && (
+        <Button onClick={() => setUpgradeModalOpen(true)} color='blue'>
+          升级为企业（租户）
+        </Button>
+      )}
       <Button
         onClick={() => {
           setShowAccountDeleteModal(true);
@@ -621,6 +652,47 @@ const PersonalSetting = () => {
             </Form>
           </Modal.Description>
         </Modal.Content>
+      </Modal>
+      <Modal
+        size='small'
+        open={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+      >
+        <Modal.Header>申请升级为企业（租户）</Modal.Header>
+        <Modal.Content>
+          <Form>
+            <Form.Input
+              label='企业名称'
+              required
+              value={upgradeInputs.name}
+              onChange={(e, { value }) => setUpgradeInputs({ ...upgradeInputs, name: value })}
+              placeholder='请输入您的企业或团队名称'
+            />
+            <Form.Input
+              label='租户标识 (Slug)'
+              required
+              value={upgradeInputs.slug}
+              onChange={(e, { value }) => setUpgradeInputs({ ...upgradeInputs, slug: value })}
+              placeholder='全英文或数字，将作为专属链接后缀，如：my-team'
+            />
+            <Form.TextArea
+              label='申请备注'
+              value={upgradeInputs.remark}
+              onChange={(e, { value }) => setUpgradeInputs({ ...upgradeInputs, remark: value })}
+              placeholder='请简要说明企业规模及主要用途（选填）'
+            />
+          </Form>
+        </Modal.Content>
+        <Modal.Actions>
+          <Button onClick={() => setUpgradeModalOpen(false)}>取消</Button>
+          <Button
+            primary
+            loading={upgradeLoading}
+            onClick={submitUpgrade}
+          >
+            提交申请
+          </Button>
+        </Modal.Actions>
       </Modal>
     </div>
   );

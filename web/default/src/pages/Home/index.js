@@ -1,14 +1,15 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, Grid, Header } from 'semantic-ui-react';
-import { API, showError, showNotice, timestamp2string } from '../../helpers';
+import { API, showError, showNotice, timestamp2string, isTenantAdmin, isTenantConsoleDelegate } from '../../helpers';
 import { StatusContext } from '../../context/Status';
 import { marked } from 'marked';
 import { UserContext } from '../../context/User';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const Home = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [statusState, statusDispatch] = useContext(StatusContext);
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
   const [homePageContent, setHomePageContent] = useState('');
@@ -51,6 +52,12 @@ const Home = () => {
     const timestamp = statusState?.status?.start_time;
     return timestamp2string(timestamp);
   };
+
+  useEffect(() => {
+    if (isTenantAdmin() || isTenantConsoleDelegate()) {
+      navigate('/tenant-console', { replace: true });
+    }
+  }, [navigate]);
 
   useEffect(() => {
     displayNotice().then();

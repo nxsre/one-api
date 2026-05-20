@@ -15,6 +15,7 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	{
 		apiRouter.GET("/status", controller.GetStatus)
+		apiRouter.GET("/ratio_config", controller.GetPublicRatioConfig)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/about", controller.GetAbout)
@@ -30,7 +31,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/wechat", middleware.CriticalRateLimit(), auth.WeChatAuth)
 		apiRouter.GET("/oauth/wechat/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), auth.WeChatBind)
 		apiRouter.GET("/oauth/email/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), controller.EmailBind)
-		apiRouter.POST("/topup", middleware.AdminAuth(), controller.AdminTopUp)
+		apiRouter.POST("/topup", middleware.AdminAuth(), middleware.PlatformConsoleOnly(), controller.AdminTopUp)
 
 		userRoute := apiRouter.Group("/user")
 		{
@@ -51,8 +52,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", controller.GenerateAccessToken)
 				selfRoute.GET("/aff", controller.GetAffCode)
+				selfRoute.POST("/tenant_upgrade", controller.ApplyTenantUpgrade)
 				selfRoute.POST("/topup", controller.TopUp)
 				selfRoute.GET("/available_models", controller.GetUserAvailableModels)
+				selfRoute.GET("/available_models_detail", controller.GetUserAvailableModelsDetail)
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
 				selfRoute.POST("/2fa/setup", controller.Setup2FA)
 				selfRoute.POST("/2fa/enable", controller.Enable2FA)
@@ -65,8 +68,11 @@ func SetApiRouter(router *gin.Engine) {
 			}
 
 			adminRoute := userRoute.Group("/")
-			adminRoute.Use(middleware.AdminAuth())
+			adminRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 			{
+				adminRoute.GET("/paged", controller.GetUsersPaged)
+				adminRoute.POST("/:id/promote_super_admin", middleware.RootAuth(), controller.PromoteUserToSuperAdmin)
+				adminRoute.POST("/:id/demote_super_admin", middleware.RootAuth(), controller.DemoteSuperAdmin)
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/search", controller.SearchUsers)
@@ -79,15 +85,69 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 		optionRoute := apiRouter.Group("/option")
-		optionRoute.Use(middleware.RootAuth())
+		optionRoute.Use(middleware.SuperAdminAuth())
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
 		}
+		ratioSyncRoute := apiRouter.Group("/ratio_sync")
+		ratioSyncRoute.Use(middleware.RootAuth())
+		{
+			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
+			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
+			ratioSyncRoute.GET("/batches", controller.ListUpstreamSyncBatches)
+			ratioSyncRoute.GET("/batches/latest", controller.GetLatestUpstreamSyncBatch)
+			ratioSyncRoute.GET("/batches/:id", controller.GetUpstreamSyncBatch)
+			ratioSyncRoute.GET("/batches/:id/diffs", controller.ListUpstreamSyncBatchDiffs)
+			ratioSyncRoute.PUT("/batches/:id/selections", controller.SaveUpstreamSyncBatchSelections)
+			ratioSyncRoute.POST("/batches/:id/selections/select_all", controller.SelectAllUpstreamSyncBatch)
+			ratioSyncRoute.POST("/batches/:id/apply", controller.ApplyUpstreamSyncBatch)
+			ratioSyncRoute.GET("/compare/diffs", controller.CompareUpstreamSync)
+			ratioSyncRoute.GET("/versions", controller.ListPricingVersionBlocks)
+			ratioSyncRoute.GET("/versions/:block_id", controller.ListPricingBlockVersions)
+			ratioSyncRoute.POST("/versions/activate", controller.ActivatePricingVersion)
+			ratioSyncRoute.POST("/apply", controller.ApplyPricingSync)
+		}
+		pricingEntryRoute := apiRouter.Group("/pricing_entries")
+		pricingEntryRoute.Use(middleware.RootAuth())
+		{
+			pricingEntryRoute.GET("/blocks", controller.ListPricingEntryBlocks)
+			pricingEntryRoute.GET("/", controller.ListPricingEntries)
+			pricingEntryRoute.POST("/", controller.CreatePricingEntry)
+			pricingEntryRoute.PUT("/:id", controller.UpdatePricingEntry)
+			pricingEntryRoute.DELETE("/:id", controller.DeletePricingEntry)
+		}
+		platformTenantRead := apiRouter.Group("/platform/tenants")
+		platformTenantRead.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
+		{
+			platformTenantRead.GET("/", controller.PlatformListTenants)
+			platformTenantRead.GET("/options", controller.PlatformListTenantOptions)
+			platformTenantRead.GET("/upgrades", controller.PlatformListTenantUpgrades)
+		}
+		platformTenantWrite := apiRouter.Group("/platform/tenants")
+		platformTenantWrite.Use(middleware.RootAuth())
+		{
+			platformTenantWrite.POST("/", controller.PlatformCreateTenant)
+			platformTenantWrite.POST("/upgrades/:id/approve", controller.PlatformApproveTenantUpgrade)
+			platformTenantWrite.POST("/upgrades/:id/reject", controller.PlatformRejectTenantUpgrade)
+			platformTenantWrite.PUT("/:id/billing", controller.PlatformUpdateTenantBilling)
+			platformTenantWrite.GET("/:id/billing_rules", controller.PlatformGetTenantBillingRules)
+			platformTenantWrite.POST("/:id/billing_rules", controller.PlatformCreateTenantBillingRule)
+			platformTenantWrite.PUT("/:id/billing_rules/:rule_id", controller.PlatformUpdateTenantBillingRule)
+			platformTenantWrite.DELETE("/:id/billing_rules/:rule_id", controller.PlatformDeleteTenantBillingRule)
+		}
+		platformReports := apiRouter.Group("/platform/reports")
+		platformReports.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
+		{
+			platformReports.GET("/billing", controller.PlatformGetBillingReport)
+			platformReports.GET("/billing/export", controller.PlatformExportBillingReport)
+		}
 		modelCatalogRoute := apiRouter.Group("/model_catalog")
-		modelCatalogRoute.Use(middleware.AdminAuth())
+		modelCatalogRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			modelCatalogRoute.GET("/", controller.GetModelCatalogAdmin)
+			modelCatalogRoute.GET("/providers", controller.GetModelCatalogProviders)
+			modelCatalogRoute.GET("/model_ids", controller.GetModelCatalogModelIDs)
 			modelCatalogRoute.GET("/editor_options", controller.GetModelCatalogEditorOptions)
 			modelCatalogRoute.POST("/", controller.PostModelCatalogAdmin)
 			modelCatalogRoute.PUT("/", controller.PutModelCatalogAdmin)
@@ -95,7 +155,7 @@ func SetApiRouter(router *gin.Engine) {
 			modelCatalogRoute.DELETE("/:id", controller.DeleteModelCatalogAdmin)
 		}
 		channelRoute := apiRouter.Group("/channel")
-		channelRoute.Use(middleware.AdminAuth())
+		channelRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			channelRoute.GET("/", controller.GetAllChannels)
 			channelRoute.GET("/search", controller.SearchChannels)
@@ -103,6 +163,10 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.GET("/models_enabled", controller.ListEnabledChannelModels)
 			channelRoute.GET("/fetch_models/:id", controller.FetchUpstreamChannelModels)
 			channelRoute.POST("/fetch_upstream_models_preview", controller.PreviewFetchUpstreamChannelModels)
+			channelRoute.POST("/test_models_preview", controller.PreviewTestChannelModels)
+			channelRoute.POST("/test_models/jobs", controller.StartChannelModelTestJob)
+			channelRoute.GET("/test_models/jobs/status", controller.GetChannelModelTestJobStatus)
+			channelRoute.GET("/:id/model_test_results", controller.GetChannelModelTestResults)
 			channelRoute.POST("/fix", controller.FixChannelsAbilities)
 			channelRoute.POST("/batch", controller.DeleteChannelBatch)
 			channelRoute.POST("/copy/:id", controller.CopyChannel)
@@ -119,7 +183,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		routingRoute := apiRouter.Group("/routing")
-		routingRoute.Use(middleware.AdminAuth())
+		routingRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			routingRoute.GET("/metrics-day", controller.GetRoutingMetricsDay)
 			routingRoute.GET("/channel-preview", controller.GetRoutingChannelPreview)
@@ -144,7 +208,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.DELETE("/:id", controller.DeleteToken)
 		}
 		redemptionRoute := apiRouter.Group("/redemption")
-		redemptionRoute.Use(middleware.AdminAuth())
+		redemptionRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			redemptionRoute.GET("/", controller.GetAllRedemptions)
 			redemptionRoute.GET("/search", controller.SearchRedemptions)
@@ -153,22 +217,23 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.PUT("/", controller.UpdateRedemption)
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
-		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
-		logRoute.GET("/token", middleware.TokenAuth(), controller.GetLogByKey)
-		logRoute.DELETE("/", middleware.AdminAuth(), controller.DeleteHistoryLogs)
-		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
-		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
-		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
-		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
-		logRoute.GET("/self/search", middleware.UserAuth(), controller.SearchUserLogs)
+		logAdmin := apiRouter.Group("/log")
+		logAdmin.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
+		logAdmin.GET("/", controller.GetAllLogs)
+		logAdmin.DELETE("/", controller.DeleteHistoryLogs)
+		logAdmin.GET("/stat", controller.GetLogsStat)
+		logAdmin.GET("/search", controller.SearchAllLogs)
+		apiRouter.GET("/log/token", middleware.TokenAuth(), controller.GetLogByKey)
+		apiRouter.GET("/log/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
+		apiRouter.GET("/log/self", middleware.UserAuth(), controller.GetUserLogs)
+		apiRouter.GET("/log/self/search", middleware.UserAuth(), controller.SearchUserLogs)
 		groupRoute := apiRouter.Group("/group")
-		groupRoute.Use(middleware.AdminAuth())
+		groupRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			groupRoute.GET("/", controller.GetGroups)
 		}
 		globalAccessRoute := apiRouter.Group("/global_access")
-		globalAccessRoute.Use(middleware.AdminAuth())
+		globalAccessRoute.Use(middleware.AdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			globalAccessRoute.GET("/mode", controller.GetGlobalAccessMode)
 			globalAccessRoute.PUT("/mode", controller.UpdateGlobalAccessMode)
@@ -180,7 +245,7 @@ func SetApiRouter(router *gin.Engine) {
 			globalAccessRoute.DELETE("/blacklist/:id", controller.DeleteGlobalBlacklist)
 		}
 		nacosAdmin := apiRouter.Group("/nacos")
-		nacosAdmin.Use(middleware.AdminAuth())
+		nacosAdmin.Use(middleware.UserAuth(), middleware.NacosTenantDelegatedGate())
 		{
 			nacosAdmin.GET("/registry/info", controller.GetNacosRegistryInfo)
 			nacosAdmin.GET("/namespaces/options", controller.ListNacosNamespaceOptions)
@@ -234,12 +299,46 @@ func SetApiRouter(router *gin.Engine) {
 			nacosAdmin.GET("/pipelines/detail", controller.GetNacosPipelineDetailAdmin)
 			nacosAdmin.POST("/pipelines/run-scan", controller.RunNacosPipelineScanAdmin)
 			nacosAdmin.GET("/agentspecs", controller.ListNacosAgentSpecsAdmin)
+			nacosAdmin.GET("/users/search", controller.NacosSearchUsersForACL)
 			nacosAdmin.GET("/users/:id/acl", controller.GetNacosUserACL)
+			nacosAdmin.PUT("/users/:id/acl", controller.PutNacosUserACL)
 		}
-		nacosRootACL := apiRouter.Group("/nacos")
-		nacosRootACL.Use(middleware.RootAuth())
+
+		tenantConsole := apiRouter.Group("/tenant_console")
+		tenantConsole.Use(middleware.UserAuth(), middleware.TenantConsoleMemberGate(), middleware.TenantAdminConsoleOnly())
 		{
-			nacosRootACL.PUT("/users/:id/acl", controller.PutNacosUserACL)
+			tenantConsole.GET("/meta/editor_options", controller.GetModelCatalogEditorOptions)
+			tenantConsole.GET("/meta/model_catalog/providers", controller.GetModelCatalogProviders)
+			tenantConsole.GET("/meta/model_catalog/model_ids", controller.GetModelCatalogModelIDs)
+			tenantConsole.POST("/meta/channel/test_models_preview", controller.PreviewTestChannelModels)
+			tenantConsole.POST("/meta/channel/test_models/jobs", controller.TenantStartChannelModelTestJob)
+			tenantConsole.GET("/meta/channel/test_models/jobs/status", controller.TenantGetChannelModelTestJobStatus)
+			tenantConsole.GET("/meta/channel/:id/model_test_results", controller.TenantGetChannelModelTestResults)
+			tenantConsole.GET("/meta/groups", controller.GetGroups)
+			tenantConsole.GET("/meta/all_models", controller.ListAllModels)
+			tenantConsole.GET("/meta/channels_for_acl", controller.TenantConsoleChannelsForACL)
+			tenantConsole.GET("/meta/tenant", controller.TenantConsoleMetaTenant)
+			tenantConsole.GET("/reports/billing", controller.TenantGetBillingReport)
+			tenantConsole.GET("/reports/billing/export", controller.TenantExportBillingReport)
+			tenantConsole.GET("/users", controller.TenantConsoleListUsers)
+			tenantConsole.GET("/users/search", controller.TenantConsoleSearchUsers)
+			tenantConsole.GET("/users/:id/profile", controller.TenantConsoleGetUserProfile)
+			tenantConsole.GET("/users/:id/available_models", controller.TenantConsoleUserAvailableModels)
+			tenantConsole.GET("/users/:id/available_models_detail", controller.TenantConsoleUserAvailableModelsDetail)
+			tenantConsole.GET("/users/:id/tokens/search", controller.TenantConsoleSearchTokens)
+			tenantConsole.GET("/users/:id/tokens/:tid", controller.TenantConsoleGetToken)
+			tenantConsole.GET("/users/:id/tokens", controller.TenantConsoleListTokens)
+			tenantConsole.POST("/users/:id/tokens", controller.TenantConsoleAddToken)
+			tenantConsole.PUT("/users/:id/tokens", controller.TenantConsoleUpdateToken)
+			tenantConsole.DELETE("/users/:id/tokens/:tid", controller.TenantConsoleDeleteToken)
+			tenantConsole.POST("/users", controller.TenantConsoleCreateUser)
+			tenantConsole.PUT("/users", controller.TenantConsoleUpdateUser)
+			tenantConsole.DELETE("/users/:id", controller.TenantConsoleDeleteUser)
+			tenantConsole.GET("/channels", controller.TenantConsoleListChannels)
+			tenantConsole.GET("/channels/search", controller.TenantConsoleSearchChannels)
+			tenantConsole.POST("/channels", controller.TenantConsoleAddChannel)
+			tenantConsole.PUT("/channels", controller.TenantConsoleUpdateChannel)
+			tenantConsole.DELETE("/channels/:id", controller.TenantConsoleDeleteChannel)
 		}
 	}
 }

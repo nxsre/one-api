@@ -130,7 +130,7 @@ Skill 对齐单测类型（可用 -operation）：
 
 type payloadArgs struct {
 	keywords, region, location, polygon, id string
-	origin, destination, transitCity        string
+	origin, destination, transitCity       string
 }
 
 func normalizeOp(op string) string {

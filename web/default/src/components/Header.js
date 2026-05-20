@@ -14,6 +14,7 @@ import {
 import {
   API,
   clearNacosEmbeddedConsoleLocalSession,
+  clearTenantConsoleActingTenantId,
   getLogo,
   getSystemName,
   isAdmin,
@@ -121,6 +122,7 @@ const Header = () => {
     showSuccess('注销成功!');
     userDispatch({ type: 'logout' });
     localStorage.removeItem('user');
+    clearTenantConsoleActingTenantId();
     clearNacosEmbeddedConsoleLocalSession();
     navigate('/login');
   }

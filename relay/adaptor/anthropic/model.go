@@ -25,8 +25,8 @@ type Content struct {
 }
 
 type Message struct {
-	Role    string    `json:"role"`
-	Content []Content `json:"content"`
+	Role    string          `json:"role"`
+	Content MessageContents `json:"content"`
 }
 
 type Tool struct {
@@ -44,7 +44,7 @@ type InputSchema struct {
 type Request struct {
 	Model         string    `json:"model"`
 	Messages      []Message `json:"messages"`
-	System        string    `json:"system,omitempty"`
+	System        SystemPrompt `json:"system,omitempty"`
 	MaxTokens     int       `json:"max_tokens,omitempty"`
 	StopSequences []string  `json:"stop_sequences,omitempty"`
 	Stream        bool      `json:"stream,omitempty"`
@@ -57,8 +57,16 @@ type Request struct {
 }
 
 type Usage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int                  `json:"input_tokens"`
+	OutputTokens             int                  `json:"output_tokens"`
+	CacheReadInputTokens     int                  `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int                  `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreation            *CacheCreationUsage  `json:"cache_creation,omitempty"`
+}
+
+type CacheCreationUsage struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
 }
 
 type Error struct {

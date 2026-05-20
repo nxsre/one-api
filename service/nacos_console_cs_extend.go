@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/model"
 	"gorm.io/gorm"
 )
@@ -328,7 +329,7 @@ func NacosMcpImportToolsList(transportType, baseURL, endpoint, authToken string)
 	if strings.TrimSpace(authToken) != "" {
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(authToken))
 	}
-	cli := &http.Client{Timeout: 15 * time.Second}
+	cli := client.NewOutboundHTTPClient(15 * time.Second)
 	resp, err := cli.Do(req)
 	if err != nil {
 		return nil, err

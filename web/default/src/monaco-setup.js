@@ -11,6 +11,7 @@ function monacoVsPath() {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
+// eslint-disable-next-line no-restricted-globals -- Web Worker / Monaco expects global scope
 self.MonacoEnvironment = {
   getWorker(_, label) {
     const workerOpts = { type: 'module' };

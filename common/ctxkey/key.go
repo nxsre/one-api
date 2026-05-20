@@ -3,6 +3,14 @@ package ctxkey
 const (
 	Config            = "config"
 	Id                = "id"
+	// UserTenantID 中继选路用：令牌所属用户的租户 ID，平台用户为 0。
+	UserTenantID = "user_tenant_id"
+	// UserAllowedChannelIDs 租户子账号允许使用的渠道 ID 集合（map[int]struct{}）；未设置表示不按用户白名单限制渠道。
+	UserAllowedChannelIDs = "user_allowed_channel_ids"
+	// UserAllowedModels 租户子账号允许使用的模型名集合（map[string]struct{}）；未设置表示不按用户白名单限制模型。
+	UserAllowedModels = "user_allowed_models"
+	// TokenBoundGroup 令牌绑定的分组覆盖（非空则覆盖用户默认分组参与别名解析与选路）。
+	TokenBoundGroup = "token_bound_group"
 	Username          = "username"
 	Role              = "role"
 	Status            = "status"
@@ -13,6 +21,10 @@ const (
 	ConvertedRequest  = "converted_request"
 	OriginalModel     = "original_model"
 	Group             = "group"
+	// UserGroup 用户账号所属分组（选路前），用于 GroupGroupRatio。
+	UserGroup = "user_group"
+	// UsingGroup 本次请求实际使用渠道的分组标签（首个），用于 GroupGroupRatio。
+	UsingGroup = "using_group"
 	ModelMapping      = "model_mapping"
 	ChannelName       = "channel_name"
 	TokenId           = "token_id"
@@ -25,6 +37,8 @@ const (
 	SystemPrompt               = "system_prompt"
 	RoutingStickyKey           = "routing_sticky_key"
 	LogicalModel               = "logical_model"
+	// AnthropicModelVariant Claude Code 档位后缀，如 [1m]（对应上游 anthropic-beta）。
+	AnthropicModelVariant = "anthropic_model_variant"
 	ChannelRoutingProvider     = "channel_routing_provider"
 	// ChannelAutoBan 为 true 时允许在满足全局策略时自动禁用渠道（与渠道 auto_ban 字段对应，默认 true）。
 	ChannelAutoBan = "channel_auto_ban"
@@ -46,4 +60,17 @@ const (
 	// UpstreamRequestHeadersLog / UpstreamResponseHeadersLog 发往上游的 HTTP 头与上游响应头快照（脱敏后），写入消费日志 other。
 	UpstreamRequestHeadersLog  = "upstream_request_headers_log"
 	UpstreamResponseHeadersLog = "upstream_response_headers_log"
+	// ClientResponseHeadersLog / ResponseBodyBytesLog 由 ConsumeLogCapture 中间件写入。
+	ClientResponseHeadersLog = "client_response_headers_log"
+	ResponseBodyBytesLog     = "response_body_bytes_log"
+	// UpstreamRequestMetaLog / UpstreamResponseMetaLog 上游 HTTP 元信息（method/url/status）。
+	UpstreamRequestMetaLog  = "upstream_request_meta_log"
+	UpstreamResponseMetaLog = "upstream_response_meta_log"
+
+	// TieredBillingSnapshot 预扣时冻结的 tiered_expr 计费快照（*billingexpr.BillingSnapshot）。
+	TieredBillingSnapshot = "tiered_billing_snapshot"
+	// BillingRequestInput 预扣时冻结的请求探测输入（*billingexpr.RequestInput）。
+	BillingRequestInput = "billing_request_input"
+	// FinalPreConsumedQuota tiered 预扣额度（结算失败时回退）。
+	FinalPreConsumedQuota = "final_pre_consumed_quota"
 )

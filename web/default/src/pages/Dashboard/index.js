@@ -113,13 +113,31 @@ const Dashboard = () => {
   const processTimeSeriesData = () => {
     const dailyData = {};
 
+    // 填充实际数据
+    data.forEach((item) => {
+      if (!dailyData[item.Day]) {
+        dailyData[item.Day] = {
+          date: item.Day,
+          requests: 0,
+          quota: 0,
+          tokens: 0,
+        };
+      }
+      dailyData[item.Day].requests += item.RequestCount;
+      dailyData[item.Day].quota += item.Quota / 1000000;
+      dailyData[item.Day].tokens += item.PromptTokens + item.CompletionTokens;
+    });
+
     // 获取日期范围
-    const dates = data.map((item) => item.Day);
-    const maxDate = new Date(); // 总是使用今天作为最后一天
+    const dates = Object.keys(dailyData);
+    let maxDate = new Date();
     let minDate =
       dates.length > 0
         ? new Date(Math.min(...dates.map((d) => new Date(d))))
         : new Date();
+
+    const dataMaxDate = dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d)))) : new Date();
+    if (dataMaxDate > maxDate) maxDate = dataMaxDate;
 
     // 确保至少显示7天的数据
     const sevenDaysAgo = new Date();
@@ -128,23 +146,23 @@ const Dashboard = () => {
       minDate = sevenDaysAgo;
     }
 
-    // 生成所有日期
+    // 生成所有日期，补全空缺
     for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      dailyData[dateStr] = {
-        date: dateStr,
-        requests: 0,
-        quota: 0,
-        tokens: 0,
-      };
+      // 解决时区导致日期生成差异的问题，使用本地年月日
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${day}`;
+      
+      if (!dailyData[dateStr]) {
+        dailyData[dateStr] = {
+          date: dateStr,
+          requests: 0,
+          quota: 0,
+          tokens: 0,
+        };
+      }
     }
-
-    // 填充实际数据
-    data.forEach((item) => {
-      dailyData[item.Day].requests += item.RequestCount;
-      dailyData[item.Day].quota += item.Quota / 1000000;
-      dailyData[item.Day].tokens += item.PromptTokens + item.CompletionTokens;
-    });
 
     return Object.values(dailyData).sort((a, b) =>
       a.date.localeCompare(b.date)
@@ -154,14 +172,29 @@ const Dashboard = () => {
   // 处理数据以供堆叠柱状图使用
   const processModelData = () => {
     const timeData = {};
+    const models = [...new Set(data.map((item) => item.ModelName))];
+
+    // 填充实际数据
+    data.forEach((item) => {
+      if (!timeData[item.Day]) {
+        timeData[item.Day] = { date: item.Day };
+        models.forEach((model) => {
+          timeData[item.Day][model] = 0;
+        });
+      }
+      timeData[item.Day][item.ModelName] += item.PromptTokens + item.CompletionTokens;
+    });
 
     // 获取日期范围
-    const dates = data.map((item) => item.Day);
-    const maxDate = new Date(); // 总是使用今天作为最后一天
+    const dates = Object.keys(timeData);
+    let maxDate = new Date();
     let minDate =
       dates.length > 0
         ? new Date(Math.min(...dates.map((d) => new Date(d))))
         : new Date();
+
+    const dataMaxDate = dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d)))) : new Date();
+    if (dataMaxDate > maxDate) maxDate = dataMaxDate;
 
     // 确保至少显示7天的数据
     const sevenDaysAgo = new Date();
@@ -172,23 +205,18 @@ const Dashboard = () => {
 
     // 生成所有日期
     for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      timeData[dateStr] = {
-        date: dateStr,
-      };
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${day}`;
 
-      // 初始化所有模型的数据为0
-      const models = [...new Set(data.map((item) => item.ModelName))];
-      models.forEach((model) => {
-        timeData[dateStr][model] = 0;
-      });
+      if (!timeData[dateStr]) {
+        timeData[dateStr] = { date: dateStr };
+        models.forEach((model) => {
+          timeData[dateStr][model] = 0;
+        });
+      }
     }
-
-    // 填充实际数据
-    data.forEach((item) => {
-      timeData[item.Day][item.ModelName] =
-        item.PromptTokens + item.CompletionTokens;
-    });
 
     return Object.values(timeData).sort((a, b) => a.date.localeCompare(b.date));
   };

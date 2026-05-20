@@ -54,5 +54,7 @@ const (
 	// DeepResearch：深知 Deep Research（上游 POST /chat 为 SSE；客户端须 stream=true）
 	DeepResearch
 	AnthropicCompatible
+	// GeminiNativeCompatible：第三方 Gemini 原生 API 代理（Generative Language 形态，须填 Base URL）
+	GeminiNativeCompatible
 	Dummy // 哨兵：等于最后一个有效类型 + 1
 )

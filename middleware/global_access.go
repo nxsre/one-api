@@ -101,6 +101,9 @@ func extractAPIKeyFromRequest(r *http.Request) string {
 	if k := strings.TrimSpace(r.Header.Get("x-api-key")); k != "" {
 		return k
 	}
+	if k := strings.TrimSpace(r.Header.Get("x-goog-api-key")); k != "" {
+		return k
+	}
 	if k := strings.TrimSpace(r.URL.Query().Get("key")); k != "" {
 		return k
 	}

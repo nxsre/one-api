@@ -9,6 +9,7 @@ import {
   Modal,
   Card,
   Divider,
+  Icon,
 } from 'semantic-ui-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -21,7 +22,7 @@ import { onGitHubOAuthClicked, onLarkOAuthClicked } from './utils';
 import larkIcon from '../images/lark.svg';
 
 const RegisterForm = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
   const [inputs, setInputs] = useState({
@@ -41,6 +42,14 @@ const RegisterForm = () => {
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [status, setStatus] = useState({});
+
+  const isEnglishUI =
+    i18n.language && String(i18n.language).toLowerCase().startsWith('en');
+
+  const toggleLanguage = async () => {
+    await i18n.changeLanguage(isEnglishUI ? 'zh' : 'en');
+    window.location.reload();
+  };
 
   const mergeStatus = (data) => {
     if (!data) return;
@@ -183,6 +192,17 @@ const RegisterForm = () => {
   return (
     <>
       <div className='app-public-theme-bar'>
+        <Button
+          icon
+          basic
+          size='small'
+          className='app-theme-toggle'
+          onClick={() => void toggleLanguage()}
+          title={t('header.language_switch_tooltip')}
+          aria-label={t('header.language_switch_tooltip')}
+        >
+          <Icon name='language' />
+        </Button>
         <NacosThemeToggle />
       </div>
       <Grid textAlign='center' style={{ marginTop: '24px' }}>

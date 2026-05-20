@@ -10,7 +10,7 @@ import {
   Modal,
 } from 'semantic-ui-react';
 import { Link } from 'react-router-dom';
-import { API, showError, showSuccess } from '../helpers';
+import { API, showError, showSuccess, noAutofillTextProps } from '../helpers';
 import { marked } from 'marked';
 
 const OtherSetting = () => {
@@ -142,7 +142,7 @@ const OtherSetting = () => {
               placeholder={t('setting.other.system.name_placeholder')}
               value={inputs.SystemName}
               onChange={handleFieldChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
           </Form.Group>
           <Form.Button onClick={submitSystemName}>
@@ -162,7 +162,7 @@ const OtherSetting = () => {
                 placeholder={t('setting.other.system.theme.placeholder')}
                 value={inputs.Theme}
                 onChange={handleFieldChange}
-                autoComplete='off'
+                {...noAutofillTextProps}
               />
             </Form.Field>
           </Form.Group>
@@ -176,7 +176,7 @@ const OtherSetting = () => {
               placeholder={t('setting.other.system.logo_placeholder')}
               value={inputs.Logo}
               onChange={handleFieldChange}
-              autoComplete='off'
+              {...noAutofillTextProps}
             />
           </Form.Group>
           <Form.Button onClick={submitLogo}>

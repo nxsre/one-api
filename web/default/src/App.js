@@ -5,6 +5,7 @@ import { Button, Message, Modal } from 'semantic-ui-react';
 import Loading from './components/Loading';
 import User from './pages/User';
 import { PrivateRoute } from './components/PrivateRoute';
+import { TenantConsoleRoute, PrivatePlatformRoute } from './components/TenantScopeRoute';
 import NacosPrivateRoute from './components/NacosPrivateRoute';
 import RegisterForm from './components/RegisterForm';
 import LoginForm from './components/LoginForm';
@@ -21,6 +22,7 @@ import {
   showError,
   showNotice,
   clearNacosEmbeddedConsoleLocalSession,
+  clearTenantConsoleActingTenantId,
 } from './helpers';
 import PasswordResetForm from './components/PasswordResetForm';
 import GitHubOAuth from './components/GitHubOAuth';
@@ -29,12 +31,16 @@ import { UserContext } from './context/User';
 import { StatusContext } from './context/Status';
 import Channel from './pages/Channel';
 import ModelCatalogPage from './pages/ModelCatalog';
+import OperationPage from './pages/Operation';
 import RoutingOperations from './pages/Routing';
 import Token from './pages/Token';
 import EditToken from './pages/Token/EditToken';
 import EditChannel from './pages/Channel/EditChannel';
 import Redemption from './pages/Redemption';
 import EditRedemption from './pages/Redemption/EditRedemption';
+import TenantUpgrades from './pages/TenantUpgrades';
+import TenantManagement from './pages/TenantManagement';
+import PlatformReports from './pages/PlatformReports';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
 import Chat from './pages/Chat';
@@ -51,15 +57,27 @@ import NacosPermissions from './pages/Nacos/NacosPermissions';
 import NacosNamespaces from './pages/Nacos/Namespaces';
 import NacosCsConfigs from './pages/Nacos/CsConfigs';
 import NacosConsoleExternalOpen from './pages/Nacos/NacosConsoleExternalOpen';
+import TenantConsoleHome from './pages/TenantConsole';
+import TenantReports from './pages/TenantConsole/TenantReports';
+import TenantUsers from './pages/TenantConsole/TenantUsers';
+import TenantEditUser from './pages/TenantConsole/TenantEditUser';
+import TenantChannels from './pages/TenantConsole/TenantChannels';
+import TenantEditChannel from './pages/TenantConsole/TenantEditChannel';
+import TenantUserTokens from './pages/TenantConsole/TenantUserTokens';
+import TenantEditToken from './pages/TenantConsole/TenantEditToken';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
-const Routing = lazy(() => import('./pages/Routing'));
+
+function TenantLoginPage() {
+  return <LoginForm tenantPortal />;
+}
 
 function isPublicAuthPath() {
   const path = window.location.pathname;
   return (
     path === '/login' ||
+    path === '/tenant-login' ||
     path === '/register' ||
     path === '/reset' ||
     path === '/user/reset' ||
@@ -100,6 +118,7 @@ function App() {
         /* 仍清理本地会话并返回登录页 */
       }
       localStorage.removeItem('user');
+      clearTenantConsoleActingTenantId();
       clearNacosEmbeddedConsoleLocalSession();
       userDispatch({ type: 'logout' });
       setForce2FASetupOpen(false);
@@ -206,61 +225,65 @@ function App() {
       <Route
         path='/'
         element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <Suspense fallback={<Loading></Loading>}>
               <Home />
             </Suspense>
-          </PrivateRoute>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/routing'
         element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <RoutingOperations />
-          </PrivateRoute>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/channel'
         element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <Channel />
-          </PrivateRoute>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/model-catalog'
         element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <ModelCatalogPage />
-          </PrivateRoute>
+          </PrivatePlatformRoute>
+        }
+      />
+      <Route
+        path='/operations'
+        element={
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <OperationPage />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/channel/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditChannel />
-          </Suspense>
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditChannel />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/channel/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditChannel />
-          </Suspense>
-        }
-      />
-      <Route
-        path='/routing'
-        element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <Suspense fallback={<Loading></Loading>}>
-              <Routing />
+              <EditChannel />
             </Suspense>
-          </PrivateRoute>
+          </PrivatePlatformRoute>
         }
       />
       <Route
@@ -274,73 +297,111 @@ function App() {
       <Route
         path='/token/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditToken />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditToken />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/token/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditToken />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditToken />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/redemption'
         element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <Redemption />
-          </PrivateRoute>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/redemption/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditRedemption />
-          </Suspense>
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditRedemption />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/redemption/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditRedemption />
-          </Suspense>
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditRedemption />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/user'
         element={
-          <PrivateRoute>
+          <PrivatePlatformRoute>
             <User />
-          </PrivateRoute>
+          </PrivatePlatformRoute>
+        }
+      />
+      <Route
+        path='/tenant-upgrades'
+        element={
+          <PrivatePlatformRoute>
+            <TenantUpgrades />
+          </PrivatePlatformRoute>
+        }
+      />
+      <Route
+        path='/tenant-management'
+        element={
+          <PrivatePlatformRoute>
+            <TenantManagement />
+          </PrivatePlatformRoute>
+        }
+      />
+      <Route
+        path='/platform-reports'
+        element={
+          <PrivatePlatformRoute>
+            <PlatformReports />
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/user/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditUser />
-          </Suspense>
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditUser />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/user/edit'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditUser />
-          </Suspense>
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditUser />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
         path='/user/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <AddUser />
-          </Suspense>
+          <PrivatePlatformRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <AddUser />
+            </Suspense>
+          </PrivatePlatformRoute>
         }
       />
       <Route
@@ -359,6 +420,7 @@ function App() {
           </Suspense>
         }
       />
+      <Route path='/tenant-login' element={<TenantLoginPage />} />
       <Route
         path='/register'
         element={
@@ -523,7 +585,117 @@ function App() {
           </NacosPrivateRoute>
         }
       />
-        <Route path='*' element={<NotFound />} />
+      <Route
+        path='/tenant-console'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantConsoleHome />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/reports'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantReports />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/users'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantUsers />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/users/add'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantEditUser />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/users/edit/:userId'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantEditUser />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/channels'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantChannels />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/channels/add'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantEditChannel />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/channels/edit/:id'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantEditChannel />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/users/:ownerId/tokens'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantUserTokens />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/users/:ownerId/tokens/add'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantEditToken />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/tenant-console/users/:ownerId/tokens/edit/:tid'
+        element={
+          <PrivateRoute>
+            <TenantConsoleRoute>
+              <TenantEditToken />
+            </TenantConsoleRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route path='*' element={<NotFound />} />
       </Routes>
       <Modal
         open={force2FASetupOpen}

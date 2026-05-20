@@ -68,6 +68,8 @@ var LarkOAuthEnabled = false
 var OidcEnabled = false
 var WeChatAuthEnabled = false
 var TurnstileCheckEnabled = false
+// LoginCaptchaEnabled 为 false 时，关闭 Turnstile 场景下不再要求登录点击验证码（见环境变量 login_math_captcha_enabled）。默认开启。
+var LoginCaptchaEnabled = true
 var RegisterEnabled = true
 
 // NacosEnabled 系统设置开关：关闭后 Nacos API 返回 404，管理端隐藏 Nacos 菜单。
@@ -92,8 +94,18 @@ var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
 
+// ErrorLogEnabled 为 true 时，Relay 等访问失败会写入操作日志（type=错误）。
+var ErrorLogEnabled = true
+
+// LogConsumeIncludeUserInput 为 true 时，消费日志 other 字段包含从请求体提取的用户输入摘要（含提示词等）。
+var LogConsumeIncludeUserInput = true
+var LogConsumeUserInputMaxBytes = 8192
+
 // LogShardByDay 为 true 时日志写入按 UTC 日历日分物理表 logs_YYYYMMDD（需配合日志库迁移）；默认 false 保持单表 logs。
 var LogShardByDay bool
+
+// EnableHighCardinalityMetrics 为 true 时开启高基数打点（如消耗额度的 user_id 维度）
+var EnableHighCardinalityMetrics = false
 
 var SMTPServer = ""
 var SMTPPort = 587
@@ -218,6 +230,8 @@ var RequestAuditMaxBodyBytes int
 // RelayProtocolBridgeEnabled 为 true 时，允许 Anthropic / Gemini 原生路由在与渠道协议不一致时自动经 OpenAI 通用语义转发（跨厂商互调）。默认关闭以防误用。
 var RelayProtocolBridgeEnabled bool
 
+var DefaultTenantChannelPricePer1k float64 = 0
+
 // LoadRuntime 须在 cfg.Init 与 env.BindViper 之后调用，从 TOML / 命令行填充运行时项。
 func LoadRuntime() {
 	DebugEnabled = env.Bool("DEBUG", false)
@@ -278,4 +292,10 @@ func LoadRuntime() {
 	RelayProtocolBridgeEnabled = env.BoolAlways("relay_protocol_bridge_enabled")
 
 	LogShardByDay = env.BoolAlways("log_shard_by_day")
+
+	LogConsumeIncludeUserInput = env.Bool("LOG_CONSUME_INCLUDE_USER_INPUT", true)
+	LogConsumeUserInputMaxBytes = env.Int("LOG_CONSUME_USER_INPUT_MAX_BYTES", 8192)
+	if LogConsumeUserInputMaxBytes <= 0 {
+		LogConsumeUserInputMaxBytes = 8192
+	}
 }

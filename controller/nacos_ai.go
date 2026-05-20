@@ -19,8 +19,20 @@ func nacosV3OK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": data})
 }
 
+// nacosV3Err 返回与 nacosV3OK 相同的 JSON 形状，但使用非 2xx HTTP 状态码。
+// 嵌入的 console-ui（jQuery）在业务失败时若仍用 HTTP 200，多数回调只读 data、不读 code/message，用户看不到提示；
+// 非 2xx 会进入 request() 里 $.ajax 的 fail 链并 toastError(responseJSON.message)。
 func nacosV3Err(c *gin.Context, code int, msg string) {
-	c.JSON(http.StatusOK, gin.H{"code": code, "message": msg, "data": nil})
+	status := http.StatusBadRequest
+	switch code {
+	case 10001:
+		status = http.StatusUnauthorized
+	case 40300:
+		status = http.StatusForbidden
+	case 20004, 22001:
+		status = http.StatusNotFound
+	}
+	c.JSON(status, gin.H{"code": code, "message": msg, "data": nil})
 }
 
 // nacosParam 读取 URL query 或 POST 表单字段（含 application/x-www-form-urlencoded 与 multipart 中的文本字段）。
@@ -51,17 +63,22 @@ func nacosPublishForceFlag(c *gin.Context) bool {
 	return explicit == "true" || explicit == "1"
 }
 
-func nacosNamespace(c *gin.Context) string {
-	return service.NormalizeNacosNamespaceID(nacosParam(c, "namespaceId"))
+// nacosNamespaceOK 解析并校验命名空间（租户隔离）；失败时已写入 v3 风格错误响应。
+func nacosNamespaceOK(c *gin.Context, fallback string) (string, bool) {
+	return nacosResolveNamespaceV3(c, fallback)
 }
 
 // --- Skills admin ---
 
 func NacosSkillList(c *gin.Context) {
 	filter, pageNo, pageSize := parseNacosSkillListFilter(c)
-	data, err := service.NacosAIListSkills(nacosNamespace(c), filter, pageNo, pageSize)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	data, err := service.NacosAIListSkills(ns, filter, pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -70,16 +87,20 @@ func NacosSkillList(c *gin.Context) {
 func NacosSkillDescribe(c *gin.Context) {
 	skillName := strings.TrimSpace(c.Query("skillName"))
 	if skillName == "" {
-		nacosV3Err(c, 400, "skillName 必填")
+		nacosV3Err(c, 10000, "skillName 必填")
 		return
 	}
-	data, err := service.NacosAIDescribeSkill(nacosNamespace(c), skillName)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	data, err := service.NacosAIDescribeSkill(ns, skillName)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -89,15 +110,19 @@ func NacosSkillDescribe(c *gin.Context) {
 func NacosSkillDelete(c *gin.Context) {
 	skillName := strings.TrimSpace(nacosParam(c, "skillName"))
 	if skillName == "" {
-		nacosV3Err(c, 400, "skillName 必填")
+		nacosV3Err(c, 10000, "skillName 必填")
 		return
 	}
-	if err := service.NacosAIDeleteSkill(nacosNamespace(c), skillName); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIDeleteSkill(ns, skillName); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -106,30 +131,34 @@ func NacosSkillDelete(c *gin.Context) {
 func NacosSkillUpload(c *gin.Context) {
 	f, err := c.FormFile("file")
 	if err != nil {
-		nacosV3Err(c, 400, "缺少 multipart 字段 file")
+		nacosV3Err(c, 10000, "缺少 multipart 字段 file")
 		return
 	}
 	if f.Size > config.NacosRegistryMaxUploadBytes {
-		nacosV3Err(c, 400, "上传文件过大")
+		nacosV3Err(c, 20002, "上传文件过大")
 		return
 	}
 	src, err := f.Open()
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	defer src.Close()
 	zipData, err := io.ReadAll(src)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	if int64(len(zipData)) > config.NacosRegistryMaxUploadBytes {
-		nacosV3Err(c, 400, "上传文件过大")
+		nacosV3Err(c, 20002, "上传文件过大")
 		return
 	}
-	if err := service.NacosAIUploadSkill(nacosNamespace(c), zipData, 0, f.Filename); err != nil {
-		nacosV3Err(c, 400, err.Error())
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIUploadSkill(ns, zipData, 0, f.Filename); err != nil {
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	c.Status(http.StatusOK)
@@ -138,16 +167,20 @@ func NacosSkillUpload(c *gin.Context) {
 func NacosSkillSubmit(c *gin.Context) {
 	skillName := strings.TrimSpace(nacosParam(c, "skillName"))
 	if skillName == "" {
-		nacosV3Err(c, 400, "skillName 必填")
+		nacosV3Err(c, 10000, "skillName 必填")
 		return
 	}
 	version := strings.TrimSpace(nacosParam(c, "version"))
-	if err := service.NacosAISubmit(nacosNamespace(c), model.NacosAIKindSkill, skillName, version); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAISubmit(ns, model.NacosAIKindSkill, skillName, version); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -157,17 +190,21 @@ func NacosSkillPublish(c *gin.Context) {
 	skillName := strings.TrimSpace(nacosParam(c, "skillName"))
 	version := strings.TrimSpace(nacosParam(c, "version"))
 	if skillName == "" || version == "" {
-		nacosV3Err(c, 400, "skillName 与 version 必填")
+		nacosV3Err(c, 10000, "skillName 与 version 必填")
 		return
 	}
 	updateLatest := nacosDefaultParam(c, "updateLatestLabel", "true") == "true"
 	force := nacosPublishForceFlag(c)
-	if err := service.NacosAIPublish(nacosNamespace(c), model.NacosAIKindSkill, skillName, version, updateLatest, force); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIPublish(ns, model.NacosAIKindSkill, skillName, version, updateLatest, force); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -183,7 +220,11 @@ func NacosSkillClientGet(c *gin.Context) {
 	}
 	label := c.Query("label")
 	version := c.Query("version")
-	zipData, err := service.NacosAIGetSkillZIP(nacosNamespace(c), name, label, version)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	zipData, err := service.NacosAIGetSkillZIP(ns, name, label, version)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": err.Error(), "data": nil})
@@ -202,9 +243,13 @@ func NacosAgentSpecList(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	name := c.Query("agentSpecName")
 	search := c.Query("search")
-	data, err := service.NacosAIListAgentSpecs(nacosNamespace(c), name, search, pageNo, pageSize)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	data, err := service.NacosAIListAgentSpecs(ns, name, search, pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -213,16 +258,20 @@ func NacosAgentSpecList(c *gin.Context) {
 func NacosAgentSpecDescribe(c *gin.Context) {
 	name := strings.TrimSpace(c.Query("agentSpecName"))
 	if name == "" {
-		nacosV3Err(c, 400, "agentSpecName 必填")
+		nacosV3Err(c, 10000, "agentSpecName 必填")
 		return
 	}
-	data, err := service.NacosAIDescribeAgentSpec(nacosNamespace(c), name)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	data, err := service.NacosAIDescribeAgentSpec(ns, name)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "agentspec 不存在")
+			nacosV3Err(c, 20004, "agentspec 不存在")
 			return
 		}
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	nacosV3OK(c, data)
@@ -231,27 +280,31 @@ func NacosAgentSpecDescribe(c *gin.Context) {
 func NacosAgentSpecUpload(c *gin.Context) {
 	f, err := c.FormFile("file")
 	if err != nil {
-		nacosV3Err(c, 400, "缺少 multipart 字段 file")
+		nacosV3Err(c, 10000, "缺少 multipart 字段 file")
 		return
 	}
 	if f.Size > config.NacosRegistryMaxUploadBytes {
-		nacosV3Err(c, 400, "上传文件过大")
+		nacosV3Err(c, 20002, "上传文件过大")
 		return
 	}
 	src, err := f.Open()
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	defer src.Close()
 	zipData, err := io.ReadAll(src)
 	if err != nil {
-		nacosV3Err(c, 500, err.Error())
+		nacosV3Err(c, 30000, err.Error())
 		return
 	}
 	overwrite := nacosDefaultParam(c, "overwrite", "false") == "true"
-	if err := service.NacosAIUploadAgentSpec(nacosNamespace(c), zipData, 0, overwrite, f.Filename); err != nil {
-		nacosV3Err(c, 400, err.Error())
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIUploadAgentSpec(ns, zipData, 0, overwrite, f.Filename); err != nil {
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	c.Status(http.StatusOK)
@@ -260,16 +313,20 @@ func NacosAgentSpecUpload(c *gin.Context) {
 func NacosAgentSpecSubmit(c *gin.Context) {
 	name := strings.TrimSpace(nacosParam(c, "agentSpecName"))
 	if name == "" {
-		nacosV3Err(c, 400, "agentSpecName 必填")
+		nacosV3Err(c, 10000, "agentSpecName 必填")
 		return
 	}
 	version := strings.TrimSpace(nacosParam(c, "version"))
-	if err := service.NacosAISubmit(nacosNamespace(c), model.NacosAIKindAgentSpec, name, version); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAISubmit(ns, model.NacosAIKindAgentSpec, name, version); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "agentspec 不存在")
+			nacosV3Err(c, 20004, "agentspec 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -279,17 +336,21 @@ func NacosAgentSpecPublish(c *gin.Context) {
 	name := strings.TrimSpace(nacosParam(c, "agentSpecName"))
 	version := strings.TrimSpace(nacosParam(c, "version"))
 	if name == "" || version == "" {
-		nacosV3Err(c, 400, "agentSpecName 与 version 必填")
+		nacosV3Err(c, 10000, "agentSpecName 与 version 必填")
 		return
 	}
 	updateLatest := nacosDefaultParam(c, "updateLatestLabel", "true") == "true"
 	force := nacosPublishForceFlag(c)
-	if err := service.NacosAIPublish(nacosNamespace(c), model.NacosAIKindAgentSpec, name, version, updateLatest, force); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIPublish(ns, model.NacosAIKindAgentSpec, name, version, updateLatest, force); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "agentspec 不存在")
+			nacosV3Err(c, 20004, "agentspec 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -300,18 +361,22 @@ func NacosAgentSpecPublish(c *gin.Context) {
 func NacosAgentSpecClientGet(c *gin.Context) {
 	name := strings.TrimSpace(c.Query("name"))
 	if name == "" {
-		nacosV3Err(c, 400, "name 必填")
+		nacosV3Err(c, 10000, "name 必填")
 		return
 	}
 	label := c.Query("label")
 	version := c.Query("version")
-	payload, err := service.NacosAIGetAgentSpecJSON(nacosNamespace(c), name, label, version)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	payload, err := service.NacosAIGetAgentSpecJSON(ns, name, label, version)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, err.Error())
+			nacosV3Err(c, 20004, err.Error())
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, payload)
@@ -322,16 +387,20 @@ func NacosSkillDownloadAdmin(c *gin.Context) {
 	skillName := strings.TrimSpace(c.Query("skillName"))
 	version := strings.TrimSpace(c.Query("version"))
 	if skillName == "" || version == "" {
-		nacosV3Err(c, 400, "skillName 与 version 必填")
+		nacosV3Err(c, 10000, "skillName 与 version 必填")
 		return
 	}
-	zipData, err := service.NacosAIGetSkillZIPAdmin(nacosNamespace(c), skillName, version)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	zipData, err := service.NacosAIGetSkillZIPAdmin(ns, skillName, version)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	c.Data(http.StatusOK, "application/zip", zipData)
@@ -342,16 +411,20 @@ func NacosAgentSpecDownloadAdmin(c *gin.Context) {
 	name := strings.TrimSpace(c.Query("agentSpecName"))
 	version := strings.TrimSpace(c.Query("version"))
 	if name == "" || version == "" {
-		nacosV3Err(c, 400, "agentSpecName 与 version 必填")
+		nacosV3Err(c, 10000, "agentSpecName 与 version 必填")
 		return
 	}
-	zipData, err := service.NacosAIGetAgentSpecZIPAdmin(nacosNamespace(c), name, version)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	zipData, err := service.NacosAIGetAgentSpecZIPAdmin(ns, name, version)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "agentspec 不存在")
+			nacosV3Err(c, 20004, "agentspec 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	c.Data(http.StatusOK, "application/zip", zipData)
@@ -367,18 +440,22 @@ type nacosArtifactLabelsBody struct {
 func NacosSkillLabelsUpdate(c *gin.Context) {
 	var body nacosArtifactLabelsBody
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if body.Labels == nil {
 		body.Labels = map[string]string{}
 	}
-	if err := service.NacosAIUpdateArtifactLabels(nacosNamespace(c), model.NacosAIKindSkill, body.Name, body.Labels, body.Replace); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIUpdateArtifactLabels(ns, model.NacosAIKindSkill, body.Name, body.Labels, body.Replace); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "skill 不存在")
+			nacosV3Err(c, 20004, "skill 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -388,18 +465,22 @@ func NacosSkillLabelsUpdate(c *gin.Context) {
 func NacosAgentSpecLabelsUpdate(c *gin.Context) {
 	var body nacosArtifactLabelsBody
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if body.Labels == nil {
 		body.Labels = map[string]string{}
 	}
-	if err := service.NacosAIUpdateArtifactLabels(nacosNamespace(c), model.NacosAIKindAgentSpec, body.Name, body.Labels, body.Replace); err != nil {
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
+	if err := service.NacosAIUpdateArtifactLabels(ns, model.NacosAIKindAgentSpec, body.Name, body.Labels, body.Replace); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			nacosV3Err(c, 404, "agentspec 不存在")
+			nacosV3Err(c, 20004, "agentspec 不存在")
 			return
 		}
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)

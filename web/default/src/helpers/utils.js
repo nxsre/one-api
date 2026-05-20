@@ -3,17 +3,77 @@ import {toastConstants} from '../constants';
 import React from 'react';
 import {API} from './api';
 import { clearNacosEmbeddedConsoleLocalSession } from './nacosEmbeddedConsole';
+import { clearTenantConsoleActingTenantId } from './tenantConsoleImpersonation';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
 export default HTMLToastContent;
 
+/** 租户管理员角色（仅租户控制台，非平台管理员菜单） */
+export const ROLE_TENANT_ADMIN = 20;
+
+export function isTenantAdmin() {
+  let user = localStorage.getItem('user');
+  if (!user) return false;
+  user = JSON.parse(user);
+  return Number(user.role) === ROLE_TENANT_ADMIN;
+}
+
 export function isAdmin() {
   let user = localStorage.getItem('user');
   if (!user) return false;
   user = JSON.parse(user);
+  if (Number(user.role) === ROLE_TENANT_ADMIN) return false;
   return user.role >= 10;
+}
+
+export function getStoredUserJSON() {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 具备租户控制台委派权限的子账号（普通用户 + tenant_id + tenant_permissions） */
+export function isTenantConsoleDelegate() {
+  const u = getStoredUserJSON();
+  if (!u) return false;
+  const tid = u.tenant_id;
+  return (
+    Number(u.role) === 1 &&
+    tid != null &&
+    tid !== '' &&
+    Array.isArray(u.tenant_permissions) &&
+    u.tenant_permissions.length > 0
+  );
+}
+
+/** 租户管理员视为拥有全部租户内权限；子账号按 tenant_permissions 校验 */
+export function hasTenantPermission(perm) {
+  if (!perm) return false;
+  if (isTenantAdmin()) return true;
+  const u = getStoredUserJSON();
+  if (!u || !Array.isArray(u.tenant_permissions)) return false;
+  return u.tenant_permissions.includes(perm);
+}
+
+export function postLoginDefaultPath(userPayload) {
+  if (!userPayload) return '/token';
+  if (userPayload.require_force_2fa_setup) return '/setting';
+  if (Number(userPayload.role) === ROLE_TENANT_ADMIN) return '/tenant-console';
+  if (
+    Number(userPayload.role) === 1 &&
+    userPayload.tenant_id != null &&
+    userPayload.tenant_id !== '' &&
+    Array.isArray(userPayload.tenant_permissions) &&
+    userPayload.tenant_permissions.length > 0
+  ) {
+    return '/tenant-console';
+  }
+  return '/token';
 }
 
 export function isRoot() {
@@ -116,6 +176,7 @@ export function showError(error) {
         case 401:
           // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
           localStorage.removeItem('user');
+          clearTenantConsoleActingTenantId();
           clearNacosEmbeddedConsoleLocalSession();
           if (window.location.pathname !== '/login') {
             window.location.replace('/login?expired=true');

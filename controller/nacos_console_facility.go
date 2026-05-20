@@ -12,22 +12,28 @@ import (
 // --- 服务发现（/v3/console/ns/*）---
 
 func NacosConsoleDiscoveryServiceList(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	pageNo, _ := strconv.Atoi(c.DefaultQuery("pageNo", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	total, items, err := service.NacosDiscoveryListServices(ns, c.Query("serviceNameParam"), c.Query("groupNameParam"), pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, gin.H{"totalCount": total, "pageItems": items})
 }
 
 func NacosConsoleDiscoveryServiceGet(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	detail, err := service.NacosDiscoveryGetServiceDetail(ns, c.Query("groupName"), c.Query("serviceName"))
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, detail)
@@ -44,7 +50,7 @@ func NacosConsoleDiscoveryServicePost(c *gin.Context) {
 		Selector           string            `json:"selector"`
 	}
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	selT, selE := service.ParseDiscoverySelector(body.Selector)
@@ -58,7 +64,7 @@ func NacosConsoleDiscoveryServicePost(c *gin.Context) {
 		SelectorType:       selT,
 		SelectorExpression: selE,
 	}); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	service.NacosDiscoveryEnsureDemoSubscriber(service.NormalizeNacosNamespaceID(body.NamespaceId), strings.TrimSpace(body.GroupName), strings.TrimSpace(body.ServiceName))
@@ -76,7 +82,7 @@ func NacosConsoleDiscoveryServicePut(c *gin.Context) {
 		Selector           string            `json:"selector"`
 	}
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	selT, selE := service.ParseDiscoverySelector(body.Selector)
@@ -90,16 +96,19 @@ func NacosConsoleDiscoveryServicePut(c *gin.Context) {
 		SelectorType:       selT,
 		SelectorExpression: selE,
 	}); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleDiscoveryServiceDelete(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	if err := service.NacosDiscoveryDeleteService(ns, c.Query("groupName"), c.Query("serviceName")); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
@@ -112,23 +121,26 @@ func NacosConsoleDiscoverySelectorTypes(c *gin.Context) {
 func NacosConsoleDiscoveryClusterPut(c *gin.Context) {
 	var body service.DiscoveryClusterUpdate
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if err := service.NacosDiscoveryUpdateCluster(body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleDiscoveryInstanceList(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	pageNo, _ := strconv.Atoi(c.DefaultQuery("pageNo", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	total, items, err := service.NacosDiscoveryListInstances(ns, c.Query("groupName"), c.Query("serviceName"), c.Query("clusterName"), pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, gin.H{"totalCount": total, "pageItems": items})
@@ -137,34 +149,40 @@ func NacosConsoleDiscoveryInstanceList(c *gin.Context) {
 func NacosConsoleDiscoveryInstancePut(c *gin.Context) {
 	var body service.DiscoveryInstanceForm
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if err := service.NacosDiscoveryUpsertInstance(body); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleDiscoveryInstanceDelete(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	port, _ := strconv.Atoi(c.Query("port"))
 	ephem := service.ParseBoolQuery(c.Query("ephemeral"), true)
 	if err := service.NacosDiscoveryDeleteInstance(ns, c.Query("groupName"), c.Query("serviceName"), c.Query("clusterName"), c.Query("ip"), port, ephem); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
 }
 
 func NacosConsoleDiscoverySubscribersList(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	pageNo, _ := strconv.Atoi(c.DefaultQuery("pageNo", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	total, items, err := service.NacosDiscoveryListSubscribers(ns, c.Query("serviceName"), c.Query("groupName"), pageNo, pageSize)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, gin.H{"totalCount": total, "pageItems": items})
@@ -173,7 +191,10 @@ func NacosConsoleDiscoverySubscribersList(c *gin.Context) {
 // --- CS 扩展：监听 / 灰度 / 导入 / 克隆 ---
 
 func NacosCsConfigListenerConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	m := service.NacosCsListenerMap(ns, c.Query("dataId"), c.Query("groupName"), c.Query("ip"))
 	qt := "config"
 	if strings.Contains(c.Request.URL.Path, "/listener/ip") {
@@ -183,52 +204,64 @@ func NacosCsConfigListenerConsole(c *gin.Context) {
 }
 
 func NacosCsConfigBetaGetConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	b, err := service.NacosCsBetaGet(ns, c.Query("dataId"), c.Query("groupName"))
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, b)
 }
 
 func NacosCsConfigBetaDeleteConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	if err := service.NacosCsBetaDelete(ns, c.Query("dataId"), c.Query("groupName")); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
 }
 
 func NacosCsConfigImportConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	policy := c.Query("policy")
 	fh, err := c.FormFile("file")
 	if err != nil {
-		nacosV3Err(c, 400, "缺少上传文件 file")
+		nacosV3Err(c, 10000, "缺少上传文件 file")
 		return
 	}
 	n, err := service.NacosCsImportFromMultipart(ns, policy, fh)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, gin.H{"created": n})
 }
 
 func NacosCsConfigCloneConsole(c *gin.Context) {
-	ns := nacosNamespace(c)
+	ns, ok := nacosNamespaceOK(c, "public")
+	if !ok {
+		return
+	}
 	dst := c.Query("targetNamespaceId")
 	policy := c.Query("policy")
 	var items []service.NacosCsCloneItem
 	if err := json.NewDecoder(c.Request.Body).Decode(&items); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	cloned, skipped, err := service.NacosCsCloneConfigs(ns, dst, policy, items)
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, gin.H{"cloned": cloned, "skipped": skipped})
@@ -239,7 +272,7 @@ func NacosCsConfigCloneConsole(c *gin.Context) {
 func NacosConsolePluginListConsole(c *gin.Context) {
 	rows, err := service.NacosConsolePluginList(c.Query("pluginType"))
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	out := make([]gin.H, 0, len(rows))
@@ -262,7 +295,7 @@ func NacosConsolePluginListConsole(c *gin.Context) {
 func NacosConsolePluginStatusPut(c *gin.Context) {
 	en := service.ParseBoolQuery(c.Query("enabled"), false)
 	if err := service.NacosConsolePluginSetStatus(c.Query("pluginType"), c.Query("pluginName"), en); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, true)
@@ -271,7 +304,7 @@ func NacosConsolePluginStatusPut(c *gin.Context) {
 func NacosConsoleClusterNodesList(c *gin.Context) {
 	rows, err := service.NacosConsoleClusterList(c.Query("keyword"))
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	out := make([]gin.H, 0, len(rows))
@@ -289,11 +322,11 @@ func NacosConsoleClusterNodesList(c *gin.Context) {
 func NacosConsoleClusterServerLeave(c *gin.Context) {
 	var addrs []string
 	if err := json.NewDecoder(c.Request.Body).Decode(&addrs); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	if err := service.NacosConsoleClusterLeave(addrs); err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	nacosV3OK(c, "ok")
@@ -304,7 +337,7 @@ func NacosConsoleClusterServerLeave(c *gin.Context) {
 func NacosConsoleMcpImportToolsList(c *gin.Context) {
 	tools, err := service.NacosMcpImportToolsList(c.Query("transportType"), c.Query("baseUrl"), c.Query("endpoint"), c.Query("authToken"))
 	if err != nil {
-		nacosV3Err(c, 400, err.Error())
+		nacosV3Err(c, 20002, err.Error())
 		return
 	}
 	out := make([]gin.H, 0, len(tools))

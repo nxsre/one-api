@@ -4,10 +4,7 @@ const Chat = () => {
   const chatLink = localStorage.getItem('chat_link');
 
   return (
-    <iframe
-      src={chatLink}
-      style={{ width: '100%', height: '85vh', border: 'none' }}
-    />
+    <iframe src={chatLink} title='chat' />
   );
 };
 

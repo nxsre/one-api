@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/nacosdist"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/service"
@@ -43,7 +45,10 @@ func GetNacosRegistryInfo(c *gin.Context) {
 
 // ListNacosSkillsAdmin GET /api/nacos/skills
 func ListNacosSkillsAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, "public")
+	if !ok {
+		return
+	}
 	filter, page, size := parseNacosSkillListFilter(c)
 	data, err := service.NacosAIListSkills(ns, filter, page, size)
 	if err != nil {
@@ -55,7 +60,10 @@ func ListNacosSkillsAdmin(c *gin.Context) {
 
 // GetNacosSkillDetailAdmin GET /api/nacos/skills/detail?name=&namespace=
 func GetNacosSkillDetailAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.Query("name"))
 	if name == "" {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "name 必填"})
@@ -75,7 +83,10 @@ func GetNacosSkillDetailAdmin(c *gin.Context) {
 
 // UploadNacosSkillAdmin POST /api/nacos/skills/upload?namespace= （multipart 字段 file）
 func UploadNacosSkillAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, "public")
+	if !ok {
+		return
+	}
 	f, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "缺少 multipart 字段 file"})
@@ -133,6 +144,10 @@ func UpdateNacosSkillMetadataAdmin(c *gin.Context) {
 	if strings.TrimSpace(ns) == "" {
 		ns = "public"
 	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
+	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "name 必填"})
@@ -151,7 +166,10 @@ func UpdateNacosSkillMetadataAdmin(c *gin.Context) {
 
 // DeleteNacosSkillAdmin DELETE /api/nacos/skills/item?name=&namespace=
 func DeleteNacosSkillAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, "public")
+	if !ok {
+		return
+	}
 	name := strings.TrimSpace(c.Query("name"))
 	if name == "" {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "name 必填"})
@@ -184,6 +202,10 @@ func SubmitNacosSkillAdmin(c *gin.Context) {
 	ns := body.Namespace
 	if strings.TrimSpace(ns) == "" {
 		ns = "public"
+	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
 	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
@@ -220,6 +242,10 @@ func PublishNacosSkillAdmin(c *gin.Context) {
 	if strings.TrimSpace(ns) == "" {
 		ns = "public"
 	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
+	}
 	name := strings.TrimSpace(body.Name)
 	ver := strings.TrimSpace(body.Version)
 	if name == "" || ver == "" {
@@ -255,6 +281,10 @@ func NacosSkillVersionOnlineAdmin(c *gin.Context) {
 	ns := strings.TrimSpace(body.Namespace)
 	if ns == "" {
 		ns = "public"
+	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
 	}
 	name := strings.TrimSpace(body.Name)
 	ver := strings.TrimSpace(body.Version)
@@ -297,6 +327,10 @@ func NacosSkillVersionOfflineAdmin(c *gin.Context) {
 	if ns == "" {
 		ns = "public"
 	}
+	ns = service.NormalizeNacosNamespaceID(ns)
+	if !nacosAssertTenantNamespaceWeb(c, ns) {
+		return
+	}
 	name := strings.TrimSpace(body.Name)
 	ver := strings.TrimSpace(body.Version)
 	if name == "" || ver == "" {
@@ -313,7 +347,14 @@ func NacosSkillVersionOfflineAdmin(c *gin.Context) {
 // ListNacosNamespaceOptions GET /api/nacos/namespaces/options?q=
 func ListNacosNamespaceOptions(c *gin.Context) {
 	q := c.Query("q")
-	items, err := service.NacosListNamespaceOptions(q)
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	var items []string
+	var err error
+	if scoped {
+		items, err = service.NacosListNamespaceOptionsForTenant(tid, q)
+	} else {
+		items, err = service.NacosListNamespaceOptions(q)
+	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -324,7 +365,14 @@ func ListNacosNamespaceOptions(c *gin.Context) {
 // ListNacosRegistryNamespaces GET /api/nacos/namespaces
 // 返回与 Nacos 原生控制台一致的字段（仅已登记命名空间）。
 func ListNacosRegistryNamespaces(c *gin.Context) {
-	data, err := service.NacosListConsoleNamespaces()
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	var data []service.NacosConsoleNamespaceItem
+	var err error
+	if scoped {
+		data, err = service.NacosListConsoleNamespacesForTenant(tid)
+	} else {
+		data, err = service.NacosListConsoleNamespaces()
+	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -333,11 +381,12 @@ func ListNacosRegistryNamespaces(c *gin.Context) {
 }
 
 type createNacosNsBody struct {
-	NamespaceId       string `json:"namespace_id"`
+	NamespaceId         string `json:"namespace_id"`
 	Remark              string `json:"remark"`
 	CustomNamespaceId   string `json:"customNamespaceId"`
 	NamespaceName       string `json:"namespaceName"`
 	NamespaceDesc       string `json:"namespaceDesc"`
+	ExposeToTenants     *bool  `json:"expose_to_tenants"` // 仅平台创建时有效，默认 false
 }
 
 // CreateNacosRegistryNamespace POST /api/nacos/namespaces
@@ -366,7 +415,15 @@ func CreateNacosRegistryNamespace(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "命名空间名称或 ID 不能为空"})
 		return
 	}
-	if err := service.NacosCreateRegistryNamespace(nsID, remark); err != nil {
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	var owner *int
+	expose := false
+	if scoped {
+		owner = &tid
+	} else if body.ExposeToTenants != nil {
+		expose = *body.ExposeToTenants
+	}
+	if err := service.NacosCreateRegistryNamespaceExt(nsID, remark, owner, expose); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
@@ -377,6 +434,7 @@ type updateNacosNsBody struct {
 	Namespace         string `json:"namespace"`
 	NamespaceShowName string `json:"namespaceShowName"`
 	NamespaceDesc     string `json:"namespaceDesc"`
+	ExposeToTenants   *bool  `json:"expose_to_tenants"` // 仅平台命名空间
 }
 
 // UpdateNacosRegistryNamespace PUT /api/nacos/namespaces（与原生控制台编辑语义一致）
@@ -395,6 +453,31 @@ func UpdateNacosRegistryNamespace(c *gin.Context) {
 	if remark == "" {
 		remark = strings.TrimSpace(body.NamespaceShowName)
 	}
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	if scoped {
+		if err := service.NacosAssertTenantOwnsRegistryNS(tid, ns); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		if body.ExposeToTenants != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "租户无权配置「对租户开放」"})
+			return
+		}
+		if err := service.NacosUpdateRegistryNamespaceRemark(ns, remark); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
+	if body.ExposeToTenants != nil {
+		if err := service.NacosUpdateRegistryNamespacePlatformFields(ns, &remark, body.ExposeToTenants); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
+	}
 	if err := service.NacosUpdateRegistryNamespaceRemark(ns, remark); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -404,8 +487,22 @@ func UpdateNacosRegistryNamespace(c *gin.Context) {
 
 // GetNacosNamespaceDetailAdmin GET /api/nacos/namespaces/detail?namespaceId=
 func GetNacosNamespaceDetailAdmin(c *gin.Context) {
-	ns := strings.TrimSpace(c.Query("namespaceId"))
-	item, err := service.NacosGetConsoleNamespaceItem(ns)
+	fb := "public"
+	if tid, scoped := nacosCallerNamespaceTenantScope(c); scoped {
+		fb = nacosTenantLegacyFallbackNS(c, tid)
+	}
+	ns, ok := nacosResolveNamespaceConsole(c, fb)
+	if !ok {
+		return
+	}
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	var item service.NacosConsoleNamespaceItem
+	var err error
+	if scoped {
+		item, err = service.NacosGetConsoleNamespaceItemScoped(tid, true, ns)
+	} else {
+		item, err = service.NacosGetConsoleNamespaceItem(ns)
+	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -415,10 +512,20 @@ func GetNacosNamespaceDetailAdmin(c *gin.Context) {
 
 // DeleteNacosRegistryNamespace DELETE /api/nacos/namespaces/:namespaceId（与原生控制台按 namespaceId 删除一致）
 func DeleteNacosRegistryNamespace(c *gin.Context) {
-	nsID := strings.TrimSpace(c.Param("namespaceId"))
+	nsID, ok := nacosResolveNamespaceConsole(c, c.Param("namespaceId"))
+	if !ok {
+		return
+	}
 	if nsID == "" {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无效的 namespaceId"})
 		return
+	}
+	tid, scoped := nacosCallerNamespaceTenantScope(c)
+	if scoped {
+		if err := service.NacosAssertTenantOwnsRegistryNS(tid, nsID); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
 	}
 	if err := service.NacosDeleteRegistryNamespaceByNamespaceId(nsID); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -429,7 +536,10 @@ func DeleteNacosRegistryNamespace(c *gin.Context) {
 
 // ListNacosAgentSpecsAdmin GET /api/nacos/agentspecs
 func ListNacosAgentSpecsAdmin(c *gin.Context) {
-	ns := c.DefaultQuery("namespace", "public")
+	ns, ok := nacosResolveNamespaceConsole(c, "public")
+	if !ok {
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 	data, err := service.NacosAIListAgentSpecs(ns, "", "", page, size)
@@ -438,6 +548,73 @@ func ListNacosAgentSpecsAdmin(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+func assertCallerMayManageTargetNacosACL(c *gin.Context, target *model.User) error {
+	callerID := c.GetInt(ctxkey.Id)
+	if callerID <= 0 || target == nil {
+		return fmt.Errorf("无权访问")
+	}
+	caller, err := model.GetUserById(callerID, false)
+	if err != nil {
+		return err
+	}
+	if caller.Role >= model.RoleRootUser {
+		return nil
+	}
+	if model.IsPlatformConsoleOperator(callerID) {
+		return nil
+	}
+	if caller.TenantID == nil {
+		return fmt.Errorf("无权修改该用户的 Nacos 权限")
+	}
+	if target.TenantID == nil || *target.TenantID != *caller.TenantID {
+		return fmt.Errorf("只能管理本租户内用户的 Nacos 权限")
+	}
+	if target.Role != model.RoleCommonUser && target.Role != model.RoleTenantAdmin {
+		return fmt.Errorf("只能为租户内子账号或租户管理员配置 Nacos 权限")
+	}
+	if caller.Role == model.RoleTenantAdmin {
+		return nil
+	}
+	if caller.Role == model.RoleCommonUser && model.UserHasTenantPermission(caller, "manage_nacos") {
+		return nil
+	}
+	return fmt.Errorf("无权修改该用户的 Nacos 权限")
+}
+
+// NacosSearchUsersForACL GET /api/nacos/users/search?keyword= — 供权限页搜索；租户侧仅返回本租户用户，避免误用 /api/user/search（平台控制台专属）。
+func NacosSearchUsersForACL(c *gin.Context) {
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	callerID := c.GetInt(ctxkey.Id)
+	if callerID <= 0 {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "未登录"})
+		return
+	}
+	caller, err := model.GetUserById(callerID, false)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if keyword == "" {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": []model.UserListItem{}})
+		return
+	}
+	var users []model.UserListItem
+	if caller.Role >= model.RoleRootUser || model.IsPlatformConsoleOperator(callerID) {
+		users, err = model.SearchUsers(keyword)
+	} else if caller.TenantID != nil && (caller.Role == model.RoleTenantAdmin ||
+		(caller.Role == model.RoleCommonUser && model.UserHasTenantPermission(caller, "manage_nacos"))) {
+		users, err = model.SearchTenantSubUsers(*caller.TenantID, keyword)
+	} else {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无权搜索用户"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": users})
 }
 
 // GetNacosUserACL GET /api/nacos/users/:id/acl（:id 为 ULID）
@@ -449,6 +626,10 @@ func GetNacosUserACL(c *gin.Context) {
 	}
 	u, err := model.GetUserById(pk, false)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err := assertCallerMayManageTargetNacosACL(c, u); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
@@ -475,6 +656,15 @@ func PutNacosUserACL(c *gin.Context) {
 	pk, err := model.ParseUserRouteParam(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无效用户 id"})
+		return
+	}
+	u, err := model.GetUserById(pk, false)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err := assertCallerMayManageTargetNacosACL(c, u); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	var body putNacosACLBody

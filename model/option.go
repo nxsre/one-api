@@ -5,6 +5,7 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
+	"github.com/songquanpeng/one-api/setting/billing_setting"
 	"strconv"
 	"strings"
 	"time"
@@ -35,11 +36,13 @@ func InitOptionMap() {
 	config.OptionMap["OidcEnabled"] = strconv.FormatBool(config.OidcEnabled)
 	config.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(config.WeChatAuthEnabled)
 	config.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(config.TurnstileCheckEnabled)
+	config.OptionMap["LoginCaptchaEnabled"] = strconv.FormatBool(config.LoginCaptchaEnabled)
 	config.OptionMap["RegisterEnabled"] = strconv.FormatBool(config.RegisterEnabled)
 	config.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(config.AutomaticDisableChannelEnabled)
 	config.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(config.AutomaticEnableChannelEnabled)
 	config.OptionMap["ApproximateTokenEnabled"] = strconv.FormatBool(config.ApproximateTokenEnabled)
 	config.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(config.LogConsumeEnabled)
+	config.OptionMap["ErrorLogEnabled"] = strconv.FormatBool(config.ErrorLogEnabled)
 	config.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(config.DisplayInCurrencyEnabled)
 	config.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(config.DisplayTokenStatEnabled)
 	config.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(config.ChannelDisableThreshold, 'f', -1, 64)
@@ -72,14 +75,26 @@ func InitOptionMap() {
 	config.OptionMap["QuotaRemindThreshold"] = strconv.FormatInt(config.QuotaRemindThreshold, 10)
 	config.OptionMap["PreConsumedQuota"] = strconv.FormatInt(config.PreConsumedQuota, 10)
 	config.OptionMap["ModelRatio"] = billingratio.ModelRatio2JSONString()
+	config.OptionMap["ModelPrice"] = billingratio.ModelPrice2JSONString()
 	config.OptionMap["GroupRatio"] = billingratio.GroupRatio2JSONString()
+	config.OptionMap["GroupGroupRatio"] = billingratio.GroupGroupRatio2JSONString()
+	config.OptionMap["TopupGroupRatio"] = billingratio.TopupGroupRatio2JSONString()
 	config.OptionMap["CompletionRatio"] = billingratio.CompletionRatio2JSONString()
+	config.OptionMap["CacheRatio"] = billingratio.CacheRatio2JSONString()
+	config.OptionMap["CreateCacheRatio"] = billingratio.CreateCacheRatio2JSONString()
+	config.OptionMap["ImageRatio"] = billingratio.ImageRatio2JSONString()
+	config.OptionMap["AudioRatio"] = billingratio.AudioRatio2JSONString()
+	config.OptionMap["AudioCompletionRatio"] = billingratio.AudioCompletionRatio2JSONString()
+	config.OptionMap["BillingMode"] = billing_setting.BillingMode2JSONString()
+	config.OptionMap["BillingExpr"] = billing_setting.BillingExpr2JSONString()
+	config.OptionMap["ExposeRatioEnabled"] = "false"
 	config.OptionMap["TopUpLink"] = config.TopUpLink
 	config.OptionMap["ChatLink"] = config.ChatLink
 	config.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(config.QuotaPerUnit, 'f', -1, 64)
 	config.OptionMap["RetryTimes"] = strconv.Itoa(config.RetryTimes)
 	config.OptionMap["Theme"] = config.Theme
 	config.OptionMap["GlobalAccessListMode"] = "none"
+	config.OptionMap["OutboundSSRFSProtectionEnabled"] = "true"
 	config.OptionMap["OutboundURLWhitelistEnabled"] = "false"
 	config.OptionMap["OutboundURLWhitelistDomains"] = ""
 	config.OptionMap["OutboundURLWhitelistIPs"] = ""
@@ -91,6 +106,7 @@ func InitOptionMap() {
 	config.OptionMap["RelayRetryPolicy"] = "{}"
 	config.OptionMap["ModelAliasPolicy"] = "{}"
 	config.OptionMap["ModelRateLimitPolicy"] = "{}"
+	config.OptionMap["DefaultTenantChannelPricePer1k"] = strconv.FormatFloat(config.DefaultTenantChannelPricePer1k, 'f', -1, 64)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -98,6 +114,17 @@ func InitOptionMap() {
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	for _, option := range options {
+		if IsPricingOptionKey(option.Key) && UsePricingEntryStore(option.Key) {
+			if def, ok := billing_setting.LookupBlockByOptionKey(option.Key); ok {
+				if err := HydrateBlockRuntimeFromEntries(def.BlockID); err != nil {
+					logger.SysError("hydrate pricing entries on sync: " + err.Error())
+				}
+			}
+			config.OptionMapRWMutex.Lock()
+			config.OptionMap[option.Key] = option.Value
+			config.OptionMapRWMutex.Unlock()
+			continue
+		}
 		if option.Key == "ModelRatio" {
 			option.Value = billingratio.AddNewMissingRatio(option.Value)
 		}
@@ -136,6 +163,11 @@ func UpdateOption(key string, value string) error {
 	if strings.HasPrefix(key, "OutboundURLWhitelist") {
 		common.RefreshOutboundWhitelistFromOptions()
 	}
+	if err == nil {
+		if _, verr := billing_setting.RecordSavedOptionAsVersion(key, value); verr != nil {
+			logger.SysError("record pricing version after save: " + verr.Error())
+		}
+	}
 	return err
 }
 
@@ -164,6 +196,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.WeChatAuthEnabled = boolValue
 		case "TurnstileCheckEnabled":
 			config.TurnstileCheckEnabled = boolValue
+		case "LoginCaptchaEnabled":
+			config.LoginCaptchaEnabled = boolValue
 		case "RegisterEnabled":
 			config.RegisterEnabled = boolValue
 		case "EmailDomainRestrictionEnabled":
@@ -176,6 +210,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.ApproximateTokenEnabled = boolValue
 		case "LogConsumeEnabled":
 			config.LogConsumeEnabled = boolValue
+		case "ErrorLogEnabled":
+			config.ErrorLogEnabled = boolValue
 		case "DisplayInCurrencyEnabled":
 			config.DisplayInCurrencyEnabled = boolValue
 		case "DisplayTokenStatEnabled":
@@ -262,6 +298,28 @@ func updateOptionMap(key string, value string) (err error) {
 		err = billingratio.UpdateGroupRatioByJSONString(value)
 	case "CompletionRatio":
 		err = billingratio.UpdateCompletionRatioByJSONString(value)
+	case "ModelPrice":
+		err = billingratio.UpdateModelPriceByJSONString(value)
+	case "CacheRatio":
+		err = billingratio.UpdateCacheRatioByJSONString(value)
+	case "CreateCacheRatio":
+		err = billingratio.UpdateCreateCacheRatioByJSONString(value)
+	case "ImageRatio":
+		err = billingratio.UpdateImageRatioByJSONString(value)
+	case "AudioRatio":
+		err = billingratio.UpdateAudioRatioByJSONString(value)
+	case "AudioCompletionRatio":
+		err = billingratio.UpdateAudioCompletionRatioByJSONString(value)
+	case "BillingMode":
+		err = billing_setting.UpdateBillingModeByJSONString(value)
+	case "BillingExpr":
+		err = billing_setting.UpdateBillingExprByJSONString(value)
+	case "GroupGroupRatio":
+		err = billingratio.UpdateGroupGroupRatioByJSONString(value)
+	case "TopupGroupRatio":
+		err = billingratio.UpdateTopupGroupRatioByJSONString(value)
+	case "ExposeRatioEnabled":
+		config.SetExposeRatioEnabled(value == "true")
 	case "TopUpLink":
 		config.TopUpLink = value
 	case "ChatLink":
@@ -274,6 +332,15 @@ func updateOptionMap(key string, value string) (err error) {
 		config.Theme = value
 	case "NacosEnabled":
 		config.NacosEnabled = value == "true"
+	case "DefaultTenantChannelPricePer1k":
+		config.DefaultTenantChannelPricePer1k, _ = strconv.ParseFloat(value, 64)
+	}
+	if err == nil {
+		switch key {
+		case "ModelRatio", "CompletionRatio", "ModelPrice", "CacheRatio", "CreateCacheRatio",
+			"ImageRatio", "AudioRatio", "AudioCompletionRatio", "BillingMode", "BillingExpr":
+			billingratio.InvalidateExposedDataCache()
+		}
 	}
 	return err
 }
