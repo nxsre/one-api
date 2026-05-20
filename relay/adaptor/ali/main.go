@@ -119,7 +119,11 @@ func embeddingResponseAli2OpenAI(response *EmbeddingResponse) *openai.EmbeddingR
 		Object: "list",
 		Data:   make([]openai.EmbeddingResponseItem, 0, len(response.Output.Embeddings)),
 		Model:  "text-embedding-v1",
-		Usage:  model.Usage{TotalTokens: response.Usage.TotalTokens},
+		Usage: model.Usage{
+			PromptTokens:     response.Usage.TotalTokens,
+			CompletionTokens: 0,
+			TotalTokens:      response.Usage.TotalTokens,
+		},
 	}
 
 	for _, item := range response.Output.Embeddings {

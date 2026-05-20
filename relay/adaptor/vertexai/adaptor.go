@@ -13,6 +13,7 @@ import (
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 	relaymodel "github.com/songquanpeng/one-api/relay/model"
+	"github.com/songquanpeng/one-api/relay/relaymode"
 )
 
 var _ adaptor.Adaptor = new(Adaptor)
@@ -62,10 +63,15 @@ func (a *Adaptor) GetChannelName() string {
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 	suffix := ""
 	if strings.HasPrefix(meta.ActualModelName, "gemini") {
-		if meta.IsStream {
-			suffix = "streamGenerateContent?alt=sse"
-		} else {
-			suffix = "generateContent"
+		switch meta.Mode {
+		case relaymode.Embeddings:
+			suffix = "batchEmbedContents"
+		default:
+			if meta.IsStream {
+				suffix = "streamGenerateContent?alt=sse"
+			} else {
+				suffix = "generateContent"
+			}
 		}
 	} else {
 		if meta.IsStream {

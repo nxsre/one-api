@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/model"
 )
 
@@ -34,6 +35,20 @@ func joinOpenAIModelsListURL(base string) string {
 	return b + "/v1/models"
 }
 
+func joinAnthropicModelsListURL(base string) string {
+	b := strings.TrimRight(strings.TrimSpace(base), "/")
+	if b == "" {
+		b = "https://api.anthropic.com"
+	}
+	if strings.HasSuffix(b, "/models") {
+		return b
+	}
+	if strings.HasSuffix(b, "/v1") {
+		return b + "/models"
+	}
+	return b + "/v1/models"
+}
+
 // fetchOpenAIStyleModelList 解析 OpenAI 兼容 GET /v1/models（含 OpenRouter）。
 func fetchOpenAIStyleModelList(ctx context.Context, listURL, authBearer string, ownedByLabel, sourceTag string) ([]model.ModelCatalog, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listURL, nil)
@@ -41,7 +56,7 @@ func fetchOpenAIStyleModelList(ctx context.Context, listURL, authBearer string, 
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(authBearer))
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -75,14 +90,14 @@ func fetchOpenAIStyleModelList(ctx context.Context, listURL, authBearer string, 
 	return rows, nil
 }
 
-func fetchAnthropicModelList(ctx context.Context, apiKey string) ([]model.ModelCatalog, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.anthropic.com/v1/models", nil)
+func fetchAnthropicModelList(ctx context.Context, baseURL, apiKey string) ([]model.ModelCatalog, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, joinAnthropicModelsListURL(baseURL), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("x-api-key", strings.TrimSpace(apiKey))
 	req.Header.Set("anthropic-version", "2023-06-01")
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -121,13 +136,14 @@ func fetchAnthropicModelList(ctx context.Context, apiKey string) ([]model.ModelC
 	return rows, nil
 }
 
-func fetchGeminiModelList(ctx context.Context, apiKey string) ([]model.ModelCatalog, error) {
-	u := "https://generativelanguage.googleapis.com/v1beta/models?key=" + url.QueryEscape(strings.TrimSpace(apiKey))
+func fetchGeminiModelList(ctx context.Context, baseURL, apiKey, apiVersion string) ([]model.ModelCatalog, error) {
+	u := buildGeminiModelsListURL(baseURL, apiVersion, apiKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: 120 * time.Second}
+	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -167,6 +183,19 @@ func fetchGeminiModelList(ctx context.Context, apiKey string) ([]model.ModelCata
 	return rows, nil
 }
 
+// buildGeminiModelsListURL 构造 Generative Language ListModels 地址；baseURL 为空时使用 Google 官方根地址。
+func buildGeminiModelsListURL(baseURL, apiVersion, apiKey string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		base = "https://generativelanguage.googleapis.com"
+	}
+	version := strings.TrimSpace(apiVersion)
+	if version == "" {
+		version = "v1beta"
+	}
+	return fmt.Sprintf("%s/%s/models?key=%s", base, version, url.QueryEscape(strings.TrimSpace(apiKey)))
+}
+
 // modelsDevAPIURL 默认官方 api.json；base_url 可传镜像完整 URL 或仅 origin（自动补 /api.json）。
 func modelsDevAPIURL(baseFromReq string) string {
 	s := strings.TrimSpace(baseFromReq)
@@ -183,12 +212,21 @@ func modelsDevAPIURL(baseFromReq string) string {
 // fetchModelsDevCatalog 拉取 https://models.dev/api.json（匿名，无需密钥）。
 // 文档：https://models.dev — 结构为 { [providerKey]: { id, name, models: { [key]: { id, name, ... } } } }
 func fetchModelsDevCatalog(ctx context.Context, listURL string) ([]model.ModelCatalog, error) {
+	return fetchProviderTreeCatalog(ctx, listURL, "sync_models_dev", "models.dev")
+}
+
+// fetchBasellmCatalog 拉取 BaseLLM LLM Metadata（结构与 models.dev 相同）。
+func fetchBasellmCatalog(ctx context.Context, listURL string) ([]model.ModelCatalog, error) {
+	return fetchProviderTreeCatalog(ctx, listURL, "basellm", "basellm")
+}
+
+func fetchProviderTreeCatalog(ctx context.Context, listURL, sourceTag, catalogLabel string) ([]model.ModelCatalog, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{Timeout: 180 * time.Second}
+	client := client.NewOutboundHTTPClient(180 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -201,6 +239,10 @@ func fetchModelsDevCatalog(ctx context.Context, listURL string) ([]model.ModelCa
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncCatalogErr(string(raw), 480))
 	}
+	return rowsFromProviderTreePayload(raw, sourceTag, catalogLabel)
+}
+
+func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]model.ModelCatalog, error) {
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("parse json: %w", err)
@@ -292,7 +334,7 @@ func fetchModelsDevCatalog(ctx context.Context, listURL string) ([]model.ModelCa
 			if displayName == "" {
 				displayName = id
 			}
-			ob := "models.dev · " + provLabel + " · " + displayName
+			ob := catalogLabel + " · " + provLabel + " · " + displayName
 			inMod := strings.Join(m.Modalities.Input, ", ")
 			outMod := strings.Join(m.Modalities.Output, ", ")
 			provDisplay := provLabel
@@ -303,7 +345,7 @@ func fetchModelsDevCatalog(ctx context.Context, listURL string) ([]model.ModelCa
 				ModelId:         id,
 				OwnedBy:         ob,
 				Enabled:         true,
-				Source:          "sync_models_dev",
+				Source:          sourceTag,
 				ModelName:       displayName,
 				ProviderKey:     pkey,
 				ProviderDisplay: provDisplay,
@@ -344,10 +386,11 @@ func fetchModelsDevCatalog(ctx context.Context, listURL string) ([]model.ModelCa
 }
 
 type modelCatalogSyncRequest struct {
-	Source    string `json:"source"`
-	BaseURL   string `json:"base_url"`
-	APIKey    string `json:"api_key"`
-	ChannelID int    `json:"channel_id"`
+	Source       string `json:"source"`
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	ChannelID    int    `json:"channel_id"`
+	NewAPIUserID int    `json:"new_api_user_id"`
 }
 
 func buildRowsForModelCatalogSync(ctx context.Context, req *modelCatalogSyncRequest) ([]model.ModelCatalog, error) {
@@ -373,16 +416,25 @@ func buildRowsForModelCatalogSync(ctx context.Context, req *modelCatalogSyncRequ
 		if key == "" {
 			return nil, fmt.Errorf("需要 api_key")
 		}
-		return fetchAnthropicModelList(ctx, key)
+		return fetchAnthropicModelList(ctx, req.BaseURL, key)
 	case "gemini", "google":
 		key := strings.TrimSpace(req.APIKey)
 		if key == "" {
 			return nil, fmt.Errorf("需要 api_key")
 		}
-		return fetchGeminiModelList(ctx, key)
+		return fetchGeminiModelList(ctx, "", key, "v1beta")
 	case "models_dev", "models.dev", "modelsdev":
 		u := modelsDevAPIURL(req.BaseURL)
 		return fetchModelsDevCatalog(ctx, u)
+	case "basellm", "base_llm", "llm-metadata", "llm_metadata":
+		u := basellmAPIURL(req.BaseURL)
+		return fetchBasellmCatalog(ctx, u)
+	case "aliapi":
+		return syncFromAliapi(ctx, req)
+	case "anyfast":
+		return syncFromAnyfast(ctx, req)
+	case "new_api", "newapi", "new_api_models":
+		return syncFromNewAPIModels(ctx, req)
 	case "channel":
 		if req.ChannelID <= 0 {
 			return nil, fmt.Errorf("需要 channel_id")
@@ -454,9 +506,9 @@ func FetchUpstreamOpenAIStyleModelIDs(ctx context.Context, listURL, bearer strin
 	return ids, nil
 }
 
-// FetchUpstreamAnthropicModelIDs 拉取 Anthropic 官方模型 id。
-func FetchUpstreamAnthropicModelIDs(ctx context.Context, apiKey string) ([]string, error) {
-	rows, err := fetchAnthropicModelList(ctx, apiKey)
+// FetchUpstreamAnthropicModelIDs 拉取 Anthropic Messages 模型 id；baseURL 为空时使用 https://api.anthropic.com。
+func FetchUpstreamAnthropicModelIDs(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	rows, err := fetchAnthropicModelList(ctx, baseURL, apiKey)
 	if err != nil {
 		return nil, err
 	}
@@ -469,9 +521,9 @@ func FetchUpstreamAnthropicModelIDs(ctx context.Context, apiKey string) ([]strin
 	return ids, nil
 }
 
-// FetchUpstreamGeminiModelIDs 拉取 Google Generative Language 模型 id。
-func FetchUpstreamGeminiModelIDs(ctx context.Context, apiKey string) ([]string, error) {
-	rows, err := fetchGeminiModelList(ctx, apiKey)
+// FetchUpstreamGeminiModelIDs 拉取 Generative Language 模型 id；baseURL 为空时使用 Google 官方根地址。
+func FetchUpstreamGeminiModelIDs(ctx context.Context, baseURL, apiKey, apiVersion string) ([]string, error) {
+	rows, err := fetchGeminiModelList(ctx, baseURL, apiKey, apiVersion)
 	if err != nil {
 		return nil, err
 	}

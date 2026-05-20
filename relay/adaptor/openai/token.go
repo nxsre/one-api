@@ -221,6 +221,14 @@ func CountTokenInput(input any, model string) int {
 			text += s
 		}
 		return CountTokenText(text, model)
+	case []any:
+		var sb strings.Builder
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				sb.WriteString(str)
+			}
+		}
+		return CountTokenText(sb.String(), model)
 	}
 	return 0
 }

@@ -11,25 +11,21 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/channeltype"
 )
 
 type previewFetchUpstreamModelsReq struct {
-	Type    int    `json:"type"`
-	BaseURL string `json:"base_url"`
-	Key     string `json:"key"`
-	Config  string `json:"config"` // 可选，JSON 文本（与渠道 config 一致，用于 AK/SK 组合密钥等）
+	Type      int    `json:"type"`
+	BaseURL   string `json:"base_url"`
+	Key       string `json:"key"`
+	Config    string `json:"config"` // 可选，JSON 文本（与渠道 config 一致，用于 AK/SK 组合密钥等）
+	ChannelId int    `json:"channel_id"`
 }
 
-// PreviewFetchUpstreamChannelModels POST /api/channel/fetch_upstream_models_preview
-// 使用表单中的 Base URL + 密钥请求上游模型列表（新建或未保存修改时使用）；管理员接口。
-func PreviewFetchUpstreamChannelModels(c *gin.Context) {
-	var req previewFetchUpstreamModelsReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无效的请求: " + err.Error()})
-		return
-	}
+// BuildPreviewChannelFromForm 根据编辑页表单构造临时渠道（拉取上游模型、批量测试等）。
+func BuildPreviewChannelFromForm(req previewFetchUpstreamModelsReq) (*model.Channel, error) {
 	key := strings.TrimSpace(req.Key)
 	cfgJSON := strings.TrimSpace(req.Config)
 	var cfg model.ChannelConfig
@@ -42,25 +38,74 @@ func PreviewFetchUpstreamChannelModels(c *gin.Context) {
 	if key == "" && cfg.Region != "" && cfg.VertexAIProjectID != "" && cfg.VertexAIADC != "" {
 		key = cfg.Region + "|" + cfg.VertexAIProjectID + "|" + cfg.VertexAIADC
 	}
-
 	baseTrim := strings.TrimSpace(req.BaseURL)
 	baseTrim = strings.TrimRight(baseTrim, "/")
 	var basePtr *string
 	if baseTrim != "" {
 		basePtr = &baseTrim
 	}
-
 	ch := &model.Channel{
+		Name:    "preview",
 		Type:    req.Type,
 		Key:     key,
 		BaseURL: basePtr,
 		Config:  cfgJSON,
 	}
-	apiKey := channelFirstAPIKey(ch)
-	if apiKey == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "密钥为空"})
+	if channelFirstAPIKey(ch) == "" {
+		return nil, fmt.Errorf("密钥为空")
+	}
+	return ch, nil
+}
+
+// BuildChannelForModelTest 优先使用表单密钥；表单为空且 channel_id 有效时回退到已保存渠道密钥。
+func BuildChannelForModelTest(req testChannelModelsPreviewReq, verifySaved func(*model.Channel) error) (*model.Channel, error) {
+	if ch, err := BuildPreviewChannelFromForm(req.previewFetchUpstreamModelsReq); err == nil {
+		if req.ChannelId > 0 {
+			ch.Id = req.ChannelId
+		}
+		return ch, nil
+	}
+	if req.ChannelId <= 0 || strings.TrimSpace(req.Key) != "" {
+		return nil, fmt.Errorf("密钥为空")
+	}
+	saved, err := model.GetChannelById(req.ChannelId, true)
+	if err != nil {
+		return nil, err
+	}
+	if verifySaved != nil {
+		if err := verifySaved(saved); err != nil {
+			return nil, err
+		}
+	}
+	if req.Type > 0 {
+		saved.Type = req.Type
+	}
+	if baseTrim := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/"); baseTrim != "" {
+		saved.BaseURL = &baseTrim
+	}
+	if cfgJSON := strings.TrimSpace(req.Config); cfgJSON != "" {
+		saved.Config = cfgJSON
+	}
+	if channelFirstAPIKey(saved) == "" {
+		return nil, fmt.Errorf("密钥为空")
+	}
+	return saved, nil
+}
+
+// PreviewFetchUpstreamChannelModels POST /api/channel/fetch_upstream_models_preview
+// 使用编辑页表单中的 Base URL + 密钥请求上游模型列表（新建或未保存修改时使用）；管理员接口。
+func PreviewFetchUpstreamChannelModels(c *gin.Context) {
+	var req previewFetchUpstreamModelsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无效的请求: " + err.Error()})
 		return
 	}
+	ch, err := buildChannelForUpstreamFetch(req, nil)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	apiKey := channelFirstAPIKey(ch)
 
 	ids, err := fetchUpstreamModelIDsForChannel(c.Request.Context(), ch, apiKey)
 	if err != nil {
@@ -68,6 +113,13 @@ func PreviewFetchUpstreamChannelModels(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": ids})
+}
+
+func buildChannelForUpstreamFetch(req previewFetchUpstreamModelsReq, verifySaved func(*model.Channel) error) (*model.Channel, error) {
+	return BuildChannelForModelTest(testChannelModelsPreviewReq{
+		previewFetchUpstreamModelsReq: req,
+		ChannelId:                     req.ChannelId,
+	}, verifySaved)
 }
 
 // FetchUpstreamChannelModels GET /api/channel/fetch_models/:id
@@ -118,14 +170,24 @@ func resolveChannelListBase(ch *model.Channel) string {
 	return ""
 }
 
+func channelGeminiAPIVersion(ch *model.Channel) string {
+	cfg, err := ch.LoadConfig()
+	if err == nil {
+		if v := strings.TrimSpace(cfg.APIVersion); v != "" {
+			return v
+		}
+	}
+	return "v1beta"
+}
+
 func fetchUpstreamModelIDsForChannel(ctx context.Context, ch *model.Channel, key string) ([]string, error) {
 	base := resolveChannelListBase(ch)
 
 	switch ch.Type {
-	case channeltype.Anthropic:
-		return FetchUpstreamAnthropicModelIDs(ctx, key)
-	case channeltype.Gemini:
-		return FetchUpstreamGeminiModelIDs(ctx, key)
+	case channeltype.Anthropic, channeltype.AnthropicCompatible:
+		return FetchUpstreamAnthropicModelIDs(ctx, base, key)
+	case channeltype.Gemini, channeltype.GeminiNativeCompatible:
+		return FetchUpstreamGeminiModelIDs(ctx, base, key, channelGeminiAPIVersion(ch))
 	case channeltype.Ali:
 		if base == "" {
 			return nil, fmt.Errorf("无法解析 Base URL（请在渠道中填写或依赖内置默认）")
@@ -152,8 +214,8 @@ func fetchOllamaUpstreamModelIDs(base, key string) ([]string, error) {
 	if strings.TrimSpace(key) != "" {
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(key))
 	}
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
+	httpClient := client.NewOutboundHTTPClient(60 * time.Second)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

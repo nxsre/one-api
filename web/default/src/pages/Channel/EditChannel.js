@@ -1,19 +1,20 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {
   Button,
   Card,
   Form,
   Header,
+  Input,
   Message,
   Modal,
   Checkbox,
+  Progress,
 } from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {
   API,
   copy,
-  getChannelModels,
   splitModelNameList,
   showError,
   showInfo,
@@ -21,10 +22,28 @@ import {
   verifyJSON,
   verifyStepUp2FA,
   fetchChannelKeyAfterVerify,
+  noAutofillFormProps,
+  noAutofillSecretProps,
+  noAutofillTextProps,
 } from '../../helpers';
 import {setChannelTypeOptionsCache} from '../../helpers/helper';
 import {renderChannelTip} from '../../helpers/render';
 import ChannelModelMappingEditor from './ChannelModelMappingEditor';
+import FillCatalogModelsModal from './FillCatalogModelsModal';
+import { fetchModelCatalogModelIds } from '../../helpers/modelCatalog';
+import {
+  applyJobSnapshotToModelState,
+  applyStoredModelTestResults,
+  buildChannelModelTestPayload,
+  buildJobProgressSummary,
+  buildStoredModelTestSummary,
+  fetchChannelModelTestResults,
+  MODEL_TEST_FAIL,
+  MODEL_TEST_OK,
+  normalizeChannelTestBaseUrl,
+  renderChannelModelLabel,
+  runChannelModelTestJob,
+} from '../../helpers/channelModelTest';
 import './ChannelEdit.css';
 
 const DEFAULT_CHANNEL_CONFIG = {
@@ -135,27 +154,48 @@ const EditChannel = () => {
   const [loadKeyCode, setLoadKeyCode] = useState('');
   const [loadKeyBusy, setLoadKeyBusy] = useState(false);
   const [fetchUpstreamBusy, setFetchUpstreamBusy] = useState(false);
+  const [fillCatalogOpen, setFillCatalogOpen] = useState(false);
+  const [fillAllBusy, setFillAllBusy] = useState(false);
+  const [testModelsBusy, setTestModelsBusy] = useState(false);
+  const [testModelsProgress, setTestModelsProgress] = useState({
+    total: 0,
+    completed: 0,
+    currentModel: '',
+    concurrency: 3,
+    running: false,
+  });
+  const [testModelsConcurrency, setTestModelsConcurrency] = useState(3);
+  const [modelTestStatus, setModelTestStatus] = useState({});
+  const [modelTestMessages, setModelTestMessages] = useState({});
+  const [modelTestMeta, setModelTestMeta] = useState({});
+  const [modelTestSummary, setModelTestSummary] = useState('');
+  const testModelsPollRef = useRef(false);
   const [inputs, setInputs] = useState(defaultChannelInputs);
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
-  const [basicModels, setBasicModels] = useState([]);
-  const [fullModels, setFullModels] = useState([]);
   const [customModel, setCustomModel] = useState('');
   const [config, setConfig] = useState({ ...DEFAULT_CHANNEL_CONFIG });
   const handleInputChange = (e, { name, value }) => {
+    if (name === 'models') {
+      const keep = (obj) => {
+        const allowed = new Set((value || []).map((m) => String(m)));
+        return Object.fromEntries(
+          Object.entries(obj || {}).filter(([key]) => allowed.has(key))
+        );
+      };
+      setModelTestStatus((prev) => keep(prev));
+      setModelTestMessages((prev) => keep(prev));
+      setModelTestMeta((prev) => keep(prev));
+    }
     if (name === 'type') {
       const opt = channelTypeOptions.find((o) => o.value === value);
       const defaultUrl =
         opt && opt.default_base_url
           ? String(opt.default_base_url).trim()
           : '';
-      const localModels = getChannelModels(value);
-      setBasicModels(localModels);
       setInputs((prev) => {
         const typeChanged = prev.type !== value;
-        const models =
-          typeChanged && prev.models.length === 0 ? localModels : prev.models;
         let base_url = prev.base_url;
         if (typeChanged && defaultUrl) {
           const prevTrim = String(prev.base_url || '').trim();
@@ -168,7 +208,7 @@ const EditChannel = () => {
             base_url = defaultUrl;
           }
         }
-        return { ...prev, type: value, models, base_url };
+        return { ...prev, type: value, base_url };
       });
       return;
     }
@@ -230,25 +270,147 @@ const EditChannel = () => {
         const empty = { ...DEFAULT_CHANNEL_CONFIG };
         setConfig(empty);
       }
-      setBasicModels(getChannelModels(data.type));
     } else {
       showError(message);
     }
     setLoading(false);
   };
 
+  const applyJobSnapshot = useCallback(
+    (jobData, models) => {
+      const applied = applyJobSnapshotToModelState(jobData, models);
+      setModelTestStatus(applied.status);
+      setModelTestMessages(applied.messages);
+      setModelTestMeta(applied.meta);
+      setTestModelsProgress(applied.progress);
+      setModelTestSummary(buildJobProgressSummary(t, jobData));
+    },
+    [t]
+  );
+
+  const pollRunningJob = useCallback(
+    async (payload, models) => {
+      if (testModelsPollRef.current) return;
+      testModelsPollRef.current = true;
+      setTestModelsBusy(true);
+      try {
+        const summary = await runChannelModelTestJob(payload, models, {
+          onJobSnapshot: (data) => applyJobSnapshot(data, models),
+        });
+        if (summary.fail === 0 && summary.ok > 0) {
+          showSuccess(t('channel.edit.messages.test_models_all_ok', { count: summary.ok }));
+        } else if (summary.fail > 0) {
+          showInfo(
+            t('channel.edit.messages.test_models_partial', {
+              ok: summary.ok,
+              fail: summary.fail,
+            })
+          );
+        }
+      } catch (e) {
+        showError(e.message || t('channel.edit.messages.test_models_fail'));
+      } finally {
+        setTestModelsBusy(false);
+        setTestModelsProgress((prev) => ({ ...prev, running: false, currentModel: '' }));
+        testModelsPollRef.current = false;
+      }
+    },
+    [applyJobSnapshot, t]
+  );
+
+  const loadStoredModelTestResults = useCallback(async () => {
+    if (!isEdit || !channelId) return;
+    try {
+      const base = normalizeChannelTestBaseUrl(
+        inputs.base_url,
+        inputs.type,
+        channelTypeOptions
+      );
+      const { results, job } = await fetchChannelModelTestResults({
+        channelId,
+        baseUrl: base,
+        channelType: inputs.type,
+        channelTypeOptions,
+      });
+      if (job?.running) {
+        applyJobSnapshot(job, inputs.models);
+        const payload = buildChannelModelTestPayload({
+          channelId,
+          type: inputs.type,
+          baseUrl: inputs.base_url,
+          key: '',
+          config,
+          modelMapping: inputs.model_mapping,
+          channelTypeOptions,
+          concurrency: testModelsConcurrency,
+        });
+        void pollRunningJob(payload, inputs.models);
+        return;
+      }
+      const applied = applyStoredModelTestResults(results);
+      setModelTestStatus(applied.status);
+      setModelTestMessages(applied.messages);
+      setModelTestMeta(applied.meta);
+      setTestModelsProgress({ total: 0, completed: 0, currentModel: '', running: false });
+      const visible = (inputs.models || []).filter((m) => applied.status[m]);
+      const ok = visible.filter((m) => applied.status[m] === MODEL_TEST_OK).length;
+      const fail = visible.filter((m) => applied.status[m] === MODEL_TEST_FAIL).length;
+      setModelTestSummary(
+        buildStoredModelTestSummary(t, ok, fail, visible.length)
+      );
+    } catch {
+      // 忽略历史加载失败
+    }
+  }, [
+    isEdit,
+    channelId,
+    inputs.base_url,
+    inputs.type,
+    inputs.models,
+    inputs.model_mapping,
+    channelTypeOptions,
+    config,
+    applyJobSnapshot,
+    pollRunningJob,
+    testModelsConcurrency,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!loading && isEdit) {
+      void loadStoredModelTestResults();
+    }
+  }, [loading, isEdit, loadStoredModelTestResults]);
+
   const fetchModels = async () => {
     try {
-      let res = await API.get(`/api/channel/models`);
-      let localModelOptions = res.data.data.map((model) => ({
-        key: model.id,
-        text: model.id,
-        value: model.id,
-      }));
-      setOriginModelOptions(localModelOptions);
-      setFullModels(res.data.data.map((model) => model.id));
+      const ids = await fetchModelCatalogModelIds({});
+      setOriginModelOptions(
+        ids.map((id) => ({
+          key: id,
+          text: id,
+          value: id,
+        }))
+      );
     } catch (error) {
       showError(error.message);
+    }
+  };
+
+  const fillAllCatalogModels = async () => {
+    setFillAllBusy(true);
+    try {
+      const ids = await fetchModelCatalogModelIds({});
+      if (!ids.length) {
+        showInfo(t('channel.edit.fill_catalog_empty'));
+        return;
+      }
+      handleInputChange(null, { name: 'models', value: ids });
+      showSuccess(t('channel.edit.fill_all_ok', { count: ids.length }));
+    } catch (e) {
+      showError(e.message || t('channel.edit.fill_catalog_fail'));
+    } finally {
+      setFillAllBusy(false);
     }
   };
 
@@ -298,9 +460,6 @@ const EditChannel = () => {
     })();
     if (isEdit) {
       loadChannel().then();
-    } else {
-      const localModels = getChannelModels(inputs.type);
-      setBasicModels(localModels);
     }
     fetchModels().then();
     fetchGroups().then();
@@ -449,48 +608,75 @@ const EditChannel = () => {
 
   const fetchUpstreamModelsList = async () => {
     const keyFromForm = resolveKeyForUpstreamFetch();
+    if (!keyFromForm && !(isEdit && channelId)) {
+      showInfo(t('channel.edit.messages.upstream_fetch_need_key'));
+      return;
+    }
     setFetchUpstreamBusy(true);
     try {
-      let ids;
-      if (keyFromForm) {
-        let cfg = { ...config };
-        if ((inputs.type === 14 || inputs.type === 42) && !cfg.api_version) {
-          cfg.api_version = 'v1';
-        }
-        let baseUrl = String(inputs.base_url || '').trim();
-        if (baseUrl.endsWith('/')) {
-          baseUrl = baseUrl.slice(0, baseUrl.length - 1);
-        }
-        const res = await API.post('/api/channel/fetch_upstream_models_preview', {
-          type: inputs.type,
-          base_url: baseUrl,
-          key: keyFromForm,
-          config: JSON.stringify(cfg),
-        });
-        const { success, message, data } = res.data;
-        if (!success) {
-          showError(message || '请求失败');
-          return;
-        }
-        ids = data;
-      } else if (isEdit && channelId) {
-        const res = await API.get(`/api/channel/fetch_models/${channelId}`);
-        const { success, message, data } = res.data;
-        if (!success) {
-          showError(message || '请求失败');
-          return;
-        }
-        ids = data;
-      } else {
-        showInfo(t('channel.edit.messages.upstream_fetch_need_key'));
+      let cfg = { ...config };
+      if ((inputs.type === 14 || inputs.type === 42) && !cfg.api_version) {
+        cfg.api_version = 'v1';
+      }
+      let baseUrl = String(inputs.base_url || '').trim();
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.slice(0, baseUrl.length - 1);
+      }
+      const res = await API.post('/api/channel/fetch_upstream_models_preview', {
+        type: inputs.type,
+        base_url: baseUrl,
+        key: keyFromForm,
+        config: JSON.stringify(cfg),
+        channel_id: isEdit ? Number(channelId) || 0 : 0,
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message || '请求失败');
         return;
       }
-      mergeFetchedUpstreamModels(ids);
+      mergeFetchedUpstreamModels(data);
     } catch (e) {
       showError(e.message || '请求失败');
     } finally {
       setFetchUpstreamBusy(false);
     }
+  };
+
+  const testAllModels = async () => {
+    if (testModelsBusy || testModelsProgress.running) {
+      showInfo(t('channel.edit.messages.test_models_already_running'));
+      return;
+    }
+    const models = (inputs.models || []).map((m) => String(m).trim()).filter(Boolean);
+    if (!models.length) {
+      showInfo(t('channel.edit.messages.test_models_empty'));
+      return;
+    }
+    const keyFromForm = resolveKeyForUpstreamFetch();
+    if (!keyFromForm && !(isEdit && channelId)) {
+      showInfo(t('channel.edit.messages.upstream_fetch_need_key'));
+      return;
+    }
+    setModelTestStatus({});
+    setModelTestMessages({});
+    setModelTestMeta({});
+    setTestModelsProgress({
+      total: models.length,
+      completed: 0,
+      currentModel: '',
+      running: true,
+    });
+    const payload = buildChannelModelTestPayload({
+      channelId: isEdit ? channelId : 0,
+      type: inputs.type,
+      baseUrl: inputs.base_url,
+      key: keyFromForm,
+      config,
+      modelMapping: inputs.model_mapping,
+      channelTypeOptions,
+      concurrency: testModelsConcurrency,
+    });
+    await pollRunningJob(payload, models);
   };
 
   return (
@@ -502,7 +688,7 @@ const EditChannel = () => {
               ? t('channel.edit.title_edit')
               : t('channel.edit.title_create')}
           </Card.Header>
-          <Form loading={loading || channelTypesLoading} autoComplete='new-password'>
+          <Form loading={loading || channelTypesLoading} {...noAutofillFormProps}>
             <div className='channel-edit-section'>
               <Header as='h4' className='channel-edit-section__title'>
                 {t('channel.edit.section_basic')}
@@ -531,7 +717,7 @@ const EditChannel = () => {
                   required
                   value={inputs.name}
                   onChange={handleInputChange}
-                  autoComplete='off'
+                  {...noAutofillTextProps}
                 />
               </Form.Field>
               <Form.Field>
@@ -547,7 +733,7 @@ const EditChannel = () => {
                   additionLabel={t('channel.edit.group_addition')}
                   onChange={handleInputChange}
                   value={inputs.groups}
-                  autoComplete='new-password'
+                  {...noAutofillSecretProps}
                   options={groupOptions}
                 />
               </Form.Field>
@@ -576,7 +762,7 @@ const EditChannel = () => {
                     placeholder='例如：v1'
                     onChange={handleConfigChange}
                     value={config.api_version || ''}
-                    autoComplete='new-password'
+                    {...noAutofillSecretProps}
                   />
                 </Form.Field>
               )}
@@ -590,7 +776,7 @@ const EditChannel = () => {
                     name='base_url'
                     value={inputs.base_url}
                     onChange={handleInputChange}
-                    autoComplete='new-password'
+                    {...noAutofillSecretProps}
                   />
                 </Form.Field>
                 {!batch ? (
@@ -605,7 +791,7 @@ const EditChannel = () => {
                       placeholder={type2secretPrompt(inputs.type, t)}
                       onChange={handleInputChange}
                       value={inputs.key}
-                      autoComplete='new-password'
+                      {...noAutofillSecretProps}
                     />
                   </Form.Field>
                 ) : null}
@@ -621,7 +807,7 @@ const EditChannel = () => {
                     rows={10}
                     value={inputs.key}
                     onChange={handleInputChange}
-                    autoComplete='new-password'
+                    {...noAutofillSecretProps}
                   />
                 </Form.Field>
               ) : null}
@@ -651,14 +837,75 @@ const EditChannel = () => {
                     onLabelClick={(e, { value }) => {
                       copy(value).then();
                     }}
+                    renderLabel={(item) =>
+                      renderChannelModelLabel(
+                        item,
+                        modelTestStatus,
+                        modelTestMessages,
+                        modelTestMeta
+                      )
+                    }
                     selection
                     onChange={handleInputChange}
                     value={inputs.models}
-                    autoComplete='new-password'
+                    {...noAutofillSecretProps}
                     options={modelOptions}
                   />
                 </Form.Field>
+                {modelTestSummary ? (
+                  <p className='channel-edit-model-test-summary'>{modelTestSummary}</p>
+                ) : null}
+                {(testModelsBusy || testModelsProgress.running) && testModelsProgress.total > 0 ? (
+                  <Progress
+                    className='channel-edit-model-test-progress'
+                    percent={Math.min(
+                      100,
+                      Math.round(
+                        (testModelsProgress.completed / testModelsProgress.total) * 100
+                      )
+                    )}
+                    progress
+                    indicating={testModelsProgress.running}
+                    active={testModelsProgress.running}
+                    label={t('channel.edit.messages.test_models_progress', {
+                      completed: testModelsProgress.completed,
+                      total: testModelsProgress.total,
+                      model: testModelsProgress.currentModel || '…',
+                    })}
+                  />
+                ) : null}
                 <div className='channel-edit-models-toolbar'>
+                  <Button
+                    type='button'
+                    loading={testModelsBusy}
+                    disabled={testModelsBusy || testModelsProgress.running || fetchUpstreamBusy}
+                    onClick={() => void testAllModels()}
+                  >
+                    {t('channel.edit.buttons.test_models')}
+                  </Button>
+                  <div className='channel-edit-model-test-concurrency'>
+                    <label
+                      className='channel-edit-model-test-concurrency__label'
+                      htmlFor='channel-test-models-concurrency'
+                    >
+                      {t('channel.edit.buttons.test_models_concurrency')}
+                    </label>
+                    <Input
+                      id='channel-test-models-concurrency'
+                      type='number'
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={testModelsConcurrency}
+                      disabled={testModelsBusy || testModelsProgress.running}
+                      onChange={(_, { value }) => {
+                        const n = parseInt(String(value), 10);
+                        setTestModelsConcurrency(
+                          Number.isFinite(n) ? Math.min(10, Math.max(1, n)) : 3
+                        );
+                      }}
+                    />
+                  </div>
                   <Button
                     type='button'
                     loading={fetchUpstreamBusy}
@@ -669,23 +916,15 @@ const EditChannel = () => {
                   </Button>
                   <Button
                     type='button'
-                    onClick={() => {
-                      handleInputChange(null, {
-                        name: 'models',
-                        value: basicModels,
-                      });
-                    }}
+                    onClick={() => setFillCatalogOpen(true)}
                   >
                     {t('channel.edit.buttons.fill_models')}
                   </Button>
                   <Button
                     type='button'
-                    onClick={() => {
-                      handleInputChange(null, {
-                        name: 'models',
-                        value: fullModels,
-                      });
-                    }}
+                    loading={fillAllBusy}
+                    disabled={fillAllBusy}
+                    onClick={() => void fillAllCatalogModels()}
                   >
                     {t('channel.edit.buttons.fill_all')}
                   </Button>
@@ -720,6 +959,7 @@ const EditChannel = () => {
                   <label>{t('channel.edit.model_mapping')}</label>
                   <ChannelModelMappingEditor
                     value={inputs.model_mapping}
+                    upstreamModelOptions={inputs.models}
                     onChange={(v) =>
                       handleInputChange(null, {
                         name: 'model_mapping',
@@ -756,7 +996,7 @@ const EditChannel = () => {
                       )}
                       value={inputs.openai_organization}
                       onChange={handleInputChange}
-                      autoComplete='off'
+                      {...noAutofillTextProps}
                     />
                   </Form.Field>
                   <Form.Field>
@@ -769,7 +1009,7 @@ const EditChannel = () => {
                       placeholder={t('channel.edit.test_model_placeholder')}
                       value={inputs.test_model}
                       onChange={handleInputChange}
-                      autoComplete='off'
+                      {...noAutofillTextProps}
                     />
                   </Form.Field>
                   <Form.Field>
@@ -798,7 +1038,7 @@ const EditChannel = () => {
                       placeholder={t('channel.edit.remark_placeholder')}
                       value={inputs.remark}
                       onChange={handleInputChange}
-                      autoComplete='off'
+                      {...noAutofillTextProps}
                     />
                   </Form.Field>
                   <Form.Field>
@@ -811,7 +1051,7 @@ const EditChannel = () => {
                       placeholder={t('channel.edit.tag_placeholder')}
                       value={inputs.tag}
                       onChange={handleInputChange}
-                      autoComplete='off'
+                      {...noAutofillTextProps}
                     />
                   </Form.Field>
                   <Form.Field>
@@ -972,7 +1212,7 @@ const EditChannel = () => {
             label={t('channel.edit.load_key_modal_code')}
             value={loadKeyCode}
             onChange={(e, { value }) => setLoadKeyCode(value)}
-            autoComplete='one-time-code'
+            {...noAutofillSecretProps}
           />
         </Modal.Content>
         <Modal.Actions>
@@ -988,6 +1228,14 @@ const EditChannel = () => {
           </Button>
         </Modal.Actions>
       </Modal>
+      <FillCatalogModelsModal
+        open={fillCatalogOpen}
+        onClose={() => setFillCatalogOpen(false)}
+        onConfirm={(ids) => {
+          handleInputChange(null, { name: 'models', value: ids });
+          showSuccess(t('channel.edit.fill_catalog_ok', { count: ids.length }));
+        }}
+      />
     </div>
   );
 };

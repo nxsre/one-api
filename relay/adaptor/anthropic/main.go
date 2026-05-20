@@ -90,7 +90,7 @@ func ConvertRequest(textRequest model.GeneralOpenAIRequest) *Request {
 	}
 	for _, message := range textRequest.Messages {
 		if message.Role == "system" && claudeRequest.System == "" {
-			claudeRequest.System = message.StringContent()
+			claudeRequest.System = SystemPrompt(message.StringContent())
 			continue
 		}
 		claudeMessage := Message{
@@ -125,10 +125,11 @@ func ConvertRequest(textRequest model.GeneralOpenAIRequest) *Request {
 		openaiContent := message.ParseContent()
 		for _, part := range openaiContent {
 			var content Content
-			if part.Type == model.ContentTypeText {
+			switch part.Type {
+			case model.ContentTypeText:
 				content.Type = "text"
 				content.Text = part.Text
-			} else if part.Type == model.ContentTypeImageURL {
+			case model.ContentTypeImageURL:
 				content.Type = "image"
 				content.Source = &ImageSource{
 					Type: "base64",
@@ -136,8 +137,26 @@ func ConvertRequest(textRequest model.GeneralOpenAIRequest) *Request {
 				mimeType, data, _ := image.GetImageFromUrl(part.ImageURL.Url)
 				content.Source.MediaType = mimeType
 				content.Source.Data = data
+			case model.ContentTypeInputFile:
+				content.Type = "document"
+				content.Source = &ImageSource{Type: "base64"}
+				if part.File != nil && part.File.FileData != "" {
+					mimeType, data, _ := image.GetImageFromUrl(part.File.FileData)
+					if mimeType == "" {
+						mimeType = "application/pdf"
+					}
+					content.Source.MediaType = mimeType
+					content.Source.Data = data
+				}
+			case model.ContentTypeInputAudio:
+				content.Type = "text"
+				if part.InputAudio != nil && part.InputAudio.Data != "" {
+					content.Text = "[audio:" + part.InputAudio.Format + "]"
+				}
 			}
-			contents = append(contents, content)
+			if content.Type != "" {
+				contents = append(contents, content)
+			}
 		}
 		claudeMessage.Content = contents
 		claudeRequest.Messages = append(claudeRequest.Messages, claudeMessage)
@@ -362,11 +381,7 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 	}
 	fullTextResponse := ResponseClaude2OpenAI(&claudeResponse)
 	fullTextResponse.Model = modelName
-	usage := model.Usage{
-		PromptTokens:     claudeResponse.Usage.InputTokens,
-		CompletionTokens: claudeResponse.Usage.OutputTokens,
-		TotalTokens:      claudeResponse.Usage.InputTokens + claudeResponse.Usage.OutputTokens,
-	}
+	usage := *claudeUsageToRelayUsage(claudeResponse.Usage)
 	fullTextResponse.Usage = usage
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {

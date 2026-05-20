@@ -45,17 +45,31 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *model.G
 		return nil, errors.Errorf("replicate models only support stream mode now, please set stream=true")
 	}
 
-	// Build the prompt from OpenAI messages
+	// Build the prompt from OpenAI messages (含 text / image_url 多模态)
 	var promptBuilder strings.Builder
 	for _, message := range request.Messages {
-		switch msgCnt := message.Content.(type) {
-		case string:
-			promptBuilder.WriteString(message.Role)
-			promptBuilder.WriteString(": ")
-			promptBuilder.WriteString(msgCnt)
-			promptBuilder.WriteString("\n")
-		default:
+		promptBuilder.WriteString(message.Role)
+		promptBuilder.WriteString(": ")
+		if message.IsStringContent() {
+			promptBuilder.WriteString(message.StringContent())
+		} else {
+			for _, part := range message.ParseContent() {
+				switch part.Type {
+				case model.ContentTypeText:
+					promptBuilder.WriteString(part.Text)
+				case model.ContentTypeImageURL:
+					if part.ImageURL != nil {
+						promptBuilder.WriteString(part.ImageURL.Url)
+					}
+					promptBuilder.WriteString(" ")
+				case model.ContentTypeInputFile:
+					promptBuilder.WriteString("[file]")
+				case model.ContentTypeInputAudio:
+					promptBuilder.WriteString("[audio]")
+				}
+			}
 		}
+		promptBuilder.WriteString("\n")
 	}
 
 	replicateRequest := ReplicateChatRequest{

@@ -75,6 +75,72 @@
   margin-bottom: 0.75rem;
 }
 
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency__label {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency .ui.input {
+  width: 5.5rem;
+  margin: 0;
+}
+
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency .ui.input > input[type='number'] {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  padding-right: 0.35rem;
+  -moz-appearance: auto;
+  appearance: auto;
+}
+
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency .ui.input > input[type='number']::-webkit-inner-spin-button,
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency .ui.input > input[type='number']::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+.channel-edit-page .ui.label.model-tag--ok {
+  background-color: #21ba45 !important;
+  border-color: #21ba45 !important;
+  color: #fff !important;
+}
+
+.channel-edit-page .ui.label.model-tag--fail {
+  background-color: #db2828 !important;
+  border-color: #db2828 !important;
+  color: #fff !important;
+}
+
+.channel-edit-page .ui.label.model-tag--testing {
+  background-color: #fbbd08 !important;
+  border-color: #fbbd08 !important;
+  color: #1b1c1d !important;
+}
+
+.channel-edit-model-test-summary {
+  margin: 0.35rem 0 0.75rem;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 0.9rem;
+}
+
+.channel-edit-model-test-progress {
+  margin: 0.5rem 0 0.85rem !important;
+}
+
+.channel-edit-model-test-progress .bar {
+  min-width: 0;
+}
+
 /* Base URL 与密钥同一行（窄屏自动折行） */
 .channel-edit-upstream-row {
   display: flex;

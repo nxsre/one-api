@@ -122,6 +122,28 @@ func ConvertRequest(textRequest model.GeneralOpenAIRequest) *ChatRequest {
 						Data:     data,
 					},
 				})
+			} else if part.Type == model.ContentTypeInputFile && part.File != nil && part.File.FileData != "" {
+				mimeType, data, _ := image.GetImageFromUrl(part.File.FileData)
+				if mimeType == "" {
+					mimeType = "application/pdf"
+				}
+				parts = append(parts, Part{
+					InlineData: &InlineData{
+						MimeType: mimeType,
+						Data:     data,
+					},
+				})
+			} else if part.Type == model.ContentTypeInputAudio && part.InputAudio != nil && part.InputAudio.Data != "" {
+				mimeType := "audio/" + part.InputAudio.Format
+				if part.InputAudio.Format == "" {
+					mimeType = "audio/wav"
+				}
+				parts = append(parts, Part{
+					InlineData: &InlineData{
+						MimeType: mimeType,
+						Data:     part.InputAudio.Data,
+					},
+				})
 			}
 		}
 		content.Parts = parts
@@ -289,12 +311,23 @@ func streamResponseGeminiChat2OpenAI(geminiResponse *ChatResponse) *openai.ChatC
 	return &response
 }
 
-func embeddingResponseGemini2OpenAI(response *EmbeddingResponse) *openai.EmbeddingResponse {
+func embeddingResponseGemini2OpenAI(response *EmbeddingResponse, promptTokens int) *openai.EmbeddingResponse {
+	tokens := promptTokens
+	if tokens <= 0 {
+		tokens = len(response.Embeddings) * 64
+		if tokens < 1 {
+			tokens = 1
+		}
+	}
 	openAIEmbeddingResponse := openai.EmbeddingResponse{
 		Object: "list",
 		Data:   make([]openai.EmbeddingResponseItem, 0, len(response.Embeddings)),
 		Model:  "gemini-embedding",
-		Usage:  model.Usage{TotalTokens: 0},
+		Usage: model.Usage{
+			PromptTokens:     tokens,
+			CompletionTokens: 0,
+			TotalTokens:      tokens,
+		},
 	}
 	for _, item := range response.Embeddings {
 		openAIEmbeddingResponse.Data = append(openAIEmbeddingResponse.Data, openai.EmbeddingResponseItem{
@@ -400,7 +433,7 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 	return nil, &usage
 }
 
-func EmbeddingHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
+func EmbeddingHandler(c *gin.Context, resp *http.Response, promptTokens int) (*model.ErrorWithStatusCode, *model.Usage) {
 	var geminiEmbeddingResponse EmbeddingResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -425,7 +458,7 @@ func EmbeddingHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStat
 			StatusCode: resp.StatusCode,
 		}, nil
 	}
-	fullTextResponse := embeddingResponseGemini2OpenAI(&geminiEmbeddingResponse)
+	fullTextResponse := embeddingResponseGemini2OpenAI(&geminiEmbeddingResponse, promptTokens)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), nil

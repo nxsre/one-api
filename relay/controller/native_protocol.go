@@ -14,6 +14,7 @@ import (
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/relay"
 	"github.com/songquanpeng/one-api/relay/billing"
 	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
@@ -45,7 +46,7 @@ func sanitizeGeminiUpstreamQuery(raw string) string {
 
 func estimateAnthropicTokens(req *anthropic.Request) int {
 	var b strings.Builder
-	b.WriteString(req.System)
+	b.WriteString(req.System.String())
 	for _, msg := range req.Messages {
 		for _, part := range msg.Content {
 			b.WriteString(part.Text)
@@ -57,6 +58,57 @@ func estimateAnthropicTokens(req *anthropic.Request) int {
 		return 8
 	}
 	return openai.CountTokenText(s, req.Model)
+}
+
+func anthropicResponseClientModel(meta *meta.Meta) string {
+	if meta == nil {
+		return ""
+	}
+	return strings.TrimSpace(meta.OriginModelName)
+}
+
+func rewriteAnthropicResponseModelBody(body []byte, clientModel string) []byte {
+	clientModel = strings.TrimSpace(clientModel)
+	if clientModel == "" {
+		return body
+	}
+	var ar anthropic.Response
+	if err := json.Unmarshal(body, &ar); err != nil {
+		return body
+	}
+	if ar.Model == clientModel {
+		return body
+	}
+	ar.Model = clientModel
+	rewritten, err := json.Marshal(ar)
+	if err != nil {
+		return body
+	}
+	return rewritten
+}
+
+func rewriteAnthropicStreamLine(line, clientModel string) string {
+	clientModel = strings.TrimSpace(clientModel)
+	if clientModel == "" || !strings.HasPrefix(line, "data:") {
+		return line
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return line
+	}
+	var event anthropic.StreamResponse
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return line
+	}
+	if event.Type != "message_start" || event.Message == nil || event.Message.Model == clientModel {
+		return line
+	}
+	event.Message.Model = clientModel
+	b, err := json.Marshal(event)
+	if err != nil {
+		return line
+	}
+	return "data: " + string(b)
 }
 
 func relayAnthropicNativeResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (*model.Usage, *model.ErrorWithStatusCode) {
@@ -73,6 +125,11 @@ func relayAnthropicNativeResponse(c *gin.Context, resp *http.Response, meta *met
 	ct := resp.Header.Get("Content-Type")
 	if ct == "" {
 		ct = "application/json"
+	}
+	if resp.StatusCode == http.StatusOK {
+		if clientModel := anthropicResponseClientModel(meta); clientModel != "" {
+			body = rewriteAnthropicResponseModelBody(body, clientModel)
+		}
 	}
 	c.Writer.Header().Set("Content-Type", ct)
 	c.Writer.WriteHeader(resp.StatusCode)
@@ -114,6 +171,7 @@ func relayAnthropicNativeStream(c *gin.Context, resp *http.Response, meta *meta.
 
 	common.SetEventStreamHeaders(c)
 	var usage model.Usage
+	clientModel := anthropicResponseClientModel(meta)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -130,6 +188,9 @@ func relayAnthropicNativeStream(c *gin.Context, resp *http.Response, meta *meta.
 					usage.CompletionTokens += claudeResponse.Usage.OutputTokens
 				}
 			}
+		}
+		if clientModel != "" {
+			line = rewriteAnthropicStreamLine(line, clientModel)
 		}
 		_, _ = c.Writer.WriteString(line)
 		_, _ = c.Writer.WriteString("\n")
@@ -175,6 +236,13 @@ func relayGeminiNativeResponse(c *gin.Context, resp *http.Response, meta *meta.M
 				Type:    "upstream_error",
 			},
 		}
+	}
+	if meta.Mode == relaymode.Embeddings {
+		return &model.Usage{
+			PromptTokens:     meta.PromptTokens,
+			CompletionTokens: 0,
+			TotalTokens:      meta.PromptTokens,
+		}, nil
 	}
 	var gr gemini.ChatResponse
 	if err := json.Unmarshal(body, &gr); err != nil {
@@ -255,24 +323,37 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 
 	originModel := req.Model
-	mapped, _ := getMappedModelName(req.Model, m.ModelMapping)
+	routeModel := req.Model
+	if base, variant := anthropic.SplitClientModelVariant(req.Model); variant != "" {
+		c.Set(ctxkey.AnthropicModelVariant, variant)
+		routeModel = base
+	}
+	mapped, _ := getMappedModelName(routeModel, m.ModelMapping)
 	req.Model = mapped
 	if m.ForcedSystemPrompt != "" {
 		if req.System == "" {
-			req.System = m.ForcedSystemPrompt
+			req.System = anthropic.SystemPrompt(m.ForcedSystemPrompt)
 		} else {
-			req.System = m.ForcedSystemPrompt + "\n\n" + req.System
+			req.System = anthropic.SystemPrompt(m.ForcedSystemPrompt + "\n\n" + req.System.String())
 		}
 	}
 
 	m.OriginModelName = originModel
 	m.ActualModelName = mapped
 
-	modelRatio := billingratio.GetModelRatio(mapped, m.ChannelType)
-	groupRatio := billingratio.GetGroupRatio(m.Group)
+	modelRatio := billingratio.GetModelRatio(m.OriginModelName, mapped, m.ChannelType)
+	userGroup := m.UserGroup
+	if userGroup == "" {
+		userGroup = m.Group
+	}
+	usingGroup := m.UsingGroup
+	if usingGroup == "" {
+		usingGroup = m.Group
+	}
+	groupRatio := billingratio.GetEffectiveGroupRatio(userGroup, usingGroup)
 	ratio := modelRatio * groupRatio
 
-	if m.ChannelType != channeltype.Anthropic {
+	if !channelUsesAnthropicNativePassthrough(m) {
 		if !config.IsRelayProtocolBridgeEnabled() {
 			return openai.ErrorWrapper(fmt.Errorf("跨协议转发未开启：请在管理端「智能路由」策略页开启，或在配置中设置 relay_protocol_bridge_enabled；或选用 Anthropic 协议渠道走原生直连"), "protocol_bridge_disabled", http.StatusBadRequest)
 		}
@@ -306,7 +387,8 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 		return bizErr
 	}
 
-	adaptor := relay.GetAdaptor(m.APIType)
+	apiType := anthropicNativeAPIType(m)
+	adaptor := relay.GetAdaptor(apiType)
 	if adaptor == nil {
 		billing.ReturnPreConsumedQuota(ctx, preConsumed, m.TokenId)
 		return openai.ErrorWrapper(fmt.Errorf("invalid api type"), "invalid_api_type", http.StatusInternalServerError)
@@ -381,6 +463,9 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	m.OriginModelName = originModel
 	m.ActualModelName = mapped
 	m.Mode = relaymode.GeminiGenerate
+	if strings.Contains(strings.ToLower(action), "embed") {
+		m.Mode = relaymode.Embeddings
+	}
 	m.IsStream = strings.Contains(action, "stream") || c.Request.URL.Query().Get("alt") == "sse"
 
 	base := strings.TrimSuffix(m.BaseURL, "/")
@@ -394,11 +479,19 @@ func RelayGeminiNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 		return openai.ErrorWrapper(err, "read_body_failed", http.StatusBadRequest)
 	}
 
-	modelRatio := billingratio.GetModelRatio(mapped, m.ChannelType)
-	groupRatio := billingratio.GetGroupRatio(m.Group)
+	modelRatio := billingratio.GetModelRatio(m.OriginModelName, mapped, m.ChannelType)
+	userGroup := m.UserGroup
+	if userGroup == "" {
+		userGroup = m.Group
+	}
+	usingGroup := m.UsingGroup
+	if usingGroup == "" {
+		usingGroup = m.Group
+	}
+	groupRatio := billingratio.GetEffectiveGroupRatio(userGroup, usingGroup)
 	ratio := modelRatio * groupRatio
 
-	if m.ChannelType != channeltype.Gemini {
+	if m.ChannelType != channeltype.Gemini && m.ChannelType != channeltype.GeminiNativeCompatible {
 		if !config.IsRelayProtocolBridgeEnabled() {
 			return openai.ErrorWrapper(fmt.Errorf("跨协议转发未开启：请在管理端「智能路由」策略页开启，或在配置中设置 relay_protocol_bridge_enabled；或选用 Google Gemini 协议渠道走原生直连"), "protocol_bridge_disabled", http.StatusBadRequest)
 		}

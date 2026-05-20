@@ -74,6 +74,17 @@ func normalizeContentParts(content interface{}) []interface{} {
 				out = append(out, map[string]interface{}{"type": "input_text", "text": tx})
 				continue
 			}
+			if t == "image_url" {
+				if iu, ok := pm["image_url"].(map[string]interface{}); ok {
+					out = append(out, map[string]interface{}{
+						"type": "input_image",
+						"image_url": map[string]interface{}{
+							"url": iu["url"],
+						},
+					})
+					continue
+				}
+			}
 			out = append(out, pm)
 		}
 		if len(out) == 0 {
@@ -94,7 +105,7 @@ func TryNormalizeRealtimeSessionRequest(body []byte) ([]byte, bool) {
 	}
 	changed := false
 	if _, ok := m["modalities"]; !ok {
-		m["modalities"], _ = json.Marshal([]string{"text"})
+		m["modalities"], _ = json.Marshal([]string{"text", "audio"})
 		changed = true
 	}
 	if _, ok := m["voice"]; !ok {

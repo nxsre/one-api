@@ -32,10 +32,18 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *model.G
 		return nil, errors.New("request is nil")
 	}
 
-	geminiRequest := gemini.ConvertRequest(*request)
-	c.Set(ctxkey.RequestModel, request.Model)
-	c.Set(ctxkey.ConvertedRequest, geminiRequest)
-	return geminiRequest, nil
+	switch relayMode {
+	case relaymode.Embeddings:
+		req := gemini.ConvertEmbeddingRequest(*request)
+		c.Set(ctxkey.RequestModel, request.Model)
+		c.Set(ctxkey.ConvertedRequest, req)
+		return req, nil
+	default:
+		geminiRequest := gemini.ConvertRequest(*request)
+		c.Set(ctxkey.RequestModel, request.Model)
+		c.Set(ctxkey.ConvertedRequest, geminiRequest)
+		return geminiRequest, nil
+	}
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
@@ -46,7 +54,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Met
 	} else {
 		switch meta.Mode {
 		case relaymode.Embeddings:
-			err, usage = gemini.EmbeddingHandler(c, resp)
+			err, usage = gemini.EmbeddingHandler(c, resp, meta.PromptTokens)
 		default:
 			err, usage = gemini.Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
 		}

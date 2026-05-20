@@ -65,7 +65,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Met
 	} else {
 		switch meta.Mode {
 		case relaymode.Embeddings:
-			err, usage = EmbeddingHandler(c, resp)
+			err, usage = EmbeddingHandler(c, resp, meta.PromptTokens)
 		default:
 			err, usage = Handler(c, resp)
 		}

@@ -75,7 +75,14 @@ func GeneralFromGeminiChatRequest(chat *gemini.ChatRequest, modelName string) (*
 					mime = "image/png"
 				}
 				url := fmt.Sprintf("data:%s;base64,%s", mime, p.InlineData.Data)
-				parts = append(parts, model.MessageContent{Type: model.ContentTypeImageURL, ImageURL: &model.ImageURL{Url: url}})
+				if model.IsImageMimeType(mime) {
+					parts = append(parts, model.MessageContent{Type: model.ContentTypeImageURL, ImageURL: &model.ImageURL{Url: url}})
+				} else {
+					parts = append(parts, model.MessageContent{
+						Type: model.ContentTypeInputFile,
+						File: &model.InputFile{Filename: "inline", FileData: url},
+					})
+				}
 			}
 		}
 		if len(parts) == 0 {
@@ -85,19 +92,7 @@ func GeneralFromGeminiChatRequest(chat *gemini.ChatRequest, modelName string) (*
 			g.Messages = append(g.Messages, model.Message{Role: r, Content: parts[0].Text})
 			continue
 		}
-		wrap := make([]map[string]any, 0, len(parts))
-		for _, part := range parts {
-			if part.Type == model.ContentTypeText {
-				wrap = append(wrap, map[string]any{"type": "text", "text": part.Text})
-			} else if part.Type == model.ContentTypeImageURL && part.ImageURL != nil {
-				wrap = append(wrap, map[string]any{
-					"type": "image_url",
-					"image_url": map[string]any{
-						"url": part.ImageURL.Url,
-					},
-				})
-			}
-		}
+		wrap := model.ContentPartsToOpenAIArray(parts)
 		raw, _ := json.Marshal(wrap)
 		g.Messages = append(g.Messages, model.Message{Role: r, Content: json.RawMessage(raw)})
 	}

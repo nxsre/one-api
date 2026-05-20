@@ -32,10 +32,10 @@ func GeneralFromAnthropicRequest(req *anthropic.Request) (*model.GeneralOpenAIRe
 	if req.TopK > 0 {
 		g.TopK = req.TopK
 	}
-	if strings.TrimSpace(req.System) != "" {
+	if strings.TrimSpace(req.System.String()) != "" {
 		g.Messages = append(g.Messages, model.Message{
 			Role:    role.System,
-			Content: req.System,
+			Content: req.System.String(),
 		})
 	}
 	for _, t := range req.Tools {
@@ -92,6 +92,17 @@ func anthropicUserOrAssistantToOpenAIMessages(m anthropic.Message) ([]model.Mess
 				}
 				url := fmt.Sprintf("data:%s;base64,%s", part.Source.MediaType, part.Source.Data)
 				parts = append(parts, model.MessageContent{Type: model.ContentTypeImageURL, ImageURL: &model.ImageURL{Url: url}})
+			case "document":
+				if part.Source == nil || part.Source.Data == "" {
+					continue
+				}
+				parts = append(parts, model.MessageContent{
+					Type: model.ContentTypeInputFile,
+					File: &model.InputFile{
+						Filename: "document",
+						FileData: fmt.Sprintf("data:%s;base64,%s", part.Source.MediaType, part.Source.Data),
+					},
+				})
 			case "tool_result":
 				toolMsgs = append(toolMsgs, model.Message{
 					Role:       "tool",
@@ -105,19 +116,7 @@ func anthropicUserOrAssistantToOpenAIMessages(m anthropic.Message) ([]model.Mess
 			if len(parts) == 1 && parts[0].Type == model.ContentTypeText {
 				out = append(out, model.Message{Role: "user", Content: parts[0].Text})
 			} else {
-				wrap := make([]map[string]any, 0, len(parts))
-				for _, p := range parts {
-					if p.Type == model.ContentTypeText {
-						wrap = append(wrap, map[string]any{"type": "text", "text": p.Text})
-					} else if p.Type == model.ContentTypeImageURL && p.ImageURL != nil {
-						wrap = append(wrap, map[string]any{
-							"type": "image_url",
-							"image_url": map[string]any{
-								"url": p.ImageURL.Url,
-							},
-						})
-					}
-				}
+				wrap := model.ContentPartsToOpenAIArray(parts)
 				raw, _ := json.Marshal(wrap)
 				out = append(out, model.Message{Role: "user", Content: json.RawMessage(raw)})
 			}

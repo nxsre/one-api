@@ -549,39 +549,31 @@ const EditModal = ({ open, channelId, onCancel, onOk, channelTypesList = [] }) =
                             }
                           }
                           let ids;
-                          if (keyFromForm) {
-                            const mergedCfg = { ...cfg };
-                            if ((values.type === 14 || values.type === 42) && !mergedCfg.api_version) {
-                              mergedCfg.api_version = 'v1';
-                            }
-                            let baseUrl = String(values.base_url || '').trim();
-                            if (baseUrl.endsWith('/')) {
-                              baseUrl = baseUrl.slice(0, baseUrl.length - 1);
-                            }
-                            const res = await API.post('/api/channel/fetch_upstream_models_preview', {
-                              type: values.type,
-                              base_url: baseUrl,
-                              key: keyFromForm,
-                              config: JSON.stringify(mergedCfg)
-                            });
-                            const { success, message, data } = res.data;
-                            if (!success) {
-                              showError(message || '请求失败');
-                              return;
-                            }
-                            ids = data;
-                          } else if (channelId) {
-                            const res = await API.get(`/api/channel/fetch_models/${channelId}`);
-                            const { success, message, data } = res.data;
-                            if (!success) {
-                              showError(message || '请求失败');
-                              return;
-                            }
-                            ids = data;
-                          } else {
+                          const mergedCfg = { ...cfg };
+                          if ((values.type === 14 || values.type === 42) && !mergedCfg.api_version) {
+                            mergedCfg.api_version = 'v1';
+                          }
+                          let baseUrl = String(values.base_url || '').trim();
+                          if (baseUrl.endsWith('/')) {
+                            baseUrl = baseUrl.slice(0, baseUrl.length - 1);
+                          }
+                          if (!keyFromForm && !channelId) {
                             showError('请先填写密钥');
                             return;
                           }
+                          const res = await API.post('/api/channel/fetch_upstream_models_preview', {
+                            type: values.type,
+                            base_url: baseUrl,
+                            key: keyFromForm,
+                            config: JSON.stringify(mergedCfg),
+                            channel_id: channelId ? Number(channelId) || 0 : 0,
+                          });
+                          const { success, message, data } = res.data;
+                          if (!success) {
+                            showError(message || '请求失败');
+                            return;
+                          }
+                          ids = data;
                           if (!Array.isArray(ids) || ids.length === 0) {
                             showError('上游未返回可用模型');
                             return;

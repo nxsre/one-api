@@ -7,10 +7,14 @@ const (
 	Embeddings
 	Moderations
 	ImagesGenerations
+	ImagesEdits
+	ImagesVariations
 	Edits
 	AudioSpeech
 	AudioTranscription
 	AudioTranslation
+	// Files API（OpenAI /v1/files*）
+	Files
 	// Proxy is a special relay mode for proxying requests to custom upstream
 	Proxy
 	AnthropicMessages

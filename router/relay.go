@@ -18,18 +18,18 @@ func registerOpenAIV1RelayRoutes(g *gin.RouterGroup) {
 	g.GET("/realtime", controller.RelayRealtimeWebSocket)
 	g.POST("/edits", controller.Relay)
 	g.POST("/images/generations", controller.Relay)
-	g.POST("/images/edits", controller.RelayNotImplemented)
-	g.POST("/images/variations", controller.RelayNotImplemented)
+	g.POST("/images/edits", controller.Relay)
+	g.POST("/images/variations", controller.Relay)
 	g.POST("/embeddings", controller.Relay)
 	g.POST("/engines/:model/embeddings", controller.Relay)
 	g.POST("/audio/transcriptions", controller.Relay)
 	g.POST("/audio/translations", controller.Relay)
 	g.POST("/audio/speech", controller.Relay)
-	g.GET("/files", controller.RelayNotImplemented)
-	g.POST("/files", controller.RelayNotImplemented)
-	g.DELETE("/files/:id", controller.RelayNotImplemented)
-	g.GET("/files/:id", controller.RelayNotImplemented)
-	g.GET("/files/:id/content", controller.RelayNotImplemented)
+	g.GET("/files", controller.Relay)
+	g.POST("/files", controller.Relay)
+	g.DELETE("/files/:id", controller.Relay)
+	g.GET("/files/:id", controller.Relay)
+	g.GET("/files/:id/content", controller.Relay)
 	g.POST("/fine_tuning/jobs", controller.RelayNotImplemented)
 	g.GET("/fine_tuning/jobs", controller.RelayNotImplemented)
 	g.GET("/fine_tuning/jobs/:id", controller.RelayNotImplemented)
@@ -83,20 +83,34 @@ func SetRelayRouter(router *gin.Engine) {
 	modelsOpenAI.Use(middleware.TokenAuth())
 	registerOpenAIV1ModelsRoutes(modelsOpenAI)
 
+	anthropicModels := router.Group("/anthropic/v1")
+	anthropicModels.Use(middleware.TokenAuth())
+	anthropicModels.GET("/models", controller.ListAnthropicModels)
+	anthropicModels.GET("/models/:model_id", controller.RetrieveAnthropicModel)
+
 	router.POST("/amap",
 		middleware.RelayPanicRecover(),
 		middleware.TokenAuth(),
+		middleware.ConsumeLogCapture(),
 		controller.RelayAmapProxy,
 	)
 
 	stack := func(g *gin.RouterGroup) {
-		g.Use(middleware.RelayPanicRecover(), middleware.ResponsesRealtimeFormatBridge(), middleware.TokenAuth(), middleware.RoutingPrep(), middleware.Distribute())
+		g.Use(
+			middleware.RelayPanicRecover(),
+			middleware.ResponsesRealtimeFormatBridge(),
+			middleware.TokenAuth(),
+			middleware.ConsumeLogCapture(),
+			middleware.RoutingPrep(),
+			middleware.Distribute(),
+		)
 	}
 
 	relayLegacy := router.Group("/v1")
 	stack(relayLegacy)
 	registerOpenAIV1RelayRoutes(relayLegacy)
 	relayLegacy.POST("/messages", controller.RelayAnthropicNative)
+	relayLegacy.POST("/messages/count_tokens", controller.RelayAnthropicCountTokens)
 
 	relayOpenAI := router.Group("/openai/v1")
 	stack(relayOpenAI)
@@ -105,16 +119,33 @@ func SetRelayRouter(router *gin.Engine) {
 	anthropicV1 := router.Group("/anthropic/v1")
 	stack(anthropicV1)
 	anthropicV1.POST("/messages", controller.RelayAnthropicNative)
+	anthropicV1.POST("/messages/count_tokens", controller.RelayAnthropicCountTokens)
+
+	geminiModelsList := router.Group("/v1beta/models")
+	geminiModelsList.Use(middleware.TokenAuth())
+	geminiModelsList.GET("", controller.ListGeminiModels)
+	geminiModelsList.GET("/:model", controller.RetrieveGeminiModel)
 
 	geminiLegacy := router.Group("/v1beta/models")
 	stack(geminiLegacy)
 	geminiLegacy.POST("/*geminiAction", controller.RelayGeminiNative)
+
+	geminiPrefixedList := router.Group("/gemini/v1beta/models")
+	geminiPrefixedList.Use(middleware.TokenAuth())
+	geminiPrefixedList.GET("", controller.ListGeminiModels)
+	geminiPrefixedList.GET("/:model", controller.RetrieveGeminiModel)
 
 	geminiPrefixed := router.Group("/gemini/v1beta/models")
 	stack(geminiPrefixed)
 	geminiPrefixed.POST("/*geminiAction", controller.RelayGeminiNative)
 
 	// 兼容将 base 配成 …/gemini 且路径为 /models/{model}:method（与 AI Studio / 部分 SDK 习惯一致，省略 v1beta）。
+	// pi-ai / @google/genai 在自定义 baseUrl 时会清空 apiVersion，GET/POST 均走 /gemini/models/…。
+	geminiModelsCompatList := router.Group("/gemini/models")
+	geminiModelsCompatList.Use(middleware.TokenAuth())
+	geminiModelsCompatList.GET("", controller.ListGeminiModels)
+	geminiModelsCompatList.GET("/:model", controller.RetrieveGeminiModel)
+
 	geminiModelsCompat := router.Group("/gemini/models")
 	stack(geminiModelsCompat)
 	geminiModelsCompat.POST("/*geminiAction", controller.RelayGeminiNative)

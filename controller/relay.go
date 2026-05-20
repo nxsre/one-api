@@ -14,6 +14,7 @@ import (
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/common/metrics"
 	"github.com/songquanpeng/one-api/common/requestaudit"
 	"github.com/songquanpeng/one-api/middleware"
 	"github.com/songquanpeng/one-api/monitor"
@@ -30,6 +31,12 @@ func relayHelper(c *gin.Context, relayMode int) *model.ErrorWithStatusCode {
 	switch relayMode {
 	case relaymode.ImagesGenerations:
 		err = relayctl.RelayImageHelper(c, relayMode)
+	case relaymode.ImagesEdits:
+		fallthrough
+	case relaymode.ImagesVariations:
+		fallthrough
+	case relaymode.Files:
+		err = relayctl.RelayPassthroughHelper(c, relayMode)
 	case relaymode.AudioSpeech:
 		fallthrough
 	case relaymode.AudioTranslation:
@@ -49,6 +56,20 @@ func Relay(c *gin.Context) {
 	relayWithRetry(c, func(c *gin.Context) *model.ErrorWithStatusCode {
 		return relayHelper(c, relayMode)
 	})
+}
+
+func recordRelayMetrics(c *gin.Context, originalModel string, bizErr *model.ErrorWithStatusCode, startAt time.Time) {
+	duration := time.Since(startAt).Seconds()
+	chType := c.GetInt(ctxkey.Channel)
+	chTypeStr := fmt.Sprintf("%d", chType)
+	
+	status := "success"
+	if bizErr != nil {
+		status = "fail"
+	}
+	
+	metrics.RelayRequestTotal.WithLabelValues(chTypeStr, originalModel, status).Inc()
+	metrics.RelayRequestDuration.WithLabelValues(chTypeStr, originalModel).Observe(duration)
 }
 
 func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStatusCode) {
@@ -74,7 +95,7 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 	tried := map[int]struct{}{channelId: {}}
 
 	bizErr = exec(c)
-	recordRelayOutcome(c, originalModel, bizErr, startAt)
+	recordRelayMetrics(c, originalModel, bizErr, startAt)
 
 	if bizErr != nil && bizErr.StatusCode == -1 {
 		return
@@ -110,6 +131,8 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 			RequestModel:        originalModel,
 			ExcludeChannelIDs:   excluded,
 			SkipCircuitDisabled: routing.CurrentRoutingPolicy().CircuitFailThreshold > 0,
+			UserTenantID:        c.GetInt(ctxkey.UserTenantID),
+			AllowedChannelIDs:   middleware.RelayAllowedChannelIDs(c),
 		}
 		channel, err := routing.SelectChannel(group, originalModel, attempt > 0, opts)
 		if err != nil {
@@ -132,7 +155,7 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 
 		startAt = time.Now()
 		bizErr = exec(c)
-		recordRelayOutcome(c, originalModel, bizErr, startAt)
+		recordRelayMetrics(c, originalModel, bizErr, startAt)
 
 		if bizErr != nil && bizErr.StatusCode == -1 {
 			return
@@ -160,6 +183,7 @@ func relayWithRetry(c *gin.Context, exec func(*gin.Context) *model.ErrorWithStat
 
 		// BUG: bizErr is in race condition
 		bizErr.Error.Message = helper.MessageWithRequestId(bizErr.Error.Message, requestId)
+		recordRelayErrorLog(c, bizErr, startAt)
 		c.JSON(bizErr.StatusCode, gin.H{
 			"error": bizErr.Error,
 		})

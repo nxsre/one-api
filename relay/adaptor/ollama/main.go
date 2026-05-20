@@ -173,7 +173,7 @@ func ConvertEmbeddingRequest(request model.GeneralOpenAIRequest) *EmbeddingReque
 	}
 }
 
-func EmbeddingHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
+func EmbeddingHandler(c *gin.Context, resp *http.Response, promptTokens int) (*model.ErrorWithStatusCode, *model.Usage) {
 	var ollamaResponse EmbeddingResponse
 	err := json.NewDecoder(resp.Body).Decode(&ollamaResponse)
 	if err != nil {
@@ -197,7 +197,7 @@ func EmbeddingHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStat
 		}, nil
 	}
 
-	fullTextResponse := embeddingResponseOllama2OpenAI(&ollamaResponse)
+	fullTextResponse := embeddingResponseOllama2OpenAI(&ollamaResponse, promptTokens)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), nil
@@ -208,12 +208,23 @@ func EmbeddingHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStat
 	return nil, &fullTextResponse.Usage
 }
 
-func embeddingResponseOllama2OpenAI(response *EmbeddingResponse) *openai.EmbeddingResponse {
+func embeddingResponseOllama2OpenAI(response *EmbeddingResponse, promptTokens int) *openai.EmbeddingResponse {
+	tokens := promptTokens
+	if tokens <= 0 {
+		tokens = len(response.Embeddings)
+		if tokens < 1 {
+			tokens = 1
+		}
+	}
 	openAIEmbeddingResponse := openai.EmbeddingResponse{
 		Object: "list",
 		Data:   make([]openai.EmbeddingResponseItem, 0, 1),
 		Model:  response.Model,
-		Usage:  model.Usage{TotalTokens: 0},
+		Usage: model.Usage{
+			PromptTokens:     tokens,
+			CompletionTokens: 0,
+			TotalTokens:      tokens,
+		},
 	}
 
 	for i, embedding := range response.Embeddings {

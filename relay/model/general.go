@@ -83,6 +83,8 @@ func (r GeneralOpenAIRequest) ParseInput() []string {
 				input = append(input, str)
 			}
 		}
+	case []string:
+		input = r.Input.([]string)
 	}
 	return input
 }
