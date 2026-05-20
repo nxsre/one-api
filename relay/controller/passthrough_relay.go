@@ -100,11 +100,10 @@ func RelayPassthroughHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWith
 	if auth := c.Request.Header.Get("Authorization"); auth != "" {
 		req.Header.Set("Authorization", auth)
 	}
-	if ct := c.Request.Header.Get("Content-Type"); ct != "" {
-		req.Header.Set("Content-Type", ct)
-	}
-	if accept := c.Request.Header.Get("Accept"); accept != "" {
-		req.Header.Set("Accept", accept)
+	for _, h := range []string{"Content-Type", "Accept", "OpenAI-Beta", "OpenAI-Organization"} {
+		if v := c.Request.Header.Get(h); v != "" {
+			req.Header.Set(h, v)
+		}
 	}
 	req.ContentLength = c.Request.ContentLength
 
@@ -115,7 +114,7 @@ func RelayPassthroughHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWith
 	}
 	requestaudit.SnapUpstreamHTTP(c, req, resp)
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		e := RelayErrorHandler(resp)
 		ApplyRelayStatusCodeMapping(c, e)
 		return e

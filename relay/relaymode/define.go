@@ -15,6 +15,11 @@ const (
 	AudioTranslation
 	// Files API（OpenAI /v1/files*）
 	Files
+	// FineTuning / Assistants / Threads（OpenAI Platform API 透传）
+	FineTuning
+	Assistants
+	Threads
+	ModelsDelete
 	// Proxy is a special relay mode for proxying requests to custom upstream
 	Proxy
 	AnthropicMessages

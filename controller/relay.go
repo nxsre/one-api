@@ -31,12 +31,6 @@ func relayHelper(c *gin.Context, relayMode int) *model.ErrorWithStatusCode {
 	switch relayMode {
 	case relaymode.ImagesGenerations:
 		err = relayctl.RelayImageHelper(c, relayMode)
-	case relaymode.ImagesEdits:
-		fallthrough
-	case relaymode.ImagesVariations:
-		fallthrough
-	case relaymode.Files:
-		err = relayctl.RelayPassthroughHelper(c, relayMode)
 	case relaymode.AudioSpeech:
 		fallthrough
 	case relaymode.AudioTranslation:
@@ -46,7 +40,11 @@ func relayHelper(c *gin.Context, relayMode int) *model.ErrorWithStatusCode {
 	case relaymode.Proxy:
 		err = relayctl.RelayProxyHelper(c, relayMode)
 	default:
-		err = relayctl.RelayTextHelper(c)
+		if relaymode.IsPassthroughMode(relayMode) {
+			err = relayctl.RelayPassthroughHelper(c, relayMode)
+		} else {
+			err = relayctl.RelayTextHelper(c)
+		}
 	}
 	return err
 }

@@ -16,6 +16,16 @@ func NormalizeAPIPath(path string) string {
 	return path
 }
 
+// IsPassthroughMode 是否为请求/响应原样透传的平台 API（Files、图像编辑、Assistants 等）。
+func IsPassthroughMode(mode int) bool {
+	switch mode {
+	case Files, ImagesEdits, ImagesVariations, FineTuning, Assistants, Threads, ModelsDelete:
+		return true
+	default:
+		return false
+	}
+}
+
 func GetByPath(path string) int {
 	path = NormalizeAPIPath(path)
 	relayMode := Unknown
@@ -39,6 +49,14 @@ func GetByPath(path string) int {
 		relayMode = Edits
 	} else if strings.HasPrefix(path, "/v1/files") {
 		relayMode = Files
+	} else if strings.HasPrefix(path, "/v1/fine_tuning") {
+		relayMode = FineTuning
+	} else if strings.HasPrefix(path, "/v1/assistants") {
+		relayMode = Assistants
+	} else if strings.HasPrefix(path, "/v1/threads") {
+		relayMode = Threads
+	} else if strings.HasPrefix(path, "/v1/models/") {
+		relayMode = ModelsDelete
 	} else if strings.HasPrefix(path, "/v1/audio/speech") {
 		relayMode = AudioSpeech
 	} else if strings.HasPrefix(path, "/v1/audio/transcriptions") {
