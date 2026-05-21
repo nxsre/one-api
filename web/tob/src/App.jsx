@@ -1,3 +1,5 @@
+import { ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import PrivateRoute from '@/components/PrivateRoute';
 import AppLayout from '@/components/layout/AppLayout';
@@ -9,8 +11,18 @@ import LogsPage from '@/pages/Logs';
 import ApiKeysPage from '@/pages/ApiKeys';
 import SettingsPage from '@/pages/Settings';
 
+const antTheme = {
+  token: {
+    colorPrimary: '#6366f1',
+    borderRadius: 8,
+    controlHeight: 36,
+    fontSize: 13,
+  },
+};
+
 export default function App() {
   return (
+    <ConfigProvider locale={zhCN} theme={antTheme}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
@@ -30,5 +42,6 @@ export default function App() {
       <Route path="/" element={<Navigate to="/overview" replace />} />
       <Route path="*" element={<Navigate to="/overview" replace />} />
     </Routes>
+    </ConfigProvider>
   );
 }
