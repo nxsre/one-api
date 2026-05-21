@@ -17,7 +17,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
-        '/api': {
+        // 必须用 /api/，不能用 /api，否则会误代理前端路由 /api-keys
+        '/api/': {
           target: apiTarget,
           changeOrigin: true,
           secure: false,
