@@ -1,22 +1,22 @@
-.overview-banner {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.04));
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--text2);
-  margin-bottom: 20px;
+.overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.overview-error {
+  margin-bottom: 0;
 }
 
 .overview-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
 
 @media (max-width: 900px) {
   .overview-stats {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 
@@ -29,7 +29,8 @@
 }
 
 .stat-card.glow {
-  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.18);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(99, 102, 241, 0.2);
 }
 
 .stat-label {
@@ -43,4 +44,69 @@
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.5px;
+  color: var(--text);
+}
+
+.overview-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .overview-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.overview-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 16px 8px;
+}
+
+.overview-chart-card--wide {
+  padding-bottom: 12px;
+}
+
+.overview-chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.overview-bar-wrap {
+  min-height: 300px;
+}
+
+.overview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 13px;
+  color: var(--text3);
+  margin: 0;
+}
+
+.overview-charts-grid.is-loading,
+.overview-chart-card.is-loading {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+/* Recharts 图例与 toB 主题对齐 */
+.overview-page .recharts-legend-item-text {
+  color: var(--text2) !important;
+  font-size: 12px !important;
+}
+
+.overview-page .recharts-default-legend {
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 16px;
 }

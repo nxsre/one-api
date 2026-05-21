@@ -24,13 +24,16 @@ export default function Sidebar() {
           </svg>
         </div>
         <span className="tob-logo-text">TokenHub</span>
-        <span className="tob-logo-badge">ToB</span>
+        <span className="tob-logo-badge">Pro</span>
       </div>
 
       <nav className="tob-nav">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.label} className="tob-nav-section">
-            <div className="tob-nav-label">{section.label}</div>
+        {NAV_SECTIONS.map((section, index) => (
+          <div
+            key={section.label || `section-${index}`}
+            className={`tob-nav-section${section.label ? ' tob-nav-section--group' : ''}`}
+          >
+            {section.label ? <div className="tob-nav-label">{section.label}</div> : null}
             {section.items.map((item) => (
               <NavLink
                 key={item.path}

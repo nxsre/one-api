@@ -59,6 +59,18 @@
   overflow-y: auto;
 }
 
+.tob-nav-section--group + .tob-nav-section--group {
+  margin-top: 4px;
+}
+
+.tob-nav-section--group .tob-nav-label {
+  margin-top: 8px;
+}
+
+.tob-nav-section--group:first-of-type .tob-nav-label {
+  margin-top: 0;
+}
+
 .tob-nav-label {
   font-size: 10px;
   font-weight: 600;

@@ -1,7 +1,6 @@
 /** toB 菜单 ↔ one-api default 业务路由对照 */
 export const NAV_SECTIONS = [
   {
-    label: '主导航',
     items: [
       {
         key: 'overview',
@@ -17,6 +16,11 @@ export const NAV_SECTIONS = [
         apiNote: '渠道 /channel',
         icon: 'models',
       },
+    ],
+  },
+  {
+    label: '可观测性',
+    items: [
       {
         key: 'usage',
         path: '/usage',
@@ -34,7 +38,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: '账户',
+    label: '管理',
     items: [
       {
         key: 'api-keys',
