@@ -32,15 +32,15 @@ npm run dev
 
 **若出现 `http proxy error: ECONNREFUSED`**：说明代理目标没有服务在监听。请任选其一：
 
-1. **本机启动后端**（仓库根目录）  
-   `./one-api --port 3000`  
+1. **本机启动后端**（仓库根目录）
+   `./one-api --port 3000`
    `.env` 设为：`VITE_API_PROXY=http://127.0.0.1:3000`
 
-2. **Docker Compose**（`docker-compose.yml` 映射 `13000:3000`）  
-   `docker compose up -d one-api`  
+2. **Docker Compose**（`docker-compose.yml` 映射 `13000:3000`）
+   `docker compose up -d one-api`
    `.env` 设为：`VITE_API_PROXY=http://127.0.0.1:13000`
 
-3. **远程后端**  
+3. **远程后端**
    `.env` 设为可达地址，例如 `VITE_API_PROXY=https://101.254.166.7:13443`（需 VPN/防火墙放行）
 
 修改 `.env` 后必须**重启** `npm run dev`。
@@ -54,12 +54,23 @@ VITE_API_BASE=https://your-one-api.example.com npm run build
 ## Docker
 
 ```bash
-docker build -t one-api-tob .
-# nginx 将 /api 反代到名为 one-api 的服务，见 nginx.conf
-docker run -p 8080:80 one-api-tob
+cd web/tob
+./build-image.sh              # 仅构建镜像 one-api-tob:latest
+./build-image.sh --run        # 构建并启动，http://127.0.0.1:8886
+./build-image.sh --run -p 9000
+
+# 前后端分离：构建时写入 API 根地址
+VITE_API_BASE=https://your-one-api.example.com ./build-image.sh
 ```
 
-与 compose 联调时，把 `nginx.conf` 里 `proxy_pass` 指向你的后端服务名。
+等价命令：
+
+```bash
+docker build -t one-api-tob .
+docker run -p 8886:80 one-api-tob:latest
+```
+
+nginx 将 `/api/` 反代到后端，见 `nginx.conf`。与 compose 联调时，把 `proxy_pass` 改成你的服务名或地址。
 
 ## 技术栈
 

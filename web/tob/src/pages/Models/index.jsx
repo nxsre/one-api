@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Pagination from '@/components/Pagination';
 import ModelCard from '@/components/models/ModelCard';
 import { getApiErrorMessage } from '@/api/client';
-import { getStoredStatus } from '@/lib/systemStatus';
 import {
   MODEL_FILTERS,
   MODEL_PAGE_SIZE,
@@ -19,14 +18,6 @@ function SearchIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-  );
-}
-
-function DocIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
     </svg>
   );
 }
@@ -122,14 +113,6 @@ export default function ModelsPage() {
     navigate('/api-keys', { state: { modelId: row?.model_id } });
   };
 
-  const docsUrl = useMemo(() => {
-    const status = getStoredStatus();
-    const base = String(status?.server_address || status?.api_base || '').replace(/\/$/, '');
-    if (status?.docs_url) return status.docs_url;
-    if (base) return `${base}/docs`;
-    return null;
-  }, []);
-
   return (
     <div className="models-page">
       <div className="models-section-header">
@@ -139,12 +122,6 @@ export default function ModelsPage() {
             100+ 全球顶级模型，OpenAI 兼容接口，一键接入
           </div>
         </div>
-        {docsUrl ? (
-          <a className="tob-btn tob-btn-primary" href={docsUrl} target="_blank" rel="noreferrer">
-            <DocIcon />
-            API 接入文档
-          </a>
-        ) : null}
       </div>
 
       {error ? <div className="tob-error">{error}</div> : null}
