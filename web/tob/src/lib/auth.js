@@ -1,6 +1,6 @@
 import { API } from '@/api/client';
 import { encryptLoginPayloadAES } from '@/lib/loginPasswordAes';
-import { isSecurePasswordLoginEnabled } from '@/lib/systemStatus';
+import { isSecurePasswordLoginEnabled, normalizeStatusResponse } from '@/lib/systemStatus';
 
 /**
  * 构建登录 POST 体（与 default secureLogin.js 一致）
@@ -61,11 +61,11 @@ export async function buildLoginPayload(username, passwordPlain, captcha, loginP
 
 export async function fetchSystemStatus() {
   const res = await API.get('/api/status');
-  const data = res.data;
-  if (data) {
-    localStorage.setItem('status', JSON.stringify(data));
+  const payload = normalizeStatusResponse(res.data);
+  if (payload && Object.keys(payload).length > 0) {
+    localStorage.setItem('status', JSON.stringify(payload));
   }
-  return data;
+  return payload;
 }
 
 export async function login(username, password, captcha, loginProof) {

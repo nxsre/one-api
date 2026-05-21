@@ -1,93 +1,346 @@
 .tob-login-page {
   min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* 全屏轻量背景光斑 */
+.tob-login-page::before,
+.tob-login-page::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tob-login-page::before {
+  width: 520px;
+  height: 520px;
+  top: -120px;
+  left: -80px;
+  background: rgba(99, 102, 241, 0.18);
+}
+
+.tob-login-page::after {
+  width: 480px;
+  height: 480px;
+  bottom: -100px;
+  right: 10%;
+  background: rgba(6, 182, 212, 0.12);
+}
+
+.tob-login-shell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ── 左侧文案区（浅色 + 渐变标题）── */
+.tob-login-brand {
+  flex: 1.4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 10vh 56px 56px 128px;
+  min-width: 0;
+}
+
+.tob-login-brand-inner {
+  max-width: 620px;
+  overflow: visible;
+}
+
+.tob-login-brand-logo {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #f5f6fa 0%, #e8ecff 50%, #f0f4ff 100%);
-  padding: 24px;
+  gap: 14px;
+  margin-bottom: 36px;
+}
+
+.tob-login-brand-logo .tob-logo-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.tob-login-brand-logo .tob-logo-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tob-login-brand-logo .tob-logo-text {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.tob-login-headline {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+  margin-bottom: 14px;
+  background: linear-gradient(120deg, var(--accent) 0%, var(--accent2) 45%, var(--accent3) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tob-login-slogan {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 20px;
+  letter-spacing: 0.02em;
+}
+
+.tob-login-desc {
+  font-size: 15px;
+  line-height: 1.85;
+  color: var(--text2);
+  margin-bottom: 0;
+  max-width: 580px;
+}
+
+.tob-login-illus {
+  margin-top: 36px;
+  max-width: 520px;
+  user-select: none;
+  overflow: visible;
+}
+
+.tob-login-illus-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.tob-login-illus-orbit {
+  transform-origin: 260px 172px;
+  animation: tob-illus-orbit-spin 48s linear infinite;
+}
+
+.tob-login-illus-hub circle:nth-of-type(2) {
+  filter: drop-shadow(0 8px 24px rgba(99, 102, 241, 0.18));
+}
+
+.tob-login-illus-dots circle:nth-child(odd) {
+  animation: tob-illus-dot-pulse 2.4s ease-in-out infinite;
+}
+
+.tob-login-illus-dots circle:nth-child(even) {
+  animation: tob-illus-dot-pulse 2.4s ease-in-out 0.8s infinite;
+}
+
+
+@keyframes tob-illus-orbit-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tob-illus-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+  }
+}
+
+/* ── 右侧登录卡片区 ── */
+.tob-login-panel {
+  flex: 0.75;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px 96px 40px 24px;
+  min-width: 360px;
 }
 
 .tob-login-card {
   width: 100%;
-  max-width: 400px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-md);
-  padding: 36px 32px;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow:
+    0 8px 32px rgba(99, 102, 241, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 40px 36px 36px;
 }
 
-.tob-login-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.tob-login-card-title {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
   margin-bottom: 28px;
 }
 
-.tob-login-title {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.tob-login-sub {
-  font-size: 13px;
-  color: var(--text2);
-  margin-bottom: 24px;
-}
-
 .tob-field {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .tob-field label {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text2);
-  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.tob-field-input-wrap {
+  position: relative;
 }
 
 .tob-field input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
+  background: var(--surface2);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  color: var(--text);
+}
+
+.tob-field input::placeholder {
+  color: var(--text3);
 }
 
 .tob-field input:focus {
+  background: var(--surface);
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.tob-field-input-wrap .tob-pwd-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tob-field-input-wrap .tob-pwd-toggle:hover {
+  color: var(--text2);
+}
+
+.tob-field-input-wrap input[type='password'],
+.tob-field-input-wrap input[type='text'].tob-pwd-input {
+  padding-right: 40px;
 }
 
 .tob-btn-primary {
   width: 100%;
-  padding: 11px;
+  padding: 13px;
   border: none;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--accent), #818cf8 50%, var(--accent3));
   color: #fff;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 8px;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tob-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
 }
 
 .tob-btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
+  transform: none;
+}
+
+.tob-btn-ghost {
+  width: 100%;
+  padding: 11px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text2);
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .tob-error {
   font-size: 13px;
   color: var(--red);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: var(--radius-sm);
 }
 
 .tob-mfa-hint {
   font-size: 13px;
   color: var(--text2);
-  margin-bottom: 16px;
-  line-height: 1.5;
+  margin-bottom: 20px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (max-width: 1024px) {
+  .tob-login-shell {
+    flex-direction: column;
+  }
+
+  .tob-login-brand {
+    flex: none;
+    padding: 40px 32px 24px;
+  }
+
+  .tob-login-headline {
+    font-size: 28px;
+  }
+
+  .tob-login-illus {
+    margin-top: 28px;
+    max-width: 100%;
+  }
+
+  .tob-login-illus-orbit {
+    animation: none;
+  }
+
+  .tob-login-panel {
+    flex: 1;
+    min-width: 0;
+    padding: 24px 24px 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tob-login-brand {
+    padding: 28px 20px 16px;
+  }
+
+  .tob-login-card {
+    padding: 28px 22px;
+  }
 }

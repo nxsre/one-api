@@ -1,7 +1,17 @@
+/** 与 default fetchSystemStatusOnce 一致：解包 { success, data } */
+export function normalizeStatusResponse(body) {
+  if (!body || typeof body !== 'object') return {};
+  if (body.data && typeof body.data === 'object') {
+    return body.data;
+  }
+  return body;
+}
+
 export function getStoredStatus() {
   try {
     const raw = localStorage.getItem('status');
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    return normalizeStatusResponse(JSON.parse(raw));
   } catch {
     return {};
   }
