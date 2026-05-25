@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { NAV_SECTIONS } from '@/config/routes';
+import LogoMark from '@/components/brand/LogoMark';
 import { NavIcon } from '@/components/icons/NavIcons';
 import { useUser } from '@/context/UserContext';
 import { logout as apiLogout } from '@/lib/auth';
@@ -19,9 +20,7 @@ export default function Sidebar() {
     <aside className="tob-sidebar">
       <div className="tob-sidebar-logo">
         <div className="tob-logo-icon">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="#fff">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-          </svg>
+          <LogoMark size={18} fill="#fff" />
         </div>
         <span className="tob-logo-text">TokenHub</span>
         <span className="tob-logo-badge">Pro</span>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiErrorMessage } from '@/api/client';
+import LogoMark from '@/components/brand/LogoMark';
 import LoginBrandIllustration from '@/components/login/LoginBrandIllustration';
 import LoginCaptchaModal from '@/components/login/LoginCaptchaModal';
 import { useUser } from '@/context/UserContext';
@@ -15,16 +16,6 @@ import {
 import { isLoginMathCaptchaEnabled, normalizeStatusResponse } from '@/lib/systemStatus';
 import '@/styles/login.css';
 import '@/styles/login-captcha.css';
-
-function LogoMark() {
-  return (
-    <div className="tob-logo-icon">
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="#fff">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-      </svg>
-    </div>
-  );
-}
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -143,7 +134,9 @@ export default function LoginPage() {
         <aside className="tob-login-brand">
           <div className="tob-login-brand-inner">
             <div className="tob-login-brand-logo">
-              <LogoMark />
+              <div className="tob-logo-icon">
+                <LogoMark size={24} fill="#fff" />
+              </div>
               <span className="tob-logo-text">TokenHub</span>
             </div>
             <h1 className="tob-login-headline">一站式接入，释放大模型无限潜能</h1>
