@@ -67,7 +67,8 @@ type ModelCatalogListParams struct {
 	FilterFamily        string
 	FilterModalitiesIn  string
 	FilterModalitiesOut string
-	SortBy         string
+	FilterCategory      string // language|reasoning|multimodal|code|image，模型广场分类
+	SortBy              string
 	SortDesc       bool
 	IncludeExpired bool
 }
@@ -194,7 +195,48 @@ func modelCatalogFilterQuery(tx *gorm.DB, p ModelCatalogListParams) *gorm.DB {
 	tx = modelCatalogWhereColumnLike(tx, "family", p.FilterFamily)
 	tx = modelCatalogWhereColumnLike(tx, "modalities_in", p.FilterModalitiesIn)
 	tx = modelCatalogWhereColumnLike(tx, "modalities_out", p.FilterModalitiesOut)
+	tx = modelCatalogApplyCategoryFilter(tx, p.FilterCategory)
 	return tx
+}
+
+// modelCatalogApplyCategoryFilter 模型广场顶部分类（服务端筛选）。
+func modelCatalogApplyCategoryFilter(tx *gorm.DB, category string) *gorm.DB {
+	category = strings.TrimSpace(strings.ToLower(category))
+	switch category {
+	case "language":
+		return modelCatalogWhereColumnLike(tx, "modalities_out", "text")
+	case "reasoning":
+		return tx.Where("reasoning = ?", true)
+	case "multimodal":
+		if common.UsingPostgreSQL {
+			return tx.Where(
+				"attachment_ok = ? OR modalities_in ILIKE ? OR modalities_in ILIKE ? OR modalities_out ILIKE ?",
+				true, "%image%", "%video%", "%image%",
+			)
+		}
+		return tx.Where(
+			"attachment_ok = ? OR modalities_in LIKE ? OR modalities_in LIKE ? OR modalities_out LIKE ?",
+			true, "%image%", "%video%", "%image%",
+		)
+	case "code":
+		if common.UsingPostgreSQL {
+			return tx.Where(
+				"model_id ILIKE ? OR model_name ILIKE ? OR family ILIKE ? OR tags ILIKE ?",
+				"%code%", "%code%", "%code%", "%code%",
+			)
+		}
+		return tx.Where(
+			"model_id LIKE ? OR model_name LIKE ? OR family LIKE ? OR tags LIKE ?",
+			"%code%", "%code%", "%code%", "%code%",
+		)
+	case "image":
+		if common.UsingPostgreSQL {
+			return tx.Where("modalities_out ILIKE ?", "%image%")
+		}
+		return tx.Where("modalities_out LIKE ?", "%image%")
+	default:
+		return tx
+	}
 }
 
 // ListModelCatalogPaged 分页列出目录；total 为筛选命中条数，grandTotal 为表总行数（不含筛选）。
