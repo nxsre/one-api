@@ -42,6 +42,7 @@ func GetModelCatalogAdmin(c *gin.Context) {
 		FilterFamily:        strings.TrimSpace(c.Query("filter_family")),
 		FilterModalitiesIn:  strings.TrimSpace(c.Query("filter_modalities_in")),
 		FilterModalitiesOut: strings.TrimSpace(c.Query("filter_modalities_out")),
+		FilterCategory:      strings.TrimSpace(c.Query("filter_category")),
 		SortBy:              sortBy,
 		SortDesc:            sortDesc,
 		IncludeExpired:      includeExpired,
