@@ -13,8 +13,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-IMAGE_NAME="${IMAGE_NAME:-one-api-tob}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE_NAME="${IMAGE_NAME:-crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob}"
+IMAGE_TAG="${IMAGE_TAG:-v202605215_01}"
+CONTAINER_NAME="${CONTAINER_NAME:-one-api-tob}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
 VITE_API_BASE="${VITE_API_BASE:-}"
 RUN_AFTER_BUILD=0
@@ -31,8 +32,9 @@ usage() {
   -h, --help         显示帮助
 
 环境变量:
-  IMAGE_NAME         镜像名，默认 one-api-tob
-  IMAGE_TAG          标签，默认 latest
+  IMAGE_NAME         镜像仓库路径，默认阿里云 personal 仓库 hjbonc/one-api-tob
+  IMAGE_TAG          标签，默认 v202605215_01
+  CONTAINER_NAME     --run 时容器名，默认 one-api-tob
   DOCKER_PLATFORM    目标架构，默认 linux/amd64
   VITE_API_BASE      同 --api-base
   HOST_PORT          同 -p
@@ -85,9 +87,9 @@ fi
 echo ">> 完成: ${FULL_IMAGE}"
 
 if [[ "$RUN_AFTER_BUILD" -eq 1 ]]; then
-  echo ">> docker run -d --rm -p ${HOST_PORT}:80 --name ${IMAGE_NAME} ${FULL_IMAGE}"
-  docker rm -f "$IMAGE_NAME" 2>/dev/null || true
-  docker run -d --rm --platform "$DOCKER_PLATFORM" -p "${HOST_PORT}:80" --name "$IMAGE_NAME" "$FULL_IMAGE"
+  echo ">> docker run -d --rm -p ${HOST_PORT}:80 --name ${CONTAINER_NAME} ${FULL_IMAGE}"
+  docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+  docker run -d --rm --platform "$DOCKER_PLATFORM" -p "${HOST_PORT}:80" --name "$CONTAINER_NAME" "$FULL_IMAGE"
   echo ">> 已启动: http://127.0.0.1:${HOST_PORT}"
   echo ">> API 反代见 nginx.conf（默认 /api/ -> 后端）"
 fi

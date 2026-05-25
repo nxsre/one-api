@@ -53,21 +53,37 @@ VITE_API_BASE=https://your-one-api.example.com npm run build
 
 ## Docker
 
+默认镜像（`build-image.sh` 内置）：
+
+```text
+crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v202605215_01
+```
+
 ```bash
 cd web/tob
-./build-image.sh              # 仅构建镜像 one-api-tob:latest
+./build-image.sh              # 仅构建上述镜像
 ./build-image.sh --run        # 构建并启动，http://127.0.0.1:8886
 ./build-image.sh --run -p 9000
+
+# 自定义标签
+IMAGE_TAG=v202605215_01 ./build-image.sh
 
 # 前后端分离：构建时写入 API 根地址
 VITE_API_BASE=https://your-one-api.example.com ./build-image.sh
 ```
 
+推送阿里云（需先 `docker login` 对应 registry）：
+
+```bash
+docker push crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v202605215_01
+```
+
 等价命令：
 
 ```bash
-docker build -t one-api-tob .
-docker run -p 8886:80 one-api-tob:latest
+docker build -t crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v202605215_01 .
+docker run -d --rm -p 13442:80 --name one-api-tob \
+  crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v202605215_01
 ```
 
 nginx 将 `/api/` 反代到后端，见 `nginx.conf`。与 compose 联调时，把 `proxy_pass` 改成你的服务名或地址。
