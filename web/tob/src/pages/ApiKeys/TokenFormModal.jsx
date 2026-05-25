@@ -11,6 +11,8 @@ import {
   fetchTokenById,
   getCopyKeyValue,
   normalizeTokenForForm,
+  SUBNET_FIELD_MESSAGE,
+  validateSubnetField,
   updateToken,
 } from '@/lib/tokens';
 
@@ -159,8 +161,22 @@ export default function TokenFormModal({ open, tokenId, initialModels, onClose, 
               optionFilterProp="label"
             />
           </Form.Item>
-          <Form.Item name="subnet" label="IP 限制（CIDR，可选）">
-            <Input.TextArea rows={2} placeholder="每行一个，留空不限制" />
+          <Form.Item
+            name="subnet"
+            label="IP 限制（CIDR，可选）"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const msg = validateSubnetField(value);
+                  if (msg) throw new Error(msg);
+                },
+              },
+            ]}
+            extra={SUBNET_FIELD_MESSAGE}
+          >
+            <Input.TextArea
+              rows={2}
+            />
           </Form.Item>
           <Form.Item name="expired_time" label="过期时间">
             <DatePicker

@@ -123,6 +123,61 @@ export function expiredTimeToDayjs(value) {
   return d.isValid() ? d : dayjs(value);
 }
 
+export const SUBNET_FIELD_MESSAGE =
+  '请输入允许访问的网段，例如：192.168.0.0/24，请使用英文逗号分隔多个网段';
+
+/** 解析网段输入（英文逗号或换行分隔），与后端 network.splitSubnets 提交格式对齐。 */
+export function parseSubnetSegments(value) {
+  return String(value ?? '')
+    .split(/[,\n\r]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function isValidCidr(segment) {
+  const s = String(segment ?? '').trim();
+  if (!s) return false;
+  const slash = s.indexOf('/');
+  if (slash <= 0 || slash === s.length - 1) return false;
+  const addr = s.slice(0, slash);
+  const prefixStr = s.slice(slash + 1);
+  if (!/^\d+$/.test(prefixStr)) return false;
+  const bits = Number(prefixStr);
+  if (!Number.isInteger(bits) || bits < 0) return false;
+
+  if (addr.includes('.')) {
+    if (bits > 32) return false;
+    const octets = addr.split('.');
+    if (octets.length !== 4) return false;
+    return octets.every((o) => {
+      if (!/^\d{1,3}$/.test(o)) return false;
+      const n = Number(o);
+      return n >= 0 && n <= 255;
+    });
+  }
+
+  if (addr.includes(':')) {
+    if (bits > 128) return false;
+    return /^[0-9a-fA-F:]+$/.test(addr);
+  }
+
+  return false;
+}
+
+/** @returns {string|null} 通过返回 null，失败返回提示文案 */
+export function validateSubnetField(value) {
+  const segments = parseSubnetSegments(value);
+  if (!segments.length) return null;
+  for (const seg of segments) {
+    if (!isValidCidr(seg)) return SUBNET_FIELD_MESSAGE;
+  }
+  return null;
+}
+
+export function normalizeSubnetForApi(value) {
+  return parseSubnetSegments(value).join(',');
+}
+
 export function normalizeTokenForForm(data) {
   const models =
     data.models === '' || data.models == null
@@ -149,7 +204,7 @@ export function buildTokenPayload(form) {
     expired_time: parseExpiredTime(form.expired_time),
     unlimited_quota: !!form.unlimited_quota,
     models: (form.models || []).join(','),
-    subnet: form.subnet || '',
+    subnet: normalizeSubnetForApi(form.subnet),
   };
 }
 

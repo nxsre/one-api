@@ -51,11 +51,19 @@
     ]
   },
   "devDependencies": {
+    "ajv": "^8.12.0",
     "prettier": "^2.7.1"
   },
   "prettier": {
     "singleQuote": true,
     "jsxSingleQuote": true
   },
-  "proxy": "http://localhost:3000"
+  "overrides": {
+    "fork-ts-checker-webpack-plugin": {
+      "ajv": "6.12.6",
+      "ajv-keywords": "3.5.2",
+      "schema-utils": "2.7.1"
+    }
+  },
+  "proxy": "http://127.0.0.1:3000"
 }

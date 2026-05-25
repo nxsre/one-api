@@ -32,7 +32,11 @@ export default function TwoFAPanel({
   const [enableOpen, setEnableOpen] = useState(false);
   const [disableOpen, setDisableOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
-  const [error, setError] = useState('');
+  const [panelError, setPanelError] = useState('');
+  const [setupError, setSetupError] = useState('');
+  const [enableError, setEnableError] = useState('');
+  const [disableError, setDisableError] = useState('');
+  const [backupError, setBackupError] = useState('');
   const autoSetupStarted = useRef(false);
 
   const loadStatus = useCallback(async () => {
@@ -40,7 +44,7 @@ export default function TwoFAPanel({
       const data = await fetch2faStatus();
       setStatus(data);
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setPanelError(getApiErrorMessage(e));
     } finally {
       setStatusLoaded(true);
     }
@@ -52,14 +56,15 @@ export default function TwoFAPanel({
 
   const startSetup = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setPanelError('');
+    setSetupError('');
     try {
       const data = await setup2fa();
       setSetupData(data);
       setSetupOpen(true);
       setCode('');
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setPanelError(getApiErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -81,21 +86,22 @@ export default function TwoFAPanel({
 
   const handleEnable = async () => {
     if (!code.trim()) {
-      setError('请输入认证器上的 6 位数字验证码');
+      setEnableError('请输入认证器上的 6 位数字验证码');
       return;
     }
     setLoading(true);
-    setError('');
+    setEnableError('');
     try {
       await enable2fa(code);
       setEnableOpen(false);
       setSetupOpen(false);
       setCode('');
       setSetupData(null);
+      setEnableError('');
       await loadStatus();
       onEnabled?.();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setEnableError(getApiErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -103,23 +109,24 @@ export default function TwoFAPanel({
 
   const handleDisable = async () => {
     if (!code.trim()) {
-      setError('请输入验证码或 8 位备用码');
+      setDisableError('请输入验证码或 8 位备用码');
       return;
     }
     if (!confirmDisable) {
-      setError('请勾选确认了解禁用后果');
+      setDisableError('请勾选确认了解禁用后果');
       return;
     }
     setLoading(true);
-    setError('');
+    setDisableError('');
     try {
       await disable2fa(code);
       setDisableOpen(false);
       setCode('');
       setConfirmDisable(false);
+      setDisableError('');
       await loadStatus();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setDisableError(getApiErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -127,26 +134,26 @@ export default function TwoFAPanel({
 
   const handleRegenBackup = async () => {
     if (!code.trim()) {
-      setError('请输入认证器验证码以重新生成备用码');
+      setBackupError('请输入认证器验证码以重新生成备用码');
       return;
     }
     setLoading(true);
-    setError('');
+    setBackupError('');
     try {
       const codes = await regenBackupCodes(code);
       setNewBackupCodes(codes);
       setCode('');
+      setBackupError('');
       await loadStatus();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setBackupError(getApiErrorMessage(e));
     } finally {
       setLoading(false);
     }
   };
 
   const copyBackups = async (list) => {
-    const ok = await copyText((list || []).join('\n'));
-    if (ok) setError('');
+    await copyText((list || []).join('\n'));
   };
 
   return (
@@ -176,7 +183,9 @@ export default function TwoFAPanel({
         </div>
       ) : null}
 
-      {error ? <div className="settings-alert settings-alert-danger">{error}</div> : null}
+      {panelError ? (
+        <div className="settings-alert settings-alert-danger">{panelError}</div>
+      ) : null}
 
       <div className="settings-inline-actions">
         {status.locked ? null : !status.enabled ? (
@@ -204,7 +213,7 @@ export default function TwoFAPanel({
                   setDisableOpen(true);
                   setCode('');
                   setConfirmDisable(false);
-                  setError('');
+                  setDisableError('');
                 }}
               >
                 禁用两步验证
@@ -217,7 +226,7 @@ export default function TwoFAPanel({
                 setBackupOpen(true);
                 setNewBackupCodes([]);
                 setCode('');
-                setError('');
+                setBackupError('');
               }}
             >
               重新生成备用码
@@ -267,6 +276,7 @@ export default function TwoFAPanel({
                 setSetupOpen(false);
                 setEnableOpen(true);
                 setCode('');
+                setEnableError('');
               }}
             >
               下一步：输入验证码启用
@@ -274,6 +284,9 @@ export default function TwoFAPanel({
           </div>
         }
       >
+        {setupError ? (
+          <div className="settings-alert settings-alert-danger">{setupError}</div>
+        ) : null}
         {setupData ? (
           <>
             <p style={{ fontSize: 13, color: 'var(--text2)' }}>
@@ -307,7 +320,14 @@ export default function TwoFAPanel({
         className="settings-form-modal"
         title="确认启用"
         open={enableOpen}
-        onCancel={forceMode ? undefined : () => setEnableOpen(false)}
+        onCancel={
+          forceMode
+            ? undefined
+            : () => {
+                setEnableOpen(false);
+                setEnableError('');
+              }
+        }
         closable={!forceMode}
         maskClosable={!forceMode}
         onOk={handleEnable}
@@ -338,13 +358,18 @@ export default function TwoFAPanel({
           ) : undefined
         }
       >
+        {enableError ? (
+          <div className="settings-alert settings-alert-danger">{enableError}</div>
+        ) : null}
         <div className="settings-form-group">
           <label className="settings-form-label">认证器 6 位验证码</label>
           <input
             className="settings-form-input"
-            placeholder="123456"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(e) => {
+              setCode(e.target.value);
+              if (enableError) setEnableError('');
+            }}
             autoComplete="one-time-code"
           />
         </div>
@@ -360,19 +385,28 @@ export default function TwoFAPanel({
         <div className="settings-alert settings-alert-warning">
           禁用后账户安全性降低；若管理员开启「全员 2FA」，禁用后可能无法使用部分功能。
         </div>
+        {disableError ? (
+          <div className="settings-alert settings-alert-danger">{disableError}</div>
+        ) : null}
         <div className="settings-form-group">
           <label className="settings-form-label">验证码或备用码</label>
           <input
             className="settings-form-input"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(e) => {
+              setCode(e.target.value);
+              if (disableError) setDisableError('');
+            }}
           />
         </div>
         <label style={{ display: 'flex', gap: 8, fontSize: 13, color: 'var(--text2)' }}>
           <input
             type="checkbox"
             checked={confirmDisable}
-            onChange={(e) => setConfirmDisable(e.target.checked)}
+            onChange={(e) => {
+              setConfirmDisable(e.target.checked);
+              if (disableError) setDisableError('');
+            }}
           />
           我了解禁用两步验证会降低账户安全性
         </label>
@@ -398,12 +432,18 @@ export default function TwoFAPanel({
         onCancel={() => setBackupOpen(false)}
         footer={null}
       >
+        {backupError ? (
+          <div className="settings-alert settings-alert-danger">{backupError}</div>
+        ) : null}
         <div className="settings-form-group">
           <label className="settings-form-label">认证器 6 位验证码</label>
           <input
             className="settings-form-input"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(e) => {
+              setCode(e.target.value);
+              if (backupError) setBackupError('');
+            }}
           />
         </div>
         {newBackupCodes.length > 0 ? (
