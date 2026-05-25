@@ -27,11 +27,15 @@ type channelModelTestJob struct {
 	Concurrency  int
 	CurrentModel string
 	Running      bool
+	Paused       bool
+	CancelReq    bool
+	Interrupted  bool
 	Results      []channelModelTestResult
 	LastError    string
 	StartedAt    int64
 	FinishedAt   int64
 	mu           sync.RWMutex
+	cond         *sync.Cond
 }
 
 type channelModelTestJobManager struct {
@@ -61,6 +65,7 @@ func (m *channelModelTestJobManager) tryStart(scopeKey string, total, concurrenc
 		StartedAt:   time.Now().Unix(),
 		Results:     make([]channelModelTestResult, 0, total),
 	}
+	job.cond = sync.NewCond(&job.mu)
 	m.jobs[scopeKey] = job
 	return job, nil
 }
@@ -71,14 +76,19 @@ func (m *channelModelTestJobManager) get(scopeKey string) *channelModelTestJob {
 	return m.jobs[scopeKey]
 }
 
-func (m *channelModelTestJobManager) finish(scopeKey string) {
+func (m *channelModelTestJobManager) finish(scopeKey string, interrupted bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if job, ok := m.jobs[scopeKey]; ok {
 		job.mu.Lock()
 		job.Running = false
+		job.Paused = false
+		job.Interrupted = interrupted || job.CancelReq
 		job.FinishedAt = time.Now().Unix()
 		job.CurrentModel = ""
+		if job.cond != nil {
+			job.cond.Broadcast()
+		}
 		job.mu.Unlock()
 	}
 }
@@ -97,11 +107,34 @@ func (j *channelModelTestJob) snapshot() map[string]interface{} {
 		"concurrency":   j.Concurrency,
 		"current_model": j.CurrentModel,
 		"running":       j.Running,
+		"paused":        j.Paused,
+		"cancel_req":    j.CancelReq,
+		"interrupted":   j.Interrupted,
+		"state":         j.stateLocked(),
 		"results":       results,
 		"last_error":    j.LastError,
 		"started_at":    j.StartedAt,
 		"finished_at":   j.FinishedAt,
 	}
+}
+
+func (j *channelModelTestJob) stateLocked() string {
+	if j.Running {
+		if j.CancelReq {
+			return "cancelling"
+		}
+		if j.Paused {
+			return "paused"
+		}
+		return "running"
+	}
+	if j.Interrupted || j.CancelReq {
+		return "cancelled"
+	}
+	if j.FinishedAt > 0 {
+		return "finished"
+	}
+	return "idle"
 }
 
 func (j *channelModelTestJob) setCurrentModels(names []string) {
@@ -123,6 +156,63 @@ func (j *channelModelTestJob) setError(msg string) {
 	j.LastError = msg
 }
 
+func (j *channelModelTestJob) pause() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.Running || j.CancelReq || j.Paused {
+		return false
+	}
+	j.Paused = true
+	return true
+}
+
+func (j *channelModelTestJob) resume() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.Running || j.CancelReq || !j.Paused {
+		return false
+	}
+	j.Paused = false
+	if j.cond != nil {
+		j.cond.Broadcast()
+	}
+	return true
+}
+
+func (j *channelModelTestJob) cancel() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.Running || j.CancelReq {
+		return false
+	}
+	j.CancelReq = true
+	j.Paused = false
+	j.CurrentModel = ""
+	if j.cond != nil {
+		j.cond.Broadcast()
+	}
+	return true
+}
+
+func (j *channelModelTestJob) waitForDispatch() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for j.Running && j.Paused && !j.CancelReq {
+		if j.cond != nil {
+			j.cond.Wait()
+		} else {
+			break
+		}
+	}
+	return j.Running && !j.CancelReq
+}
+
+func (j *channelModelTestJob) isInterrupted() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.CancelReq
+}
+
 func normalizeModelTestConcurrency(n int) int {
 	if n <= 0 {
 		return 3
@@ -134,7 +224,7 @@ func normalizeModelTestConcurrency(n int) int {
 }
 
 func runChannelModelTestJob(ch *model.Channel, req testChannelModelsPreviewReq, job *channelModelTestJob, models []string) {
-	defer channelModelTestJobs.finish(job.ScopeKey)
+	defer channelModelTestJobs.finish(job.ScopeKey, job.isInterrupted())
 
 	ctx := context.Background()
 	testBaseURL := model.NormalizeChannelTestBaseURL(req.BaseURL, req.Type)
@@ -166,32 +256,8 @@ func runChannelModelTestJob(ch *model.Channel, req testChannelModelsPreviewReq, 
 	}
 
 	testOne := func(modelName string) {
-		tik := time.Now()
-		msg, testErr, _ := testChannelByModel(ctx, ch, modelName)
-		elapsedMs := time.Since(tik).Milliseconds()
-		row := channelModelTestResult{
-			Model:     modelName,
-			Time:      float64(elapsedMs) / 1000.0,
-			ElapsedMs: elapsedMs,
-		}
-		if testErr != nil {
-			row.Success = false
-			row.Message = testErr.Error()
-		} else {
-			row.Success = true
-			row.Message = msg
-		}
-		if req.ChannelId > 0 {
-			row.TestedAt = time.Now().Unix()
-			_ = model.UpsertChannelModelTestResult(
-				req.ChannelId,
-				testBaseURL,
-				modelName,
-				row.Success,
-				row.Message,
-				elapsedMs,
-			)
-		}
+		row, elapsedMs := runSingleChannelModelTest(ctx, ch, modelName)
+		persistChannelModelTestResult(req.ChannelId, testBaseURL, &row, elapsedMs)
 		job.addResult(row)
 	}
 
@@ -200,7 +266,17 @@ func runChannelModelTestJob(ch *model.Channel, req testChannelModelsPreviewReq, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for modelName := range workCh {
+			for {
+				if !job.waitForDispatch() {
+					return
+				}
+				modelName, ok := <-workCh
+				if !ok {
+					return
+				}
+				if !job.waitForDispatch() {
+					return
+				}
 				activeMu.Lock()
 				active[modelName] = struct{}{}
 				activeMu.Unlock()
@@ -227,6 +303,26 @@ func channelModelTestJobStatusPayload(scopeKey string) (map[string]interface{}, 
 		return nil, false
 	}
 	return job.snapshot(), true
+}
+
+func controlChannelModelTestJob(scopeKey, action string) (map[string]interface{}, bool, error) {
+	job := channelModelTestJobs.get(scopeKey)
+	if job == nil {
+		return nil, false, errors.New("测试任务不存在")
+	}
+	action = strings.TrimSpace(strings.ToLower(action))
+	changed := false
+	switch action {
+	case "pause":
+		changed = job.pause()
+	case "resume":
+		changed = job.resume()
+	case "cancel":
+		changed = job.cancel()
+	default:
+		return nil, false, errors.New("无效的任务操作")
+	}
+	return job.snapshot(), changed, nil
 }
 
 func channelModelTestJobBusyMessage(scopeKey string) string {
@@ -316,6 +412,10 @@ func GetChannelModelTestJobStatus(c *gin.Context) {
 				"completed":     0,
 				"current_model": "",
 				"running":       false,
+				"paused":        false,
+				"cancel_req":    false,
+				"interrupted":   false,
+				"state":         "idle",
 				"results":       []channelModelTestResult{},
 			},
 		})
@@ -324,10 +424,57 @@ func GetChannelModelTestJobStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": payload})
 }
 
+type channelModelTestJobControlReq struct {
+	ChannelID   int    `json:"channel_id"`
+	BaseURL     string `json:"base_url"`
+	ChannelType int    `json:"channel_type"`
+	Action      string `json:"action"`
+}
+
+// ControlChannelModelTestJob POST /api/channel/test_models/jobs/control
+func ControlChannelModelTestJob(c *gin.Context) {
+	var req channelModelTestJobControlReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无效的请求: " + err.Error()})
+		return
+	}
+	verifySaved, err := channelModelTestVerifySaved(c)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if req.ChannelID > 0 {
+		ch, getErr := model.GetChannelById(req.ChannelID, true)
+		if getErr != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": getErr.Error()})
+			return
+		}
+		if verifyErr := verifySaved(ch); verifyErr != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": verifyErr.Error()})
+			return
+		}
+	}
+	scopeKey, _ := channelModelTestScopeFromReq(req.ChannelID, req.BaseURL, req.ChannelType)
+	payload, changed, err := controlChannelModelTestJob(scopeKey, req.Action)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	msg := "操作已提交"
+	if !changed {
+		msg = "任务状态未变化"
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": msg, "data": payload})
+}
+
 func TenantStartChannelModelTestJob(c *gin.Context) {
 	StartChannelModelTestJob(c)
 }
 
 func TenantGetChannelModelTestJobStatus(c *gin.Context) {
 	GetChannelModelTestJobStatus(c)
+}
+
+func TenantControlChannelModelTestJob(c *gin.Context) {
+	ControlChannelModelTestJob(c)
 }

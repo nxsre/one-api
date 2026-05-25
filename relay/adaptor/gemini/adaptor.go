@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
 	channelhelper "github.com/songquanpeng/one-api/relay/adaptor"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
+	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
@@ -24,12 +24,7 @@ func (a *Adaptor) Init(meta *meta.Meta) {
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
-	defaultVersion := config.GeminiVersion
-	if strings.Contains(meta.ActualModelName, "gemini-2.0") ||
-		strings.Contains(meta.ActualModelName, "gemini-1.5") {
-		defaultVersion = "v1beta"
-	}
-
+	defaultVersion := DefaultAPIVersion(meta.ChannelType, meta.ActualModelName)
 	version := helper.AssignOrDefault(meta.Config.APIVersion, defaultVersion)
 	action := ""
 	switch meta.Mode {
@@ -49,6 +44,17 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *meta.Meta) error {
 	channelhelper.SetupCommonRequestHeader(c, req, meta)
 	req.Header.Set("x-goog-api-key", meta.APIKey)
+	// 第三方 Gemini 原生代理（new-api 等）通常只认 Authorization Bearer，不认 ?key= / x-goog-api-key。
+	if meta.ChannelType == channeltype.GeminiNativeCompatible {
+		token := strings.TrimSpace(meta.APIKey)
+		if token != "" {
+			if strings.HasPrefix(strings.ToLower(token), "bearer ") {
+				req.Header.Set("Authorization", token)
+			} else {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+		}
+	}
 	return nil
 }
 

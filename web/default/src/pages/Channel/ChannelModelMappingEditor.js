@@ -163,6 +163,7 @@ export default function ChannelModelMappingEditor({
                         search
                         selection
                         allowAdditions
+                        openOnFocus={false}
                         selectOnBlur={false}
                         options={(() => {
                           const current = String(r.to || '').trim();

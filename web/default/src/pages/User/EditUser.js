@@ -77,6 +77,15 @@ const EditUser = () => {
   };
   const navigate = useNavigate();
   const handleCancel = () => {
+    if (userId) {
+      navigate('/user');
+      return;
+    }
+    const back = consumeSafeInternalRedirect(searchParams);
+    if (back) {
+      navigate(back);
+      return;
+    }
     navigate('/setting');
   };
   const loadUser = async () => {

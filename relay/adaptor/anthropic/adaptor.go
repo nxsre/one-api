@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/relay/adaptor"
+	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 )
@@ -27,7 +28,29 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *meta.Meta) error {
 	adaptor.SetupCommonRequestHeader(c, req, meta)
-	req.Header.Set("x-api-key", meta.APIKey)
+	apiKey := strings.TrimSpace(meta.APIKey)
+	req.Header.Set("x-api-key", apiKey)
+	if incoming := strings.TrimSpace(c.Request.Header.Get(claudeSessionHeader)); incoming != "" {
+		req.Header.Set(claudeSessionHeader, incoming)
+	} else if meta.ChannelType == channeltype.AnthropicCompatible {
+		// 对 AnthropicCompatible 上游透明注入稳定会话键，减少多层网关下会话头丢失导致的会话断裂。
+		if sid := deriveStableClaudeSessionID(c); sid != "" {
+			req.Header.Set(claudeSessionHeader, sid)
+		}
+	}
+	if incomingTenant := strings.TrimSpace(c.Request.Header.Get(claudeTenantHeader)); incomingTenant != "" {
+		req.Header.Set(claudeTenantHeader, incomingTenant)
+	} else if meta.ChannelType == channeltype.AnthropicCompatible {
+		req.Header.Set(claudeTenantHeader, deriveStableClaudeTenantKey(c))
+	}
+	// 第三方 Anthropic 兼容代理（new-api 等）通常同时支持 Bearer；仅 x-api-key 时部分网关会报「未提供令牌」。
+	if meta.ChannelType == channeltype.AnthropicCompatible && apiKey != "" {
+		if strings.HasPrefix(strings.ToLower(apiKey), "bearer ") {
+			req.Header.Set("Authorization", apiKey)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+		}
+	}
 	anthropicVersion := c.Request.Header.Get("anthropic-version")
 	if anthropicVersion == "" {
 		anthropicVersion = "2023-06-01"

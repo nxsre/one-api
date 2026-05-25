@@ -282,6 +282,9 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 	})
 
 	common.SetEventStreamHeaders(c)
+	if sid := strings.TrimSpace(resp.Header.Get(claudeSessionHeader)); sid != "" {
+		c.Writer.Header().Set(claudeSessionHeader, sid)
+	}
 
 	var usage model.Usage
 	var modelName string
@@ -388,6 +391,9 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), nil
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")
+	if sid := strings.TrimSpace(resp.Header.Get(claudeSessionHeader)); sid != "" {
+		c.Writer.Header().Set(claudeSessionHeader, sid)
+	}
 	c.Writer.WriteHeader(resp.StatusCode)
 	_, err = c.Writer.Write(jsonResponse)
 	return nil, &usage

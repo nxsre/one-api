@@ -148,6 +148,12 @@
   color: #1b1c1d !important;
 }
 
+.channel-edit-page .ui.label.model-tag--skip {
+  background-color: #767676 !important;
+  border-color: #767676 !important;
+  color: #fff !important;
+}
+
 /* Base URL 与密钥同一行（窄屏自动折行） */
 .channel-edit-upstream-row {
   display: flex;

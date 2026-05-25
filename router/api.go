@@ -125,7 +125,7 @@ func SetApiRouter(router *gin.Engine) {
 			platformTenantRead.GET("/upgrades", controller.PlatformListTenantUpgrades)
 		}
 		platformTenantWrite := apiRouter.Group("/platform/tenants")
-		platformTenantWrite.Use(middleware.RootAuth())
+		platformTenantWrite.Use(middleware.SuperAdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			platformTenantWrite.POST("/", controller.PlatformCreateTenant)
 			platformTenantWrite.POST("/upgrades/:id/approve", controller.PlatformApproveTenantUpgrade)
@@ -166,6 +166,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/test_models_preview", controller.PreviewTestChannelModels)
 			channelRoute.POST("/test_models/jobs", controller.StartChannelModelTestJob)
 			channelRoute.GET("/test_models/jobs/status", controller.GetChannelModelTestJobStatus)
+			channelRoute.POST("/test_models/jobs/control", controller.ControlChannelModelTestJob)
 			channelRoute.GET("/:id/model_test_results", controller.GetChannelModelTestResults)
 			channelRoute.POST("/fix", controller.FixChannelsAbilities)
 			channelRoute.POST("/batch", controller.DeleteChannelBatch)
@@ -313,6 +314,7 @@ func SetApiRouter(router *gin.Engine) {
 			tenantConsole.POST("/meta/channel/test_models_preview", controller.PreviewTestChannelModels)
 			tenantConsole.POST("/meta/channel/test_models/jobs", controller.TenantStartChannelModelTestJob)
 			tenantConsole.GET("/meta/channel/test_models/jobs/status", controller.TenantGetChannelModelTestJobStatus)
+			tenantConsole.POST("/meta/channel/test_models/jobs/control", controller.TenantControlChannelModelTestJob)
 			tenantConsole.GET("/meta/channel/:id/model_test_results", controller.TenantGetChannelModelTestResults)
 			tenantConsole.GET("/meta/groups", controller.GetGroups)
 			tenantConsole.GET("/meta/all_models", controller.ListAllModels)

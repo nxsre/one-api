@@ -37,14 +37,17 @@ import {
   buildChannelModelTestPayload,
   buildJobProgressSummary,
   buildStoredModelTestSummary,
+  controlChannelModelTestJob,
   fetchChannelModelTestResults,
   filterOutFailedModels,
   MODEL_TEST_FAIL,
   MODEL_TEST_OK,
   normalizeChannelTestBaseUrl,
+  normalizeModelTestReportRows,
   renderChannelModelLabel,
   runChannelModelTestJob,
 } from '../../helpers/channelModelTest';
+import ChannelModelTestReportModal from './ChannelModelTestReportModal';
 import './ChannelEdit.css';
 
 const DEFAULT_CHANNEL_CONFIG = {
@@ -158,18 +161,24 @@ const EditChannel = () => {
   const [fillCatalogOpen, setFillCatalogOpen] = useState(false);
   const [fillAllBusy, setFillAllBusy] = useState(false);
   const [testModelsBusy, setTestModelsBusy] = useState(false);
+  const [testModelsControlBusy, setTestModelsControlBusy] = useState(false);
   const [testModelsProgress, setTestModelsProgress] = useState({
     total: 0,
     completed: 0,
     currentModel: '',
     concurrency: 3,
     running: false,
+    paused: false,
+    cancelReq: false,
+    state: '',
   });
   const [testModelsConcurrency, setTestModelsConcurrency] = useState(3);
   const [modelTestStatus, setModelTestStatus] = useState({});
   const [modelTestMessages, setModelTestMessages] = useState({});
   const [modelTestMeta, setModelTestMeta] = useState({});
   const [modelTestSummary, setModelTestSummary] = useState('');
+  const [modelTestReportOpen, setModelTestReportOpen] = useState(false);
+  const [modelTestReportRows, setModelTestReportRows] = useState([]);
   const testModelsPollRef = useRef(false);
   const [inputs, setInputs] = useState(defaultChannelInputs);
   const [originModelOptions, setOriginModelOptions] = useState([]);
@@ -285,6 +294,7 @@ const EditChannel = () => {
       setModelTestMeta(applied.meta);
       setTestModelsProgress(applied.progress);
       setModelTestSummary(buildJobProgressSummary(t, jobData));
+      setModelTestReportRows(normalizeModelTestReportRows(jobData, []));
     },
     [t]
   );
@@ -305,8 +315,12 @@ const EditChannel = () => {
             t('channel.edit.messages.test_models_partial', {
               ok: summary.ok,
               fail: summary.fail,
+              skip: summary.skip || 0,
             })
           );
+        }
+        if ((summary.job?.results || []).length > 0) {
+          setModelTestReportOpen(true);
         }
       } catch (e) {
         showError(e.message || t('channel.edit.messages.test_models_fail'));
@@ -352,13 +366,22 @@ const EditChannel = () => {
       setModelTestStatus(applied.status);
       setModelTestMessages(applied.messages);
       setModelTestMeta(applied.meta);
-      setTestModelsProgress({ total: 0, completed: 0, currentModel: '', running: false });
+      setTestModelsProgress({
+        total: 0,
+        completed: 0,
+        currentModel: '',
+        running: false,
+        paused: false,
+        cancelReq: false,
+        state: '',
+      });
       const visible = (inputs.models || []).filter((m) => applied.status[m]);
       const ok = visible.filter((m) => applied.status[m] === MODEL_TEST_OK).length;
       const fail = visible.filter((m) => applied.status[m] === MODEL_TEST_FAIL).length;
       setModelTestSummary(
         buildStoredModelTestSummary(t, ok, fail, visible.length)
       );
+      setModelTestReportRows(normalizeModelTestReportRows(null, results));
     } catch {
       // 忽略历史加载失败
     }
@@ -666,6 +689,9 @@ const EditChannel = () => {
       completed: 0,
       currentModel: '',
       running: true,
+      paused: false,
+      cancelReq: false,
+      state: 'running',
     });
     const payload = buildChannelModelTestPayload({
       channelId: isEdit ? channelId : 0,
@@ -678,6 +704,31 @@ const EditChannel = () => {
       concurrency: testModelsConcurrency,
     });
     await pollRunningJob(payload, models);
+  };
+
+  const controlRunningTestJob = async (action) => {
+    if (!testModelsProgress.running || testModelsControlBusy) return;
+    setTestModelsControlBusy(true);
+    try {
+      const payload = buildChannelModelTestPayload({
+        channelId: isEdit ? channelId : 0,
+        type: inputs.type,
+        baseUrl: inputs.base_url,
+        key: '',
+        config,
+        modelMapping: inputs.model_mapping,
+        channelTypeOptions,
+        concurrency: testModelsConcurrency,
+      });
+      const { job } = await controlChannelModelTestJob(payload, action);
+      if (job) {
+        applyJobSnapshot(job, inputs.models);
+      }
+    } catch (e) {
+      showError(e.message || t('channel.edit.messages.test_models_control_failed'));
+    } finally {
+      setTestModelsControlBusy(false);
+    }
   };
 
   const clearInvalidModels = () => {
@@ -882,8 +933,8 @@ const EditChannel = () => {
                           )
                         )}
                         progress
-                        indicating={testModelsProgress.running}
-                        active={testModelsProgress.running}
+                        indicating={testModelsProgress.running && !testModelsProgress.paused}
+                        active={testModelsProgress.running && !testModelsProgress.paused}
                       />
                     ) : null}
                   </div>
@@ -896,6 +947,41 @@ const EditChannel = () => {
                     onClick={() => void testAllModels()}
                   >
                     {t('channel.edit.buttons.test_models')}
+                  </Button>
+                  <Button
+                    type='button'
+                    loading={testModelsControlBusy}
+                    disabled={
+                      !testModelsProgress.running ||
+                      testModelsProgress.paused ||
+                      testModelsProgress.cancelReq
+                    }
+                    onClick={() => void controlRunningTestJob('pause')}
+                  >
+                    {t('channel.edit.buttons.pause_test_models')}
+                  </Button>
+                  <Button
+                    type='button'
+                    loading={testModelsControlBusy}
+                    disabled={!testModelsProgress.running || !testModelsProgress.paused}
+                    onClick={() => void controlRunningTestJob('resume')}
+                  >
+                    {t('channel.edit.buttons.resume_test_models')}
+                  </Button>
+                  <Button
+                    type='button'
+                    loading={testModelsControlBusy}
+                    disabled={!testModelsProgress.running || testModelsProgress.cancelReq}
+                    onClick={() => void controlRunningTestJob('cancel')}
+                  >
+                    {t('channel.edit.buttons.cancel_test_models')}
+                  </Button>
+                  <Button
+                    type='button'
+                    disabled={modelTestReportRows.length === 0}
+                    onClick={() => setModelTestReportOpen(true)}
+                  >
+                    {t('channel.edit.buttons.view_test_report')}
                   </Button>
                   <div className='channel-edit-model-test-concurrency'>
                     <label
@@ -1260,6 +1346,20 @@ const EditChannel = () => {
           handleInputChange(null, { name: 'models', value: ids });
           showSuccess(t('channel.edit.fill_catalog_ok', { count: ids.length }));
         }}
+      />
+      <ChannelModelTestReportModal
+        open={modelTestReportOpen}
+        onClose={() => setModelTestReportOpen(false)}
+        rows={modelTestReportRows}
+        totalModels={(inputs.models || []).length}
+        channelTypeLabel={
+          channelTypeOptions.find((o) => o.value === inputs.type)?.text || ''
+        }
+        baseUrl={normalizeChannelTestBaseUrl(
+          inputs.base_url,
+          inputs.type,
+          channelTypeOptions
+        )}
       />
     </div>
   );

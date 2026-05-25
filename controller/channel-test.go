@@ -109,7 +109,7 @@ func recordChannelTestLog(ctx context.Context, channel *model.Channel, modelName
 	go model.RecordTestLog(ctx, lg)
 }
 
-func testChannelByModel(ctx context.Context, channel *model.Channel, logicalModel string) (responseMessage string, err error, openaiErr *relaymodel.Error) {
+func testChannelByModel(ctx context.Context, channel *model.Channel, logicalModel string) (responseMessage string, detail channelModelTestHTTPDetail, err error, openaiErr *relaymodel.Error) {
 	if channel != nil && channel.Type == channeltype.AiPPT {
 		t0 := time.Now()
 		app, sec, uid, err := aippt.ParseChannelKey(channel.Key)
@@ -119,7 +119,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 				"error":     err.Error(),
 			})
 			recordChannelTestLog(ctx, channel, "aippt", fmt.Sprintf("渠道 %s AiPPT 测试失败：%v", channel.Name, err), t0, other)
-			return "", fmt.Errorf("AiPPT 密钥: %w", err), nil
+			return "", channelModelTestHTTPDetail{}, fmt.Errorf("AiPPT 密钥: %w", err), nil
 		}
 		cl := &aippt.Client{
 			BaseURL:   channel.GetBaseURL(),
@@ -134,7 +134,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 				"error":              err.Error(),
 			})
 			recordChannelTestLog(ctx, channel, "aippt", fmt.Sprintf("渠道 %s AiPPT 测试失败：%v", channel.Name, err), t0, other)
-			return "", err, nil
+			return "", channelModelTestHTTPDetail{RequestURL: channel.GetBaseURL()}, err, nil
 		}
 		other := mergeTestLogOther(nil, map[string]interface{}{
 			"test_mode":          "aippt",
@@ -142,7 +142,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 			"detail":             "TestPresetList ok",
 		})
 		recordChannelTestLog(ctx, channel, "aippt", fmt.Sprintf("渠道 %s AiPPT 测试成功：预置词接口检测通过", channel.Name), t0, other)
-		return "AiPPT 预置词接口检测通过", nil, nil
+		return "AiPPT 预置词接口检测通过", channelModelTestHTTPDetail{RequestURL: channel.GetBaseURL()}, nil, nil
 	}
 	if channel != nil && channel.Type == channeltype.AmapPOI {
 		t0 := time.Now()
@@ -153,7 +153,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 				"error":              err.Error(),
 			})
 			recordChannelTestLog(ctx, channel, "amap", fmt.Sprintf("渠道 %s 高德测试失败：%v", channel.Name, err), t0, other)
-			return "", err, nil
+			return "", channelModelTestHTTPDetail{RequestURL: channel.GetBaseURL()}, err, nil
 		}
 		other := mergeTestLogOther(nil, map[string]interface{}{
 			"test_mode":          "amap",
@@ -161,7 +161,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 			"detail":             "TestAround ok",
 		})
 		recordChannelTestLog(ctx, channel, "amap", fmt.Sprintf("渠道 %s 高德周边搜索检测通过", channel.Name), t0, other)
-		return "高德周边搜索接口检测通过", nil, nil
+		return "高德周边搜索接口检测通过", channelModelTestHTTPDetail{RequestURL: channel.GetBaseURL()}, nil, nil
 	}
 	if channel != nil && channel.Type == channeltype.DeepResearch {
 		t0 := time.Now()
@@ -169,11 +169,11 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 		key := strings.TrimSpace(channel.Key)
 		if key == "" {
 			recordChannelTestLog(ctx, channel, deepresearch.ModelDeepResearch, fmt.Sprintf("渠道 %s Deep Research 测试失败：密钥为空", channel.Name), t0, "")
-			return "", errors.New("深知 Deep Research：密钥不能为空"), nil
+			return "", channelModelTestHTTPDetail{}, errors.New("深知 Deep Research：密钥不能为空"), nil
 		}
 		if base == "" {
 			recordChannelTestLog(ctx, channel, deepresearch.ModelDeepResearch, fmt.Sprintf("渠道 %s Deep Research 测试失败：Base URL 为空", channel.Name), t0, "")
-			return "", errors.New("深知 Deep Research：请填写上游 Base URL（完整前缀至 …/deepresearch）"), nil
+			return "", channelModelTestHTTPDetail{}, errors.New("深知 Deep Research：请填写上游 Base URL（完整前缀至 …/deepresearch）"), nil
 		}
 		other := mergeTestLogOther(nil, map[string]interface{}{
 			"test_mode":          "deep_research",
@@ -181,10 +181,10 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 			"detail":             "skip sse probe",
 		})
 		recordChannelTestLog(ctx, channel, deepresearch.ModelDeepResearch, fmt.Sprintf("渠道 %s Deep Research：密钥与 Base URL 已配置（上游为 SSE，未自动拉流探测）", channel.Name), t0, other)
-		return "深知 Deep Research：密钥与 Base URL 已配置（上游 SSE，未自动探测）", nil, nil
+		return "深知 Deep Research：密钥与 Base URL 已配置（上游 SSE，未自动探测）", channelModelTestHTTPDetail{RequestURL: base}, nil, nil
 	}
 
-	spec := classifyModelTestSpec(logicalModel)
+	spec := resolveModelTestSpec(logicalModel, channel.Type)
 	if spec.Kind == modelTestKindSkip {
 		t0 := time.Now()
 		msg := spec.SkipReason
@@ -195,7 +195,15 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 			"detail":        msg,
 		})
 		recordChannelTestLog(ctx, channel, logicalModel, fmt.Sprintf("渠道 %s 模型 %s：%s", channel.Name, logicalModel, msg), t0, other)
-		return msg, nil, nil
+		return msg, channelModelTestHTTPDetail{RequestMethod: "POST", RequestPath: spec.Path, WireProtocol: spec.Protocol}, nil, nil
+	}
+
+	if vendorProbeSupported(channel.Type, spec) {
+		startTime := time.Now()
+		mappedModel := resolveChannelTestModelName(channel, logicalModel)
+		msg, detail, probeErr := runVendorModelProbe(ctx, channel, logicalModel, spec)
+		recordVendorModelProbeLog(ctx, channel, logicalModel, spec, mappedModel, msg, probeErr, startTime)
+		return msg, detail, probeErr, nil
 	}
 
 	startTime := time.Now()
@@ -212,6 +220,9 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 		URL:    &url.URL{Path: spec.Path},
 		Body:   nil,
 		Header: make(http.Header),
+	}
+	if ctx != nil {
+		c.Request = c.Request.WithContext(ctx)
 	}
 	c.Request.Header.Set("Authorization", "Bearer "+channel.Key)
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -233,7 +244,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 			"logical_model": logicalModel,
 		})
 		recordChannelTestLog(ctx, channel, logicalModel, fmt.Sprintf("渠道 %s 测试失败：无效的 API 类型 %d", channel.Name, apiType), startTime, other)
-		return "", fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), nil
+		return "", channelModelTestHTTPDetail{RequestMethod: "POST", RequestPath: spec.Path}, fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), nil
 	}
 	adaptor.Init(meta)
 	modelName := logicalModel
@@ -248,6 +259,9 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 		modelName = modelMap[modelName]
 	}
 	meta.OriginModelName, meta.ActualModelName = logicalModel, modelName
+	captureDetail := func() channelModelTestHTTPDetail {
+		return captureChannelModelTestHTTPDetail(c, spec.Path, reqBodyForLog, respBodyForLog, spec.Protocol, httpStatus, upstreamURL)
+	}
 	defer func() {
 		logContent := fmt.Sprintf("渠道 %s 测试成功，响应：%s", channel.Name, responseMessage)
 		if err != nil || openaiErr != nil {
@@ -296,7 +310,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 
 	jsonData, err := marshalModelTestPayload(adaptor, c, spec, logicalModel, modelName)
 	if err != nil {
-		return "", err, nil
+		return "", channelModelTestHTTPDetail{RequestMethod: "POST", RequestPath: spec.Path}, err, nil
 	}
 	reqBodyForLog = truncateForTestLog(string(jsonData))
 	logger.SysLog(string(jsonData))
@@ -305,7 +319,7 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 	resp, err := adaptor.DoRequest(c, meta, requestBody)
 	if err != nil {
 		doReqErr = err.Error()
-		return "", err, nil
+		return "", captureDetail(), err, nil
 	}
 	if resp != nil {
 		httpStatus = resp.StatusCode
@@ -324,27 +338,31 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 		if errorMessage != "" {
 			errorMessage = ", error message: " + errorMessage
 		}
-		return "", fmt.Errorf("http status code: %d%s", errWith.StatusCode, errorMessage), &errWith.Error
+		return "", captureDetail(), fmt.Errorf("http status code: %d%s", errWith.StatusCode, errorMessage), &errWith.Error
 	}
 
 	if spec.Kind == modelTestKindTTS {
 		body, readErr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if readErr != nil {
-			return "", readErr, nil
+			return "", captureDetail(), readErr, nil
 		}
 		respBodyForLog = truncateForTestLog(fmt.Sprintf("<binary %d bytes>", len(body)))
 		if len(body) == 0 {
-			return "", errors.New("tts response body is empty"), nil
+			return "", captureDetail(), errors.New("tts response body is empty"), nil
 		}
 		responseMessage = summarizeModelTestSuccess(spec, "")
-		return responseMessage, nil, nil
+		if !shouldRecordModelTestBodyDetail(spec, nil) {
+			reqBodyForLog = ""
+			respBodyForLog = ""
+		}
+		return responseMessage, captureDetail(), nil, nil
 	}
 
 	var respErr *relaymodel.ErrorWithStatusCode
 	usage, respErr = adaptor.DoResponse(c, resp, meta)
 	if respErr != nil {
-		return "", fmt.Errorf("%s", respErr.Error.Message), &respErr.Error
+		return "", captureDetail(), fmt.Errorf("%s", respErr.Error.Message), &respErr.Error
 	}
 	rawResponse := w.Body.String()
 	if rawResponse != "" {
@@ -352,23 +370,27 @@ func testChannelByModel(ctx context.Context, channel *model.Channel, logicalMode
 	}
 	if spec.Kind == modelTestKindChat {
 		if usage == nil {
-			return "", errors.New("usage is nil"), nil
+			return "", captureDetail(), errors.New("usage is nil"), nil
 		}
 		_, responseMessage, err = parseTestResponse(rawResponse)
 		if err != nil {
 			logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse))
-			return "", err, nil
+			return "", captureDetail(), err, nil
 		}
 	} else {
 		responseMessage = summarizeModelTestSuccess(spec, rawResponse)
 	}
+	if !shouldRecordModelTestBodyDetail(spec, nil) {
+		reqBodyForLog = ""
+		respBodyForLog = ""
+	}
 	result := w.Result()
 	respBody, err := io.ReadAll(result.Body)
 	if err != nil {
-		return "", err, nil
+		return "", captureDetail(), err, nil
 	}
 	logger.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
-	return responseMessage, nil, nil
+	return responseMessage, captureDetail(), nil, nil
 }
 
 func marshalModelTestPayload(adaptor adaptor.Adaptor, c *gin.Context, spec modelTestSpec, logicalModel, mappedModel string) ([]byte, error) {
@@ -384,6 +406,10 @@ func marshalModelTestPayload(adaptor adaptor.Adaptor, c *gin.Context, spec model
 	case modelTestKindTTS:
 		ttsReq := buildTTSTestRequest(mappedModel)
 		return json.Marshal(ttsReq)
+	case modelTestKindResponses:
+		return json.Marshal(buildResponsesTestRequest(mappedModel))
+	case modelTestKindRealtime:
+		return json.Marshal(buildRealtimeSessionTestRequest(mappedModel))
 	default:
 		var generalReq *relaymodel.GeneralOpenAIRequest
 		switch spec.Kind {
@@ -408,7 +434,8 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	if request != nil {
 		modelName = request.Model
 	}
-	return testChannelByModel(ctx, channel, modelName)
+	msg, _, err, openaiErr := testChannelByModel(ctx, channel, modelName)
+	return msg, err, openaiErr
 }
 
 func TestChannel(c *gin.Context) {
@@ -435,7 +462,7 @@ func TestChannel(c *gin.Context) {
 	}
 	testRequest := buildTestRequest(modelName)
 	tik := time.Now()
-	responseMessage, err, _ := testChannelByModel(ctx, channel, testRequest.Model)
+	responseMessage, _, err, _ := testChannelByModel(ctx, channel, testRequest.Model)
 	tok := time.Now()
 	milliseconds := tok.Sub(tik).Milliseconds()
 	if err != nil {

@@ -2,7 +2,81 @@ import { API } from './api';
 
 export const MODEL_TEST_OK = 'ok';
 export const MODEL_TEST_FAIL = 'fail';
+export const MODEL_TEST_SKIP = 'skip';
 export const MODEL_TEST_TESTING = 'testing';
+
+function rowTestStatus(row) {
+  if (row?.skipped) return MODEL_TEST_SKIP;
+  if (row?.success) return MODEL_TEST_OK;
+  return MODEL_TEST_FAIL;
+}
+
+function applyResultRow(status, messages, meta, row) {
+  const model = String(row.model || '').trim();
+  if (!model) return;
+  const st = typeof row.success === 'boolean' ? rowTestStatus(row) : MODEL_TEST_FAIL;
+  status[model] = st;
+  if (st === MODEL_TEST_FAIL) {
+    messages[model] = row.message || '';
+  }
+  meta[model] = {
+    testedAt: row.tested_at || 0,
+    elapsedMs: row.elapsed_ms || 0,
+    message: row.message || '',
+    testKind: row.test_kind || '',
+    skipped: !!row.skipped,
+  };
+}
+
+export function summarizeModelTestReport(rows = []) {
+  let ok = 0;
+  let fail = 0;
+  let skip = 0;
+  for (const row of rows || []) {
+    if (row.skipped) {
+      skip += 1;
+    } else if (row.success) {
+      ok += 1;
+    } else {
+      fail += 1;
+    }
+  }
+  return { ok, fail, skip, total: (rows || []).length };
+}
+
+export function normalizeModelTestReportRows(jobData, storedResults = []) {
+  const fromJob = (jobData?.results || []).map((row) => ({
+    model: row.model,
+    success: !!row.success,
+    skipped: !!row.skipped,
+    test_kind: row.test_kind || '',
+    test_protocol: row.test_protocol || row.detail?.wire_protocol || '',
+    timed_out: !!row.timed_out,
+    message: row.message || '',
+    detail: row.detail || null,
+    started_at: row.started_at,
+    elapsed_ms: row.elapsed_ms,
+    time: row.time,
+    tested_at: row.tested_at,
+  }));
+  if (fromJob.length > 0) {
+    return fromJob;
+  }
+  return (storedResults || []).map((row) => ({
+    model: row.model,
+    success: !!row.success,
+    skipped: !!row.skipped,
+    test_kind: row.test_kind || '',
+    test_protocol: row.test_protocol || row.detail?.wire_protocol || '',
+    timed_out: !!row.timed_out,
+    message: row.message || '',
+    detail: row.detail || null,
+    started_at: row.started_at,
+    elapsed_ms: row.elapsed_ms,
+    time: row.time,
+    tested_at: row.tested_at,
+  }));
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -43,6 +117,7 @@ export function buildChannelModelTestPayload({
   return {
     jobApiPath: `${root}/jobs`,
     statusApiPath: `${root}/jobs/status`,
+    controlApiPath: `${root}/jobs/control`,
     body: {
       channel_id: channelId ? Number(channelId) : 0,
       type,
@@ -102,24 +177,14 @@ export function applyStoredModelTestResults(results) {
   const status = {};
   const messages = {};
   const meta = {};
+  for (const row of results || []) {
+    applyResultRow(status, messages, meta, row);
+  }
   let ok = 0;
   let fail = 0;
-  for (const row of results || []) {
-    const model = String(row.model || '').trim();
-    if (!model) continue;
-    if (row.success) {
-      status[model] = MODEL_TEST_OK;
-      ok += 1;
-    } else {
-      status[model] = MODEL_TEST_FAIL;
-      messages[model] = row.message || '';
-      fail += 1;
-    }
-    meta[model] = {
-      testedAt: row.tested_at || 0,
-      elapsedMs: row.elapsed_ms || 0,
-      message: row.message || '',
-    };
+  for (const st of Object.values(status)) {
+    if (st === MODEL_TEST_OK) ok += 1;
+    else if (st === MODEL_TEST_FAIL) fail += 1;
   }
   return { status, messages, meta, ok, fail };
 }
@@ -132,13 +197,7 @@ export function applyJobSnapshotToModelState(jobData, modelList = []) {
   for (const row of jobData?.results || []) {
     const model = String(row.model || '').trim();
     if (!model || (allowed.size > 0 && !allowed.has(model))) continue;
-    status[model] = row.success ? MODEL_TEST_OK : MODEL_TEST_FAIL;
-    if (!row.success) messages[model] = row.message || '';
-    meta[model] = {
-      testedAt: row.tested_at || 0,
-      elapsedMs: row.elapsed_ms || 0,
-      message: row.message || '',
-    };
+    applyResultRow(status, messages, meta, row);
   }
   if (jobData?.running) {
     String(jobData.current_model || '')
@@ -161,6 +220,9 @@ export function applyJobSnapshotToModelState(jobData, modelList = []) {
       currentModel: String(jobData?.current_model || '').trim(),
       concurrency: Number(jobData?.concurrency) || 3,
       running: !!jobData?.running,
+      paused: !!jobData?.paused,
+      cancelReq: !!jobData?.cancel_req,
+      state: String(jobData?.state || ''),
     },
   };
 }
@@ -182,20 +244,53 @@ export function buildStoredModelTestSummary(t, ok, fail, total) {
 export function buildJobProgressSummary(t, jobData) {
   const total = Number(jobData?.total) || 0;
   const completed = Number(jobData?.completed) || 0;
-  const ok = (jobData?.results || []).filter((r) => r.success).length;
-  const fail = (jobData?.results || []).filter((r) => !r.success).length;
+  const ok = (jobData?.results || []).filter((r) => r.success && !r.skipped).length;
+  const fail = (jobData?.results || []).filter((r) => !r.success && !r.skipped).length;
+  const skip = (jobData?.results || []).filter((r) => r.skipped).length;
   if (jobData?.running) {
     const current = String(jobData.current_model || '').trim();
+    if (jobData?.cancel_req || jobData?.state === 'cancelling') {
+      return t('channel.edit.messages.test_models_cancelling', {
+        completed,
+        total,
+      });
+    }
+    if (jobData?.paused || jobData?.state === 'paused') {
+      return t('channel.edit.messages.test_models_paused', {
+        completed,
+        total,
+        model: current || '…',
+      });
+    }
     return t('channel.edit.messages.test_models_running', {
       completed,
       total,
       model: current || '…',
     });
   }
+  if (jobData?.interrupted || jobData?.state === 'cancelled') {
+    return t('channel.edit.messages.test_models_cancelled', {
+      completed,
+      total,
+    });
+  }
   if (total > 0) {
-    return t('channel.edit.messages.test_models_done', { ok, fail, total });
+    return t('channel.edit.messages.test_models_done', { ok, fail, skip, total });
   }
   return '';
+}
+
+export async function controlChannelModelTestJob(payload, action) {
+  const { controlApiPath, statusParams } = payload;
+  const res = await API.post(controlApiPath, {
+    ...statusParams,
+    action,
+  });
+  const { success, message, data } = res.data || {};
+  if (!success) {
+    throw new Error(message || 'control job failed');
+  }
+  return { message: message || '', job: data || null };
 }
 
 function formatTestTooltip(status, meta, failMsg) {
@@ -248,9 +343,10 @@ export async function runChannelModelTestJob(payload, models, handlers = {}) {
     }
     await sleep(600);
   }
-  const ok = (lastSnapshot?.results || []).filter((r) => r.success).length;
-  const fail = (lastSnapshot?.results || []).filter((r) => !r.success).length;
-  return { ok, fail, total: list.length, job: lastSnapshot };
+  const ok = (lastSnapshot?.results || []).filter((r) => r.success && !r.skipped).length;
+  const fail = (lastSnapshot?.results || []).filter((r) => !r.success && !r.skipped).length;
+  const skip = (lastSnapshot?.results || []).filter((r) => r.skipped).length;
+  return { ok, fail, skip, total: list.length, job: lastSnapshot };
 }
 
 export function filterOutFailedModels(models, modelTestStatus) {
@@ -266,6 +362,7 @@ export function renderChannelModelLabel(item, modelTestStatus, modelTestMessages
   const classNames = ['model-tag'];
   if (status === MODEL_TEST_OK) classNames.push('model-tag--ok');
   if (status === MODEL_TEST_FAIL) classNames.push('model-tag--fail');
+  if (status === MODEL_TEST_SKIP) classNames.push('model-tag--skip');
   if (status === MODEL_TEST_TESTING) classNames.push('model-tag--testing');
   const failMsg = modelTestMessages?.[model];
   const meta = modelTestMeta?.[model];

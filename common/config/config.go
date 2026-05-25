@@ -262,7 +262,7 @@ func LoadRuntime() {
 	InitialRootToken = env.String("INITIAL_ROOT_TOKEN", "")
 	InitialRootAccessToken = env.String("INITIAL_ROOT_ACCESS_TOKEN", "")
 
-	GeminiVersion = env.String("GEMINI_VERSION", "v1")
+	GeminiVersion = env.String("GEMINI_VERSION", "v1beta")
 	OnlyOneLogFile = env.Bool("ONLY_ONE_LOG_FILE", false)
 	RelayProxy = env.String("RELAY_PROXY", "")
 	UserContentRequestProxy = env.String("USER_CONTENT_REQUEST_PROXY", "")
