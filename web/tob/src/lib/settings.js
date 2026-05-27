@@ -136,14 +136,7 @@ export function getCachedStatus() {
   return getStoredStatus();
 }
 
-export async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { copyText } from './copyText';
 
 /** S3 */
 export async function fetchS3Self() {

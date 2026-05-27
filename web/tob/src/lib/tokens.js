@@ -290,11 +290,4 @@ export function computeTokenStats(tokens) {
   return { total: list.length, active, used, remain, unlimited };
 }
 
-export async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { copyText } from './copyText';

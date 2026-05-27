@@ -286,11 +286,4 @@ export function buildLogDetailText(log) {
   return parts.join('\n\n') || '—';
 }
 
-export async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { copyText } from './copyText';
