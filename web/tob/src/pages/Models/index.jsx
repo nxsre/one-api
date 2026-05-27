@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import Pagination from '@/components/Pagination';
 import ModelCard from '@/components/models/ModelCard';
 import { getApiErrorMessage } from '@/api/client';
+import { copyText } from '@/lib/tokens';
 import {
   MODEL_FILTERS,
   MODEL_PAGE_SIZE,
@@ -34,7 +36,6 @@ export default function ModelsPage() {
   const [filter, setFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [toast, setToast] = useState('');
 
   const admin = isAdminUser(user);
 
@@ -94,19 +95,11 @@ export default function ModelsPage() {
     load();
   }, [load]);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(''), 2200);
-  };
-
   const handleCopyId = async (row) => {
     const id = row?.model_id || '';
-    try {
-      await navigator.clipboard.writeText(id);
-      showToast(`已复制：${id}`);
-    } catch {
-      showToast(id);
-    }
+    const ok = await copyText(id);
+    if (ok) message.success('模型ID已复制成功');
+    else message.error('复制失败');
   };
 
   const handleUse = (row) => {
@@ -125,7 +118,6 @@ export default function ModelsPage() {
       </div>
 
       {error ? <div className="tob-error">{error}</div> : null}
-      {toast ? <div className="models-toast">{toast}</div> : null}
 
       <div className="models-filter-bar">
         {MODEL_FILTERS.map((f) => (

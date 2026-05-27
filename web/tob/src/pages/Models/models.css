@@ -4,15 +4,6 @@
   gap: 20px;
 }
 
-.models-toast {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.04));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  font-size: 13px;
-  color: var(--text2);
-}
-
 .models-section-header {
   display: flex;
   align-items: flex-start;
@@ -217,6 +208,64 @@
   margin-top: 1px;
 }
 
+.model-id-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.model-id-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.model-id {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-copy-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text3);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.model-copy-btn:hover {
+  color: var(--accent);
+  border-color: rgba(99, 102, 241, 0.35);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.model-copy-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .model-desc {
   font-size: 12px;
   color: var(--text2);
@@ -258,6 +307,10 @@
   align-items: stretch;
   gap: 8px;
   margin-top: 14px;
+}
+
+.model-actions--single .tob-btn-primary {
+  flex: 1;
 }
 
 .model-card .model-actions .tob-btn {
