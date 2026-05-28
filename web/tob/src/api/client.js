@@ -1,6 +1,19 @@
 import axios from 'axios';
+import { message } from 'antd';
 
 const baseURL = import.meta.env.VITE_API_BASE || '';
+
+let handlingUnauthorized = false;
+
+function handleUnauthorized() {
+  if (handlingUnauthorized) return;
+  if (window.location.pathname === '/login') return;
+
+  handlingUnauthorized = true;
+  message.warning('登录已过期，请重新登录');
+  localStorage.removeItem('user');
+  window.location.replace('/login');
+}
 
 export const API = axios.create({
   baseURL,
@@ -16,7 +29,12 @@ API.interceptors.response.use(
     }
     return response;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    if (error?.response?.status === 401) {
+      handleUnauthorized();
+    }
+    return Promise.reject(error);
+  }
 );
 
 export function getApiErrorMessage(error) {
