@@ -24,6 +24,12 @@ export default defineConfig(({ mode }) => {
           secure: false,
           ...(isHttps && { protocolRewrite: 'https' }),
         },
+        '/v1/': {
+          target: apiTarget,
+          changeOrigin: true,
+          secure: false,
+          ...(isHttps && { protocolRewrite: 'https' }),
+        },
       },
     },
     build: {

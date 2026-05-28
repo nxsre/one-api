@@ -11,6 +11,7 @@
 | 登录 (MFA) | `/login` | `LoginForm` |
 | 概览 | `/overview` | `Dashboard` |
 | 模型广场 | `/models` | `Channel` |
+| 语言模型（体验中心） | `/playground` | `POST /v1/chat/completions` |
 | 用量统计 | `/usage` | `PlatformReports` |
 | 日志 | `/logs` | `Operation` |
 | API KEY | `/api-keys` | `Token` |

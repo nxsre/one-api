@@ -19,6 +19,18 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    label: '体验中心',
+    items: [
+      {
+        key: 'playground',
+        path: '/playground',
+        label: '语言模型',
+        apiNote: 'POST /v1/chat/completions',
+        icon: 'playground',
+      },
+    ],
+  },
+  {
     label: '可观测性',
     items: [
       {
