@@ -28,7 +28,10 @@ import (
 	"github.com/songquanpeng/one-api/service"
 )
 
-//go:embed web/build/*
+// all: ensures files whose names start with '_' or '.' are embedded too —
+// Vite/Rolldown emits shared chunks like `_plugin-vue_export-helper.*.js`,
+// which the default embed pattern would silently drop (breaking the SPA).
+//go:embed all:web/build
 var buildFS embed.FS
 
 //go:embed web/nacos-console/dist

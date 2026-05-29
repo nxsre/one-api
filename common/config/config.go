@@ -164,9 +164,29 @@ var GeminiSafetySetting string
 
 var Theme string
 var ValidThemes = map[string]bool{
-	"default": true,
-	"berry":   true,
-	"air":     true,
+	"vue": true,
+}
+
+// Login captcha modes backed by github.com/wenlng/go-captcha. "random" rotates
+// among the concrete modes per challenge. Configurable via LOGIN_CAPTCHA_MODE
+// (TOML key login_captcha_mode). The classic React theme only renders click, so
+// the controller forces click for it regardless of this setting.
+const (
+	LoginCaptchaModeRandom = "random"
+	LoginCaptchaModeClick  = "click"
+	LoginCaptchaModeSlide  = "slide"
+	LoginCaptchaModeRotate = "rotate"
+)
+
+var LoginCaptchaMode = LoginCaptchaModeRandom
+
+func normalizeLoginCaptchaMode(v string) string {
+	switch v {
+	case LoginCaptchaModeRandom, LoginCaptchaModeClick, LoginCaptchaModeSlide, LoginCaptchaModeRotate:
+		return v
+	default:
+		return LoginCaptchaModeRandom
+	}
 }
 
 // All duration's unit is seconds
@@ -248,7 +268,8 @@ func LoadRuntime() {
 
 	RelayTimeout = env.Int("RELAY_TIMEOUT", 0)
 	GeminiSafetySetting = env.String("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
-	Theme = env.String("THEME", "default")
+	Theme = env.String("THEME", "vue")
+	LoginCaptchaMode = normalizeLoginCaptchaMode(env.String("LOGIN_CAPTCHA_MODE", LoginCaptchaModeRandom))
 
 	GlobalApiRateLimitNum = env.Int("GLOBAL_API_RATE_LIMIT", 480)
 	GlobalWebRateLimitNum = env.Int("GLOBAL_WEB_RATE_LIMIT", 240)

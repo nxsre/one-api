@@ -113,51 +113,41 @@ func getLoginClickCaptcha() (click.Captcha, error) {
 
 // GenerateLoginClickCaptcha 生成点击验证码。若 Redis 可用则答案仅存于 Redis 并返回 captchaID；
 // 否则返回 legacyDotsJSON 供写入 cookie session（单机/无 Redis）。
-func GenerateLoginClickCaptcha() (masterImageBase64, thumbImageBase64 string, dotNum int, captchaID string, legacyDotsJSON []byte, err error) {
+func generateClickRaw() (masterImageBase64, thumbImageBase64 string, dotNum int, dotsJSON []byte, err error) {
 	capt, err := getLoginClickCaptcha()
 	if err != nil {
-		return "", "", 0, "", nil, err
+		return "", "", 0, nil, err
 	}
 	data, err := capt.Generate()
 	if err != nil {
-		return "", "", 0, "", nil, err
+		return "", "", 0, nil, err
 	}
 	masterB64, err := data.GetMasterImage().ToBase64Data()
 	if err != nil {
-		return "", "", 0, "", nil, err
+		return "", "", 0, nil, err
 	}
 	thumbB64, err := data.GetThumbImage().ToBase64Data()
 	if err != nil {
-		return "", "", 0, "", nil, err
+		return "", "", 0, nil, err
 	}
 
 	dotsMap := data.GetData()
 	if len(dotsMap) == 0 {
-		return "", "", 0, "", nil, fmt.Errorf("empty captcha dots")
+		return "", "", 0, nil, fmt.Errorf("empty captcha dots")
 	}
 	ordered := make([]loginCaptchaStoredDot, len(dotsMap))
 	for i := 0; i < len(dotsMap); i++ {
 		d := dotsMap[i]
 		if d == nil {
-			return "", "", 0, "", nil, fmt.Errorf("missing dot index %d", i)
+			return "", "", 0, nil, fmt.Errorf("missing dot index %d", i)
 		}
 		ordered[i] = loginCaptchaStoredDot{X: d.X, Y: d.Y, Width: d.Width, Height: d.Height}
 	}
 	raw, err := json.Marshal(ordered)
 	if err != nil {
-		return "", "", 0, "", nil, err
+		return "", "", 0, nil, err
 	}
-
-	if common.RedisEnabled && common.RDB != nil {
-		id := uuid.New().String()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := common.RDB.Set(ctx, loginCaptchaRedisKey(id), raw, loginCaptchaRedisTTL).Err(); err != nil {
-			return "", "", 0, "", nil, err
-		}
-		return masterB64, thumbB64, len(ordered), id, nil, nil
-	}
-	return masterB64, thumbB64, len(ordered), "", raw, nil
+	return masterB64, thumbB64, len(ordered), raw, nil
 }
 
 // ValidateLoginClickCaptcha 校验用户点击序列是否与会话中保存的点区域匹配（顺序一致）。

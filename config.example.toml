@@ -103,6 +103,9 @@ https_port = "3443"
 
 force_2fa_for_all_users = false
 login_math_captcha_enabled = true
+# 登录验证码模式（github.com/wenlng/go-captcha）：random（默认，每次随机切换）/ click / slide / rotate。
+# 仅对新版 Vue 前端生效；经典 React 前端始终使用 click 模式。
+login_captcha_mode = "random"
 login_brute_trust_x_forwarded_for = false
 login_brute_ip_fail_max = 0
 login_brute_pair_fail_max = 0

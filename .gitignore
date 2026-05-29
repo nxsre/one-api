@@ -8,6 +8,9 @@ build
 logs
 data
 /web/node_modules
+web/**/node_modules
+web/vue/dist
+web/vue/public/web-build.json
 cmd.md
 .env
 /one-api

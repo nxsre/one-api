@@ -31,6 +31,7 @@ type LoginRequest struct {
 	Username         string          `json:"username"`
 	Password         string          `json:"password"`
 	CaptchaID        string          `json:"captcha_id"`
+	CaptchaMode      string          `json:"captcha_mode"`
 	CaptchaDotsEnc   string          `json:"captcha_dots_enc"`
 	LoginRequestID   string          `json:"login_request_id"`
 	LoginRequestTs   int64           `json:"login_request_ts"`
@@ -73,7 +74,7 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
-	password, captchaDots, resolveErr := resolveLoginPasswordAndCaptcha(c, loginRequest)
+	password, captchaAnswer, resolveErr := resolveLoginPasswordAndCaptcha(c, loginRequest)
 	if resolveErr != "" {
 		c.JSON(http.StatusOK, gin.H{
 			"message": resolveErr,
@@ -87,7 +88,7 @@ func Login(c *gin.Context) {
 		sess := sessions.Default(c)
 		if common.RedisEnabled && common.RDB != nil {
 			pendingRaw := sess.Get("pending_login_captcha_id")
-			if !service.ConsumeLoginClickCaptchaRedis(loginRequest.CaptchaID, asStringSession(pendingRaw), captchaDots) {
+			if !service.ConsumeLoginCaptchaRedis(loginRequest.CaptchaID, asStringSession(pendingRaw), captchaAnswer) {
 				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
 				return
 			}
@@ -102,7 +103,7 @@ func Login(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
 				return
 			}
-			if !service.ValidateLoginClickCaptcha([]byte(jsonStr), captchaDots) {
+			if !service.ValidateLoginCaptchaSession([]byte(jsonStr), captchaAnswer) {
 				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
 				return
 			}

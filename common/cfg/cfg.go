@@ -48,7 +48,7 @@ func setDefaults(v *viper.Viper) {
 	d("batch_update_interval", 5)
 	d("relay_timeout", 0)
 	d("gemini_safety_setting", "BLOCK_NONE")
-	d("theme", "default")
+	d("theme", "vue")
 	d("global_api_rate_limit", 480)
 	d("global_web_rate_limit", 240)
 	d("enable_metric", false)
@@ -107,6 +107,7 @@ func setDefaults(v *viper.Viper) {
 
 	d("force_2fa_for_all_users", false)
 	d("login_math_captcha_enabled", true)
+	d("login_captcha_mode", "random")
 	d("login_brute_trust_x_forwarded_for", false)
 	d("login_brute_ip_fail_max", 0)
 	d("login_brute_pair_fail_max", 0)
