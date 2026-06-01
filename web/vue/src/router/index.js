@@ -23,6 +23,7 @@ const LarkOAuth = () => import('../components/LarkOAuth.vue');
 const Channel = () => import('../pages/Channel/index.vue');
 const EditChannel = () => import('../pages/Channel/EditChannel.vue');
 const ModelCatalog = () => import('../pages/ModelCatalog/index.vue');
+const ModelSquare = () => import('../pages/ModelSquare/index.vue');
 const Operation = () => import('../pages/Operation/index.vue');
 const Routing = () => import('../pages/Routing/index.vue');
 const Token = () => import('../pages/Token/index.vue');
@@ -70,6 +71,7 @@ const routes = [
   { path: '/operations', component: Operation, meta: { guard: 'platform' } },
   { path: '/channel/edit/:id', component: EditChannel, meta: { guard: 'platform' } },
   { path: '/channel/add', component: EditChannel, meta: { guard: 'platform' } },
+  { path: '/model-square', component: ModelSquare, meta: { guard: 'private' } },
   { path: '/token', component: Token, meta: { guard: 'private' } },
   { path: '/token/edit/:id', component: EditToken, meta: { guard: 'private' } },
   { path: '/token/add', component: EditToken, meta: { guard: 'private' } },

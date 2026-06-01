@@ -3,6 +3,7 @@
     "home": "Home",
     "channel": "Channel",
     "model_catalog": "Model catalog",
+    "model_square": "Model square",
     "operations_management": "Operations",
     "routing": "Routing",
     "token": "Token",
@@ -503,6 +504,14 @@
   },
   "topup": {
     "title": "Top Up Center",
+    "wechat": {
+      "title": "WeChat Pay (QR)",
+      "yuan": "CNY",
+      "create": "Generate QR code",
+      "scan_tip": "Scan with WeChat to pay",
+      "paid": "Paid — quota credited",
+      "invalid_amount": "Please enter a valid amount"
+    },
     "get_code": {
       "title": "Get Redemption Code",
       "current_quota": "Current Available Quota",
@@ -520,6 +529,58 @@
       "request_failed": "Request failed",
       "no_link": "Admin has not set up the top-up link!"
     }
+  },
+  "payment": {
+    "note": "Payment settings are visible to super admins only. By default no user/tenant has online payment enabled; grant it explicitly under \"Channel access\" below.",
+    "wechat": {
+      "title": "WeChat Pay (Native QR)",
+      "enabled": "Enable WeChat Pay",
+      "appid": "AppID",
+      "mchid": "Merchant ID (MchID)",
+      "serial": "Merchant cert serial no.",
+      "apiv3": "APIv3 key",
+      "notify_domain": "Notify domain (public)",
+      "quota_per_yuan": "Quota per CNY",
+      "private_key": "Merchant private key (PEM)",
+      "save": "Save WeChat Pay config",
+      "saved": "WeChat Pay config saved"
+    },
+    "access": {
+      "title": "Channel access (all closed by default)",
+      "hint": "Open channels for a specific user or tenant; a user's effective channels = user grant ∪ tenant grant.",
+      "scope_user": "User",
+      "scope_tenant": "Tenant",
+      "scope_id": "User/Tenant ID",
+      "scope_id_required": "Please enter a valid user/tenant ID",
+      "save": "Save grant",
+      "saved": "Grant saved",
+      "deleted": "Deleted",
+      "none": "(none)",
+      "edit": "Edit",
+      "delete": "Delete",
+      "delete_confirm": "Delete this grant?",
+      "col_scope": "Scope",
+      "col_channels": "Channels",
+      "col_action": "Action"
+    }
+  },
+  "model_square": {
+    "title": "Model Square",
+    "subtitle": "Models your account can call. Filter by category or search.",
+    "search_ph": "Search model ID / name…",
+    "empty": "No available models",
+    "count": "{n} available models",
+    "copy_id": "Copy model ID",
+    "copied": "Copied: {id}",
+    "copy_failed": "Copy failed",
+    "tag_reasoning": "Reasoning",
+    "tag_tool": "Tools",
+    "cat_all": "All",
+    "cat_language": "Language",
+    "cat_reasoning": "Reasoning",
+    "cat_multimodal": "Multimodal",
+    "cat_code": "Code",
+    "cat_image": "Image"
   },
   "model_catalog": {
     "title": "Model catalog",
@@ -1209,7 +1270,8 @@
       "personal": "Personal Settings",
       "operation": "Operation Settings",
       "system": "System Settings",
-      "other": "Other Settings"
+      "other": "Other Settings",
+      "payment": "Payment"
     },
     "monaco": {
       "format_json": "Format JSON",

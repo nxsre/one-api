@@ -13,6 +13,7 @@ export * from './tenantConsoleImpersonation';
 export * from './tokenModelDropdown';
 export * from './helper';
 export * from './modelCatalog';
+export * from './modelLogo';
 export * from './channelModelTest';
 export * from './operationRatioLookup';
 export * from './noAutofill';

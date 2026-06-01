@@ -87,7 +87,7 @@ import {
   InfoCircleOutlined, MessageOutlined, ExportOutlined, FolderOpenOutlined,
   BranchesOutlined, ApiOutlined, TeamOutlined, FileOutlined,
   OrderedListOutlined, SafetyOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  TranslationOutlined, ClusterOutlined, CheckSquareOutlined,
+  TranslationOutlined, ClusterOutlined, CheckSquareOutlined, AppstoreOutlined,
 } from '@ant-design/icons-vue';
 import Footer from '../components/Footer.vue';
 import NacosThemeToggle from '../components/NacosThemeToggle.vue';
@@ -169,6 +169,7 @@ const menuItems = computed(() => {
     }
     if (isTenantAdmin()) {
       items.push(
+        { key: '/model-square', icon: icon(AppstoreOutlined), label: t('header.model_square') },
         { key: '/token', icon: icon(KeyOutlined), label: t('header.token') },
         { key: '/log', icon: icon(BookOutlined), label: t('header.log') },
         { key: '/dashboard', icon: icon(BarChartOutlined), label: t('header.dashboard') },
@@ -186,6 +187,7 @@ const menuItems = computed(() => {
   const adminOrTenant = admin || isTenantAdmin();
 
   items.push({ key: '/', icon: icon(HomeOutlined), label: t('header.home') });
+  items.push({ key: '/model-square', icon: icon(AppstoreOutlined), label: t('header.model_square') });
   if (localStorage.getItem('chat_link')) {
     items.push({ key: '/chat', icon: icon(MessageOutlined), label: t('header.chat') });
   }
