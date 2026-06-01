@@ -49,16 +49,16 @@
                 v-model:value="createInputs.admin_username"
                 placeholder="登录用户名"
                 :readonly="!createAutofillUnlocked"
-                autocomplete="off"
                 @focus="createAutofillUnlocked = true"
+                v-bind="noAutofillTextProps"
               />
             </a-form-item>
             <a-form-item label="管理员密码" required class="flex-1">
               <a-input-password
                 v-model:value="createInputs.admin_password"
                 :readonly="!createAutofillUnlocked"
-                autocomplete="new-password"
                 @focus="createAutofillUnlocked = true"
+                v-bind="noAutofillPasswordProps"
               />
             </a-form-item>
           </div>
@@ -175,7 +175,14 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue';
-import { API, showError, showSuccess, timestamp2string } from '@/helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  timestamp2string,
+  noAutofillTextProps,
+  noAutofillPasswordProps,
+} from '@/helpers';
 
 /** Unix 秒 -> datetime-local 字符串（本地时区） */
 function tsToDatetimeLocal(ts) {

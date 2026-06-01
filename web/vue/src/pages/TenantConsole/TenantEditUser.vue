@@ -13,17 +13,17 @@
             <a-input
               v-model:value="inputs.username"
               :readonly="!autofillUnlocked"
-              autocomplete="off"
               @focus="autofillUnlocked = true"
+              v-bind="noAutofillTextProps"
             />
           </a-form-item>
           <a-form-item :label="t('tenant_console.edit_user.password')">
             <a-input-password
               v-model:value="inputs.password"
               :readonly="!autofillUnlocked"
-              autocomplete="new-password"
               :placeholder="isEdit ? t('tenant_console.edit_user.password_unchanged_hint') : ''"
               @focus="autofillUnlocked = true"
+              v-bind="noAutofillPasswordProps"
             />
           </a-form-item>
           <a-form-item :label="t('tenant_console.edit_user.display_name')">
@@ -109,7 +109,14 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute } from 'vue-router';
-import { API, showError, showSuccess, renderQuotaWithPrompt } from '@/helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  renderQuotaWithPrompt,
+  noAutofillTextProps,
+  noAutofillPasswordProps,
+} from '@/helpers';
 
 const { t } = useI18n();
 const router = useRouter();

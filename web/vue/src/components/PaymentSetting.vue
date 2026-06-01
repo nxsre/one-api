@@ -4,7 +4,7 @@
 
     <!-- 微信支付全局配置 -->
     <a-card :title="t('payment.wechat.title')" size="small" style="margin-bottom: 16px">
-      <a-form layout="vertical">
+      <a-form layout="vertical" :autocomplete="noAutofillFormProps.autocomplete">
         <a-form-item>
           <a-switch v-model:checked="wxEnabled" @change="saveEnabled" />
           <span style="margin-left: 8px">{{ t('payment.wechat.enabled') }}</span>
@@ -12,32 +12,63 @@
         <a-row :gutter="16">
           <a-col :xs="24" :md="12">
             <a-form-item :label="t('payment.wechat.appid')">
-              <a-input v-model:value="inputs.WeChatPayAppId" autocomplete="off" />
+              <a-input
+                v-model:value="inputs.WeChatPayAppId"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillTextProps"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :md="12">
             <a-form-item :label="t('payment.wechat.mchid')">
-              <a-input v-model:value="inputs.WeChatPayMchId" autocomplete="off" />
+              <a-input
+                v-model:value="inputs.WeChatPayMchId"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillTextProps"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :md="12">
             <a-form-item :label="t('payment.wechat.serial')">
-              <a-input v-model:value="inputs.WeChatPayCertSerialNo" autocomplete="off" />
+              <a-input
+                v-model:value="inputs.WeChatPayCertSerialNo"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillTextProps"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :md="12">
             <a-form-item :label="t('payment.wechat.apiv3')">
-              <a-input-password v-model:value="inputs.WeChatPayApiV3Key" autocomplete="off" />
+              <a-input-password
+                v-model:value="inputs.WeChatPayApiV3Key"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillSecretProps"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :md="12">
             <a-form-item :label="t('payment.wechat.notify_domain')">
-              <a-input v-model:value="inputs.WeChatPayNotifyDomain" placeholder="https://pay.example.com" autocomplete="off" />
+              <a-input
+                v-model:value="inputs.WeChatPayNotifyDomain"
+                placeholder="https://pay.example.com"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillTextProps"
+              />
             </a-form-item>
           </a-col>
           <a-col :xs="24" :md="12">
             <a-form-item :label="t('payment.wechat.quota_per_yuan')">
-              <a-input v-model:value="inputs.WeChatPayQuotaPerYuan" autocomplete="off" />
+              <a-input
+                v-model:value="inputs.WeChatPayQuotaPerYuan"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillTextProps"
+              />
             </a-form-item>
           </a-col>
           <a-col :span="24">
@@ -46,6 +77,9 @@
                 v-model:value="inputs.WeChatPayPrivateKey"
                 :rows="6"
                 placeholder="-----BEGIN PRIVATE KEY-----"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillSecretProps"
               />
             </a-form-item>
           </a-col>
@@ -99,9 +133,19 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { API, showError, showSuccess } from '@/helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  noAutofillFormProps,
+  noAutofillTextProps,
+  noAutofillSecretProps,
+} from '@/helpers';
 
 const { t } = useI18n();
+
+// 抑制 Chrome「文本框+密码框=登录表单」的自动填充（如把账号/密码塞进证书序列号/APIv3 密钥）。
+const autofillUnlocked = ref(false);
 
 const WECHAT_KEYS = [
   'WeChatPayAppId',
