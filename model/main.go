@@ -403,6 +403,16 @@ func migrateModelCatalogVersionStatus() error {
 			logger.SysError("failed to drop uk_model_catalog_mid: " + err.Error())
 		}
 	}
+	// 行身份由 (source, model_id) 扩展为 (source, provider_key, model_id)：丢弃旧复合索引，
+	// 让随后的 AutoMigrate 按新名（idx_mc_src_pk_mid_*）重建含 provider_key 的索引。
+	// 新键在旧键基础上多一列，只会更唯一、不会引入冲突，故重建安全。
+	for _, old := range []string{"idx_mc_src_mid_ver", "idx_mc_src_mid_status"} {
+		if DB.Migrator().HasIndex(&ModelCatalog{}, old) {
+			if err := DB.Migrator().DropIndex(&ModelCatalog{}, old); err != nil {
+				logger.SysError("failed to drop " + old + ": " + err.Error())
+			}
+		}
+	}
 	return nil
 }
 

@@ -351,8 +351,10 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 	}
 	sort.Strings(provKeys)
 
-	// 同一 model id 在多 provider 下可能出现：按 provider 键名字典序保留首次
-	byModelID := make(map[string]model.ModelCatalog)
+	// 同一 model id 可能挂在多个 provider 下（如 gpt-4o 同时属于 openai / azure / openrouter）。
+	// 这里按 (provider, model id) 各保留一行，不跨 provider 去重——使每个 provider 名下都能筛到完整模型集。
+	// 行身份 (source, provider_key, model_id) 由 BatchUpsertModelCatalogForSync 独立版本化。
+	rows := make([]model.ModelCatalog, 0, len(root)*8)
 
 	for _, pkey := range provKeys {
 		var sp devProv
@@ -388,9 +390,6 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 			if id == "" {
 				continue
 			}
-			if _, dup := byModelID[id]; dup {
-				continue
-			}
 			displayName := strings.TrimSpace(m.Name)
 			if displayName == "" {
 				displayName = id
@@ -402,7 +401,7 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 			if provDisplay == "" {
 				provDisplay = provID
 			}
-			byModelID[id] = model.ModelCatalog{
+			rows = append(rows, model.ModelCatalog{
 				ModelId:         id,
 				OwnedBy:         ob,
 				Enabled:         true,
@@ -430,20 +429,12 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 				KnowledgeCutoff: strings.TrimSpace(m.Knowledge),
 				ReleaseDate:     strings.TrimSpace(m.ReleaseDate),
 				LastUpdatedDev:  strings.TrimSpace(m.LastUpdated),
-			}
+			})
 		}
 	}
 
-	ids := make([]string, 0, len(byModelID))
-	for id := range byModelID {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	out := make([]model.ModelCatalog, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, byModelID[id])
-	}
-	return out, nil
+	// provKeys 已按字典序遍历，provider 内 mkeys 亦已排序，故 rows 已是稳定顺序。
+	return rows, nil
 }
 
 type modelCatalogSyncRequest struct {

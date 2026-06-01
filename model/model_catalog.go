@@ -13,18 +13,19 @@ import (
 // Models.dev 对齐字段在通过 sync_models_dev 同步时写入；其它来源或手工录入通常为空。
 type ModelCatalog struct {
 	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	ModelId     string `json:"model_id" gorm:"uniqueIndex:idx_mc_src_mid_ver,priority:2;index:idx_mc_src_mid_status,priority:2;size:191;column:model_id"`
+	ModelId     string `json:"model_id" gorm:"uniqueIndex:idx_mc_src_pk_mid_ver,priority:2;index:idx_mc_src_pk_mid_status,priority:2;size:191;column:model_id"`
+	// 注意：行的同步「身份」是 (source, provider_key, model_id)，故 provider_key 也是复合唯一/状态索引的一员（见下方字段定义）。
 	OwnedBy     string `json:"owned_by" gorm:"size:256"`
 	Enabled     bool   `json:"enabled" gorm:"default:true;index"`
-	Source      string `json:"source" gorm:"uniqueIndex:idx_mc_src_mid_ver,priority:1;index:idx_mc_src_mid_status,priority:1;size:64"`
-	Version     int    `json:"version" gorm:"uniqueIndex:idx_mc_src_mid_ver,priority:3;not null;default:1"`
-	Status      string `json:"status" gorm:"index:idx_mc_src_mid_status,priority:3;size:16;not null;default:'current'"`
+	Source      string `json:"source" gorm:"uniqueIndex:idx_mc_src_pk_mid_ver,priority:1;index:idx_mc_src_pk_mid_status,priority:1;size:64"`
+	Version     int    `json:"version" gorm:"uniqueIndex:idx_mc_src_pk_mid_ver,priority:4;not null;default:1"`
+	Status      string `json:"status" gorm:"index:idx_mc_src_pk_mid_status,priority:4;size:16;not null;default:'current'"`
 	Notes       string `json:"notes" gorm:"type:text"`
 	CreatedTime int64  `json:"created_time" gorm:"bigint"`
 	UpdatedTime int64  `json:"updated_time" gorm:"bigint"`
 
 	ModelName       string  `json:"model_name" gorm:"size:512"`
-	ProviderKey     string  `json:"provider_key" gorm:"size:191;index"`
+	ProviderKey     string  `json:"provider_key" gorm:"size:191;index;uniqueIndex:idx_mc_src_pk_mid_ver,priority:3;index:idx_mc_src_pk_mid_status,priority:3"`
 	ProviderDisplay string  `json:"provider_display" gorm:"size:512"`
 	Family          string  `json:"family" gorm:"size:191"`
 	NpmPackage      string  `json:"npm_package" gorm:"size:256"`
@@ -426,9 +427,11 @@ func UpsertCatalogVersioned(tx *gorm.DB, payload *ModelCatalog) error {
 		return errors.New("model_id is empty")
 	}
 
+	// 行身份为 (source, provider_key, model_id)：同一 model_id 在不同 provider 下各自独立版本化，
+	// 互不覆盖（如 models.dev 中 gpt-4o 同时挂在 openai / azure / openrouter 下，各保留一行）。
 	// 1. 将现有的 current 记录标记为 expired
 	if err := tx.Model(&ModelCatalog{}).
-		Where("source = ? AND model_id = ? AND status = ?", payload.Source, payload.ModelId, "current").
+		Where("source = ? AND provider_key = ? AND model_id = ? AND status = ?", payload.Source, payload.ProviderKey, payload.ModelId, "current").
 		Update("status", "expired").Error; err != nil {
 		return err
 	}
@@ -436,7 +439,7 @@ func UpsertCatalogVersioned(tx *gorm.DB, payload *ModelCatalog) error {
 	// 2. 找到最大的 version
 	var maxVersion int
 	tx.Model(&ModelCatalog{}).
-		Where("source = ? AND model_id = ?", payload.Source, payload.ModelId).
+		Where("source = ? AND provider_key = ? AND model_id = ?", payload.Source, payload.ProviderKey, payload.ModelId).
 		Select("COALESCE(MAX(version), 0)").Scan(&maxVersion)
 
 	// 3. 插入新记录
@@ -466,9 +469,9 @@ func BatchUpsertModelCatalogForSync(entries []ModelCatalog) (added int, updated 
 			continue
 		}
 		
-		// 判断是否有变更
+		// 判断是否有变更（身份含 provider_key，同 model_id 多 provider 各自独立）
 		var existing ModelCatalog
-		er := tx.Where("source = ? AND model_id = ? AND status = ?", e.Source, e.ModelId, "current").First(&existing).Error
+		er := tx.Where("source = ? AND provider_key = ? AND model_id = ? AND status = ?", e.Source, e.ProviderKey, e.ModelId, "current").First(&existing).Error
 		if errors.Is(er, gorm.ErrRecordNotFound) {
 			if err := UpsertCatalogVersioned(tx, &e); err != nil {
 				tx.Rollback()
