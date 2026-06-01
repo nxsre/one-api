@@ -281,7 +281,10 @@ func buildTTSTestRequest(model string) openai.TextToSpeechRequest {
 }
 
 func summarizeModelTestSuccess(spec modelTestSpec, responseMessage string) string {
-	if strings.TrimSpace(responseMessage) != "" {
+	// 仅文本类（chat/responses）采用传入的原始/解析后消息；非文本类（embedding/image/tts/
+	// moderation/realtime）忽略响应体，只给固定摘要，避免把大体积响应（向量、图片 base64、
+	// 音频二进制、审核明细）写进「说明」字段。与 shouldRecordModelTestBodyDetail 清空 body 对齐。
+	if modelTestKindIsTextual(spec.Kind) && strings.TrimSpace(responseMessage) != "" {
 		return responseMessage
 	}
 	switch spec.Kind {

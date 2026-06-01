@@ -61,3 +61,29 @@ func TestShouldRecordModelTestBodyDetail(t *testing.T) {
 		t.Fatal("embedding error should keep body")
 	}
 }
+
+// TestSummarizeModelTestSuccessNonText 锁定：非文本类成功不得把原始响应体写进「说明」字段，
+// 只返回固定摘要；文本类仍透传解析后的消息。
+func TestSummarizeModelTestSuccessNonText(t *testing.T) {
+	rawBody := `{"data":[{"embedding":[0.1,0.2,0.3]}],"usage":{"prompt_tokens":1}}`
+	nonText := []struct {
+		kind modelTestKind
+		want string
+	}{
+		{modelTestKindEmbedding, "Embedding 接口响应正常"},
+		{modelTestKindImage, "图像生成接口响应正常"},
+		{modelTestKindTTS, "语音合成接口响应正常"},
+		{modelTestKindModeration, "内容审核接口响应正常"},
+		{modelTestKindRealtime, "Realtime 会话创建响应正常"},
+	}
+	for _, tc := range nonText {
+		// 即便传入完整原始体，也必须被忽略、回落到固定摘要。
+		if got := summarizeModelTestSuccess(modelTestSpec{Kind: tc.kind}, rawBody); got != tc.want {
+			t.Fatalf("kind=%d summary=%q want=%q (原始体不应泄漏到说明字段)", tc.kind, got, tc.want)
+		}
+	}
+	// 文本类（responses）仍透传解析后的消息。
+	if got := summarizeModelTestSuccess(modelTestSpec{Kind: modelTestKindResponses}, "hello"); got != "hello" {
+		t.Fatalf("responses should pass through message, got %q", got)
+	}
+}
