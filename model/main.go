@@ -218,6 +218,9 @@ func migrateDB() error {
 		return err
 	}
 	backfillModelCatalogVersionStatus()
+	if err = DB.AutoMigrate(&PaymentOrder{}, &PaymentChannelAccess{}); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&TenantUpgradeRequest{}, &TenantBillingRule{}); err != nil {
 		return err
 	}

@@ -68,18 +68,63 @@
           </a-card>
         </a-col>
       </a-row>
+
+      <a-row v-if="wxAllowed" :gutter="16" style="margin-top: 16px">
+        <a-col :span="24">
+          <a-card :style="{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }">
+            <h3 style="color: #09bb07; margin: 1em">
+              <WechatOutlined style="margin-right: 0.5em" />{{ t('topup.wechat.title') }}
+            </h3>
+            <div class="wx-pay-body">
+              <div class="wx-pay-form">
+                <a-input-number
+                  v-model:value="payAmount"
+                  :min="1"
+                  :max="100000"
+                  :precision="0"
+                  :addon-after="t('topup.wechat.yuan')"
+                  style="width: 220px"
+                />
+                <span v-if="payAmount" class="wx-pay-quota">
+                  ≈ {{ renderQuota(payAmount * quotaPerYuan, t) }}
+                </span>
+                <a-button
+                  type="primary"
+                  :loading="paying"
+                  style="background-color: #09bb07; border-color: #09bb07"
+                  @click="createWxPay"
+                >
+                  {{ t('topup.wechat.create') }}
+                </a-button>
+              </div>
+              <div v-if="codeUrl" class="wx-pay-qr">
+                <a-qr-code
+                  :value="codeUrl"
+                  :size="200"
+                  :status="payStatus === 'paid' ? 'expired' : 'active'"
+                />
+                <div class="wx-pay-tip">
+                  <span v-if="payStatus === 'paid'" style="color: #21ba45">{{ t('topup.wechat.paid') }}</span>
+                  <span v-else>{{ t('topup.wechat.scan_tip') }}</span>
+                </div>
+              </div>
+            </div>
+          </a-card>
+        </a-col>
+      </a-row>
     </a-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   CreditCardOutlined,
   TagOutlined,
   KeyOutlined,
   SnippetsOutlined,
+  WechatOutlined,
 } from '@ant-design/icons-vue';
 import { API, showError, showInfo, showSuccess, renderQuota } from '@/helpers';
 
@@ -90,6 +135,84 @@ const topUpLink = ref('');
 const userQuota = ref(0);
 const isSubmitting = ref(false);
 const user = ref({});
+
+// 微信扫码支付
+const wxAllowed = ref(false);
+const quotaPerYuan = ref(500000);
+const payAmount = ref(10);
+const paying = ref(false);
+const codeUrl = ref('');
+const payOrderNo = ref('');
+const payStatus = ref('');
+let pollTimer = null;
+
+const loadPayChannels = async () => {
+  try {
+    const res = await API.get('/api/user/pay/channels');
+    const { success, data } = res.data;
+    if (success && data) {
+      wxAllowed.value = (data.channels || []).includes('wxpay');
+      if (data.quota_per_yuan) quotaPerYuan.value = data.quota_per_yuan;
+    }
+  } catch (e) {
+    /* 静默：未开通即不展示 */
+  }
+};
+
+const stopPoll = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+};
+
+const pollOrder = () => {
+  stopPoll();
+  pollTimer = setInterval(async () => {
+    if (!payOrderNo.value) return;
+    try {
+      const res = await API.get(`/api/user/pay/order/${payOrderNo.value}`);
+      const { success, data } = res.data;
+      if (success && data && data.status === 'paid') {
+        payStatus.value = 'paid';
+        stopPoll();
+        showSuccess(t('topup.wechat.paid'));
+        getUserQuota();
+      }
+    } catch (e) {
+      /* 轮询失败忽略，下次再试 */
+    }
+  }, 2500);
+};
+
+const createWxPay = async () => {
+  if (!payAmount.value || payAmount.value <= 0) {
+    showInfo(t('topup.wechat.invalid_amount'));
+    return;
+  }
+  paying.value = true;
+  codeUrl.value = '';
+  payStatus.value = '';
+  payOrderNo.value = '';
+  try {
+    const res = await API.post('/api/user/pay/wechat/native', { amount: payAmount.value });
+    const { success, message, data } = res.data;
+    if (success && data) {
+      codeUrl.value = data.code_url;
+      payOrderNo.value = data.order_no;
+      payStatus.value = 'pending';
+      pollOrder();
+    } else {
+      showError(message);
+    }
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    paying.value = false;
+  }
+};
+
+onUnmounted(stopPoll);
 
 const topUp = async () => {
   if (redemptionCode.value === '') {
@@ -165,5 +288,33 @@ onMounted(() => {
     }
   }
   getUserQuota();
+  loadPayChannels();
 });
 </script>
+
+<style scoped>
+.wx-pay-body {
+  padding: 0 1em 1em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px;
+}
+.wx-pay-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.wx-pay-quota {
+  color: rgba(0, 0, 0, 0.45);
+}
+.wx-pay-qr {
+  text-align: center;
+}
+.wx-pay-tip {
+  margin-top: 8px;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+}
+</style>

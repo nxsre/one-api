@@ -16,6 +16,7 @@ func SetApiRouter(router *gin.Engine) {
 	{
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/ratio_config", controller.GetPublicRatioConfig)
+		apiRouter.POST("/pay/wechat/notify", controller.WeChatPayNotifyHandler)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/about", controller.GetAbout)
@@ -56,6 +57,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/topup", controller.TopUp)
 				selfRoute.GET("/available_models", controller.GetUserAvailableModels)
 				selfRoute.GET("/available_models_detail", controller.GetUserAvailableModelsDetail)
+				selfRoute.GET("/model_square", controller.GetUserModelSquare)
+				selfRoute.GET("/pay/channels", controller.GetUserPaymentChannels)
+				selfRoute.POST("/pay/wechat/native", controller.CreateWeChatNativeOrder)
+				selfRoute.GET("/pay/order/:order_no", controller.GetPaymentOrderStatus)
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
 				selfRoute.POST("/2fa/setup", controller.Setup2FA)
 				selfRoute.POST("/2fa/enable", controller.Enable2FA)
@@ -89,6 +94,13 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
+		}
+		paymentAccessRoute := apiRouter.Group("/payment/access")
+		paymentAccessRoute.Use(middleware.SuperAdminAuth())
+		{
+			paymentAccessRoute.GET("", controller.ListPaymentAccess)
+			paymentAccessRoute.PUT("", controller.SetPaymentAccess)
+			paymentAccessRoute.DELETE("", controller.DeletePaymentAccess)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())

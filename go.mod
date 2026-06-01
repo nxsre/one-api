@@ -20,6 +20,7 @@ require (
 	github.com/gin-contrib/static v1.1.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/glebarez/sqlite v1.11.0
+	github.com/go-pay/gopay v1.5.118
 	github.com/go-playground/validator/v10 v10.20.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt v3.2.2+incompatible
@@ -99,6 +100,12 @@ require (
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-pay/crypto v0.0.1 // indirect
+	github.com/go-pay/errgroup v0.0.3 // indirect
+	github.com/go-pay/smap v0.0.2 // indirect
+	github.com/go-pay/util v0.0.4 // indirect
+	github.com/go-pay/xlog v0.0.3 // indirect
+	github.com/go-pay/xtime v0.0.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect

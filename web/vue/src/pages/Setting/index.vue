@@ -13,6 +13,9 @@
           <a-tab-pane key="other" :tab="t('setting.tabs.other')">
             <OtherSetting />
           </a-tab-pane>
+          <a-tab-pane key="payment" :tab="t('setting.tabs.payment')">
+            <PaymentSetting />
+          </a-tab-pane>
         </template>
       </a-tabs>
     </a-card>
@@ -26,6 +29,7 @@ import { isRoot } from '@/helpers';
 import SystemSetting from '@/components/SystemSetting.vue';
 import OtherSetting from '@/components/OtherSetting.vue';
 import PersonalSetting from '@/components/PersonalSetting.vue';
+import PaymentSetting from '@/components/PaymentSetting.vue';
 
 const { t } = useI18n();
 const root = isRoot();
