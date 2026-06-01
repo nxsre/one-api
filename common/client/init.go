@@ -35,6 +35,10 @@ func Init() {
 	}
 
 	base := http.DefaultTransport.(*http.Transport).Clone()
+	// 调大上游连接池：默认 MaxIdleConnsPerHost=2 会让高并发下连接反复重建，限制吞吐。
+	base.MaxIdleConns = config.RelayMaxIdleConns
+	base.MaxIdleConnsPerHost = config.RelayMaxIdleConnsPerHost
+	base.MaxConnsPerHost = config.RelayMaxConnsPerHost
 	if config.RelayProxy != "" {
 		logger.SysLog(fmt.Sprintf("using %s as api relay proxy", config.RelayProxy))
 		proxyURL, err := url.Parse(config.RelayProxy)

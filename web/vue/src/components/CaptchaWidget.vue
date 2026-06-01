@@ -39,7 +39,7 @@
         </div>
       </div>
       <div class="mt-3">
-        <a-slider :min="0" :max="slideMax" v-model:value="slideX" :tip-formatter="null" />
+        <a-slider :min="0" :max="slideMax" v-model:value="slideX" :tip-formatter="null" @change="touched = true" />
         <div class="text-xs text-gray-500 text-center">{{ t('auth.login.captcha_slide_hint') }}</div>
       </div>
     </template>
@@ -58,7 +58,7 @@
         </div>
       </div>
       <div class="mt-3">
-        <a-slider :min="0" :max="360" v-model:value="rotateAngle" :tip-formatter="(v) => v + '°'" />
+        <a-slider :min="0" :max="360" v-model:value="rotateAngle" :tip-formatter="(v) => v + '°'" @change="touched = true" />
         <div class="text-xs text-gray-500 text-center">{{ t('auth.login.captcha_rotate_hint') }}</div>
       </div>
     </template>
@@ -91,6 +91,10 @@ const clicks = ref([]);
 const slideX = ref(0);
 // rotate
 const rotateAngle = ref(0);
+// Whether the user has interacted (dragged the slider). Slide/rotate readiness
+// is based on this, not on slideX>0 (which is fragile: true-by-default when the
+// tile starts at x>0, or never-true if the slider can't move before image load).
+const touched = ref(false);
 
 function resetForChallenge() {
   natural.w = 0;
@@ -98,6 +102,7 @@ function resetForChallenge() {
   clicks.value = [];
   slideX.value = Number(props.challenge?.tile_x) || 0;
   rotateAngle.value = 0;
+  touched.value = false;
 }
 watch(() => props.challenge, resetForChallenge, { immediate: true });
 
@@ -117,6 +122,7 @@ function onClickMaster(e) {
   const x = Math.round((e.clientX - rect.left) * scale);
   const y = Math.round((e.clientY - rect.top) * scale);
   clicks.value = [...clicks.value, { x, y }];
+  touched.value = true;
 }
 function dotStyle(p) {
   return {
@@ -160,8 +166,7 @@ const answer = computed(() => {
   return clicks.value;
 });
 const ready = computed(() => {
-  if (mode.value === 'slide') return slideX.value > 0;
-  if (mode.value === 'rotate') return rotateAngle.value > 0;
+  if (mode.value === 'slide' || mode.value === 'rotate') return touched.value;
   return dotNum.value > 0 && clicks.value.length === dotNum.value;
 });
 
@@ -169,9 +174,13 @@ watch(answer, (v) => emit('update:answer', v), { immediate: true, deep: true });
 watch(ready, (v) => emit('update:ready', v), { immediate: true });
 
 function clear() {
-  if (mode.value === 'click') clicks.value = [];
-  else if (mode.value === 'slide') slideX.value = Number(props.challenge?.tile_x) || 0;
-  else rotateAngle.value = 0;
+  clicks.value = [];
+  slideX.value = Number(props.challenge?.tile_x) || 0;
+  rotateAngle.value = 0;
+  touched.value = false;
 }
-defineExpose({ clear });
+
+// Expose live state so the parent can read it directly at submit time, avoiding
+// any v-model/emit timing issues.
+defineExpose({ clear, isReady: () => ready.value, getAnswer: () => answer.value });
 </script>

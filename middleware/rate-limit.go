@@ -2,63 +2,68 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/logger"
 )
-
-var timeFormat = "2006-01-02T15:04:05.000Z"
 
 var inMemoryRateLimiter common.InMemoryRateLimiter
 
+// rateLimitSeq 仅用于保证同一纳秒内多个请求写入有序集合时 member 唯一。
+var rateLimitSeq uint64
+
+// rateLimitScript 在 Redis 端原子地执行「滑动窗口日志」限流：
+//   - 先按时间戳裁掉窗口外的旧记录（ZREMRANGEBYSCORE）
+//   - 统计窗口内请求数（ZCARD）
+//   - 未超限则写入本次请求（ZADD）并返回 1，超限返回 0
+//
+// 整个判断-写入在单条 Lua 脚本内完成，避免了原先 LLen→LPush 多命令之间的竞态，
+// 因此在多实例水平扩展下限流是全局精确的，而不是各实例各算各的。
+var rateLimitScript = redis.NewScript(`
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local maxReq = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+local member = ARGV[5]
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+local count = redis.call('ZCARD', key)
+if count < maxReq then
+    redis.call('ZADD', key, now, member)
+    redis.call('EXPIRE', key, ttl)
+    return 1
+end
+redis.call('EXPIRE', key, ttl)
+return 0
+`)
+
 func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
 	ctx := context.Background()
-	rdb := common.RDB
 	key := "rateLimit:" + mark + c.ClientIP()
-	listLength, err := rdb.LLen(ctx, key).Result()
+	now := time.Now().UnixNano()
+	window := duration * int64(time.Second)
+	ttl := int64(config.RateLimitKeyExpirationDuration.Seconds())
+	member := strconv.FormatInt(now, 10) + "-" + strconv.FormatUint(atomic.AddUint64(&rateLimitSeq, 1), 10)
+
+	allowed, err := rateLimitScript.Run(ctx, common.RDB, []string{key},
+		now, window, maxRequestNum, ttl, member).Int()
 	if err != nil {
-		fmt.Println(err.Error())
-		c.Status(http.StatusInternalServerError)
-		c.Abort()
+		// 故障开放（fail-open）：限流器是保护性措施而非正确性关口，Redis 异常时
+		// 放行请求并记录日志，而不是用 500 拖垮全部流量。
+		logger.SysError("redis rate limiter error, allowing request: " + err.Error())
 		return
 	}
-	if listLength < int64(maxRequestNum) {
-		rdb.LPush(ctx, key, time.Now().Format(timeFormat))
-		rdb.Expire(ctx, key, config.RateLimitKeyExpirationDuration)
-	} else {
-		oldTimeStr, _ := rdb.LIndex(ctx, key, -1).Result()
-		oldTime, err := time.Parse(timeFormat, oldTimeStr)
-		if err != nil {
-			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
-			return
-		}
-		nowTimeStr := time.Now().Format(timeFormat)
-		nowTime, err := time.Parse(timeFormat, nowTimeStr)
-		if err != nil {
-			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
-			return
-		}
-		// time.Since will return negative number!
-		// See: https://stackoverflow.com/questions/50970900/why-is-time-since-returning-negative-durations-on-windows
-		if int64(nowTime.Sub(oldTime).Seconds()) < duration {
-			rdb.Expire(ctx, key, config.RateLimitKeyExpirationDuration)
-			c.Status(http.StatusTooManyRequests)
-			c.Abort()
-			return
-		} else {
-			rdb.LPush(ctx, key, time.Now().Format(timeFormat))
-			rdb.LTrim(ctx, key, 0, int64(maxRequestNum-1))
-			rdb.Expire(ctx, key, config.RateLimitKeyExpirationDuration)
-		}
+	if allowed == 0 {
+		c.Status(http.StatusTooManyRequests)
+		c.Abort()
 	}
 }
 

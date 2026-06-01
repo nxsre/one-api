@@ -24,8 +24,8 @@ import (
 // alongside its answer so validation can dispatch correctly.
 
 const (
-	loginSlideVerifyPadding  = 8
-	loginRotateVerifyPadding = 10
+	loginSlideVerifyPadding  = 16
+	loginRotateVerifyPadding = 14
 )
 
 // loginCaptchaStored is the answer persisted in Redis/session for one challenge.

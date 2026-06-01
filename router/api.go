@@ -224,6 +224,8 @@ func SetApiRouter(router *gin.Engine) {
 		logAdmin.DELETE("/", controller.DeleteHistoryLogs)
 		logAdmin.GET("/stat", controller.GetLogsStat)
 		logAdmin.GET("/search", controller.SearchAllLogs)
+		logAdmin.GET("/billing", controller.GetBillingSummary)
+		logAdmin.GET("/export", controller.ExportLogs)
 		apiRouter.GET("/log/token", middleware.TokenAuth(), controller.GetLogByKey)
 		apiRouter.GET("/log/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
 		apiRouter.GET("/log/self", middleware.UserAuth(), controller.GetUserLogs)

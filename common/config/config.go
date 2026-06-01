@@ -17,6 +17,15 @@ var Logo = ""
 var TopUpLink = ""
 var ChatLink = ""
 var QuotaPerUnit = 500 * 1000.0 // $0.002 / 1K tokens
+// DefaultBillingTzOffsetMinutes 账单聚合/导出的默认时区偏移（分钟），东八区=480。
+var DefaultBillingTzOffsetMinutes = 480
+
+// BillingCycleDayOfMonth 账期起始日（每月第几天，1-28）；按此切出"当前账期"区间。默认 1=每月第一天。
+var BillingCycleDayOfMonth = 1
+
+// BillingSettlementDays 结算账期天数（如月结 40 天），仅作展示/对账说明，不影响实时扣费。
+var BillingSettlementDays = 40
+
 var DisplayInCurrencyEnabled = true
 var DisplayTokenStatEnabled = true
 
@@ -59,6 +68,7 @@ var ItemsPerPage = 10
 var MaxRecentItems = 100
 
 var PasswordLoginEnabled = true
+
 // SecurePasswordLoginEnabled 为 true 时登录须先取 proof 并用一次性 AES 密钥加密密码；默认 false 为明文（依赖 HTTPS）。
 var SecurePasswordLoginEnabled = false
 var PasswordRegisterEnabled = true
@@ -68,6 +78,7 @@ var LarkOAuthEnabled = false
 var OidcEnabled = false
 var WeChatAuthEnabled = false
 var TurnstileCheckEnabled = false
+
 // LoginCaptchaEnabled 为 false 时，关闭 Turnstile 场景下不再要求登录点击验证码（见环境变量 login_math_captcha_enabled）。默认开启。
 var LoginCaptchaEnabled = true
 var RegisterEnabled = true
@@ -158,7 +169,24 @@ var SyncFrequency int
 var BatchUpdateEnabled bool
 var BatchUpdateInterval int
 
+// 异步消费日志队列：将高频的 Log 写入从请求热路径剥离，由后台 worker 批量落库。
+// 队列满时回退为同步写入，保证不丢日志。
+var LogAsyncEnabled bool
+var LogAsyncBufferSize int
+var LogAsyncBatchSize int
+var LogAsyncFlushIntervalMs int
+
 var RelayTimeout int
+
+// relay 上游 HTTP 客户端连接池。Go 默认 MaxIdleConnsPerHost=2，对网关来说过小：
+// 上游主机只保留 2 条 keepalive 连接，高并发下会反复新建/丢弃连接（TCP+TLS 握手），
+// 严重限制单上游吞吐。这里提供更合理的默认值并允许调优。
+var RelayMaxIdleConns int
+var RelayMaxIdleConnsPerHost int
+var RelayMaxConnsPerHost int
+
+// 优雅关闭：收到 SIGINT/SIGTERM 后等待在途请求处理完成的最长秒数。
+var ServerShutdownTimeout int
 
 var GeminiSafetySetting string
 
@@ -192,16 +220,16 @@ func normalizeLoginCaptchaMode(v string) string {
 // All duration's unit is seconds
 // Shouldn't larger then RateLimitKeyExpirationDuration
 var (
-	GlobalApiRateLimitNum         int
-	GlobalApiRateLimitDuration    int64 = 3 * 60
-	GlobalWebRateLimitNum         int
-	GlobalWebRateLimitDuration    int64 = 3 * 60
-	UploadRateLimitNum            = 10
-	UploadRateLimitDuration int64 = 60
-	DownloadRateLimitNum            = 10
-	DownloadRateLimitDuration int64 = 60
-	CriticalRateLimitNum            = 20
-	CriticalRateLimitDuration int64 = 20 * 60
+	GlobalApiRateLimitNum      int
+	GlobalApiRateLimitDuration int64 = 3 * 60
+	GlobalWebRateLimitNum      int
+	GlobalWebRateLimitDuration int64 = 3 * 60
+	UploadRateLimitNum               = 10
+	UploadRateLimitDuration    int64 = 60
+	DownloadRateLimitNum             = 10
+	DownloadRateLimitDuration  int64 = 60
+	CriticalRateLimitNum             = 20
+	CriticalRateLimitDuration  int64 = 20 * 60
 )
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute
@@ -266,7 +294,16 @@ func LoadRuntime() {
 	BatchUpdateEnabled = env.Bool("BATCH_UPDATE_ENABLED", false)
 	BatchUpdateInterval = env.Int("BATCH_UPDATE_INTERVAL", 5)
 
+	LogAsyncEnabled = env.Bool("LOG_ASYNC_ENABLED", true)
+	LogAsyncBufferSize = env.Int("LOG_ASYNC_BUFFER_SIZE", 10000)
+	LogAsyncBatchSize = env.Int("LOG_ASYNC_BATCH_SIZE", 100)
+	LogAsyncFlushIntervalMs = env.Int("LOG_ASYNC_FLUSH_INTERVAL_MS", 1000)
+
 	RelayTimeout = env.Int("RELAY_TIMEOUT", 0)
+	RelayMaxIdleConns = env.Int("RELAY_MAX_IDLE_CONNS", 200)
+	RelayMaxIdleConnsPerHost = env.Int("RELAY_MAX_IDLE_CONNS_PER_HOST", 100)
+	RelayMaxConnsPerHost = env.Int("RELAY_MAX_CONNS_PER_HOST", 0)
+	ServerShutdownTimeout = env.Int("SERVER_SHUTDOWN_TIMEOUT", 30)
 	GeminiSafetySetting = env.String("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
 	Theme = env.String("THEME", "vue")
 	LoginCaptchaMode = normalizeLoginCaptchaMode(env.String("LOGIN_CAPTCHA_MODE", LoginCaptchaModeRandom))

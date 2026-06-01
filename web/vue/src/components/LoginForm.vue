@@ -324,6 +324,11 @@ async function handleSubmit() {
   submitted.value = true;
   if (!inputs.username || !inputs.password) return;
 
+  // Read live state from the widget (fall back to the emitted refs) so submit
+  // never trips on stale/late v-model updates.
+  const widgetReady = captchaWidget.value ? captchaWidget.value.isReady() : captchaReady.value;
+  const widgetAnswer = captchaWidget.value ? captchaWidget.value.getAnswer() : captchaAnswer.value;
+
   if (status.value.login_math_captcha && !turnstileEnabled.value) {
     if (!captchaChallenge.value) {
       if (captchaLoading.value) showInfo(t('auth.login.captcha_loading'));
@@ -332,7 +337,7 @@ async function handleSubmit() {
       showCaptchaModal.value = true;
       return;
     }
-    if (!captchaReady.value) {
+    if (!widgetReady) {
       showInfo(t('auth.login.captcha_incomplete'));
       showCaptchaModal.value = true;
       return;
@@ -349,7 +354,7 @@ async function handleSubmit() {
         ? {
             captcha_id: captchaChallenge.value.captcha_id,
             mode: captchaChallenge.value.mode,
-            answer: captchaAnswer.value,
+            answer: widgetAnswer,
           }
         : undefined;
     const body = await buildLoginPayload(inputs.username, inputs.password, captcha, proof);

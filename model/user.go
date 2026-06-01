@@ -727,25 +727,12 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int64, count int) {
 	}
 }
 
-func updateUserUsedQuota(id int, quota int64) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"used_quota": gorm.Expr("used_quota + ?", quota),
-		},
-	).Error
-	if err != nil {
-		logger.SysError("failed to update user used quota: " + err.Error())
-	}
-}
-
-func updateUserRequestCount(id int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("request_count", gorm.Expr("request_count + ?", count)).Error
-	if err != nil {
-		logger.SysError("failed to update user request count: " + err.Error())
-	}
-}
-
 func GetUsernameById(id int) (username string) {
+	// 这是日志/错误路径上的尽力而为查询；DB 未就绪时返回空串而非 panic，
+	// 避免错误处理器自身崩溃。
+	if DB == nil {
+		return ""
+	}
 	DB.Model(&User{}).Where("id = ?", id).Select("username").Find(&username)
 	return username
 }

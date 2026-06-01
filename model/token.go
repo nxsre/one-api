@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -243,7 +244,9 @@ func PreConsumeTokenQuota(tokenId int, quota int64) (err error) {
 	if !token.UnlimitedQuota && token.RemainQuota < quota {
 		return errors.New("令牌额度不足")
 	}
-	userQuota, err := GetUserQuota(token.UserId)
+	// 用户额度走 Redis 缓存读（relay 调用方此前已 CacheGetUserQuota 预热），
+	// 省掉这里的冗余 DB SELECT；Redis 未启用时 CacheGetUserQuota 自动回退到 DB，行为不变。
+	userQuota, err := CacheGetUserQuota(context.Background(), token.UserId)
 	if err != nil {
 		return err
 	}

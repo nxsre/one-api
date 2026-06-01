@@ -304,6 +304,7 @@ func configUpdateOptionValueOnly(key, value string) {
 	config.OptionMapRWMutex.Lock()
 	config.OptionMap[key] = value
 	config.OptionMapRWMutex.Unlock()
+	PublishOptionsChanged()
 }
 
 // InitPricingEntryStore 迁移 JSON 价目为分条记录，并灌入运行时。

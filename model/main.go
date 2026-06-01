@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/songquanpeng/one-api/common"
@@ -360,7 +361,20 @@ func setDBConns(db *gorm.DB) *sql.DB {
 	sqlDB.SetMaxIdleConns(env.IntAlways("sql_max_idle_conns"))
 	sqlDB.SetMaxOpenConns(env.IntAlways("sql_max_open_conns"))
 	sqlDB.SetConnMaxLifetime(time.Second * time.Duration(env.IntAlways("sql_max_lifetime")))
+	// SQLite 是单写者：用大连接池只会触发 "database is locked" 争用，强制单连接。
+	if common.UsingSQLite {
+		sqlDB.SetMaxOpenConns(1)
+	}
 	return sqlDB
+}
+
+// PingDB 校验主库连接可用，供 /healthz 就绪探针使用。
+func PingDB(ctx context.Context) error {
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
 }
 
 func closeDB(db *gorm.DB) error {

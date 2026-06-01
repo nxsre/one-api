@@ -62,11 +62,19 @@ func (channel *Channel) AddAbilities() error {
 			abilities = append(abilities, ability)
 		}
 	}
-	return DB.Create(&abilities).Error
+	err := DB.Create(&abilities).Error
+	if err == nil {
+		PublishChannelsChanged()
+	}
+	return err
 }
 
 func (channel *Channel) DeleteAbilities() error {
-	return DB.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
+	err := DB.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
+	if err == nil {
+		PublishChannelsChanged()
+	}
+	return err
 }
 
 // UpdateAbilities updates abilities of this channel.
@@ -87,7 +95,11 @@ func (channel *Channel) UpdateAbilities() error {
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
-	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+	err := DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+	if err == nil {
+		PublishChannelsChanged()
+	}
+	return err
 }
 
 func GetGroupModels(ctx context.Context, group string) ([]string, error) {

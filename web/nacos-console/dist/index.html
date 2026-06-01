@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <title>Nacos Console（占位）</title>
+    <meta charset="UTF-8" />
+    <link rel="shortcut icon" href="./img/nacos-icon.png" type="image/x-icon" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nacos Console</title>
+    <script type="module" crossorigin src="./js/main.js"></script>
+    <link rel="modulepreload" crossorigin href="./js/vendor-react.js">
+    <link rel="modulepreload" crossorigin href="./js/vendor-monaco.js">
+    <link rel="modulepreload" crossorigin href="./js/vendor-icons.js">
+    <link rel="stylesheet" crossorigin href="./css/main.css">
+    <link rel="stylesheet" crossorigin href="./css/main3.css">
   </head>
   <body>
-    <p>
-      此为占位页：完整 Nacos 控制台由 Dockerfile 在构建阶段编译
-      <code>third_party/nacos/console-ui-next</code> 并写入
-      <code>web/nacos-console/dist</code> 后随 <code>go:embed</code> 打入二进制。
-    </p>
-    <p>
-      本地开发可执行：<code>cd third_party/nacos/console-ui-next &amp;&amp; npm ci &amp;&amp; npx tsc -b &amp;&amp; npx vite build</code>，
-      再将 <code>dist</code> 覆盖到 <code>web/nacos-console/dist</code> 后执行 <code>go build</code>。
-    </p>
+    <div id="root"></div>
   </body>
 </html>

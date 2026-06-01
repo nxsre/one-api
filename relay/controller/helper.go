@@ -143,10 +143,10 @@ func relayTenantQuotaAdjustments(meta *meta.Meta) (tenantDiscount float64, addit
 			if ch.TenantID == nil {
 				// Platform channel, apply discount
 				activeRules, _ := model.GetActiveTenantBillingRules(meta.UserTenantId, model.BillingRuleTypeDiscountRatio, now)
-				
+
 				var minDiscount float64 = -1.0
 				var minGlobalDiscount float64 = -1.0
-				
+
 				for _, r := range activeRules {
 					if r.ChannelId == meta.ChannelId {
 						if minDiscount < 0 || r.Value < minDiscount {
@@ -172,10 +172,10 @@ func relayTenantQuotaAdjustments(meta *meta.Meta) (tenantDiscount float64, addit
 			} else if *ch.TenantID == meta.UserTenantId {
 				// Tenant private channel, apply price per 1k calls
 				activeRules, _ := model.GetActiveTenantBillingRules(meta.UserTenantId, model.BillingRuleTypePricePer1k, now)
-				
+
 				var minPrice float64 = -1.0
 				var minGlobalPrice float64 = -1.0
-				
+
 				for _, r := range activeRules {
 					if r.ChannelId == meta.ChannelId {
 						if minPrice < 0 || r.Value < minPrice {
@@ -290,7 +290,7 @@ func postConsumeQuota(c *gin.Context, usage *relaymodel.Usage, meta *meta.Meta, 
 		logger.Error(ctx, "error update user quota cache: "+err.Error())
 	}
 	other := requestaudit.ConsumeLogOtherJSON(c)
-	model.RecordConsumeLog(ctx, &model.Log{
+	consumeLog := &model.Log{
 		UserId:            meta.UserId,
 		ChannelId:         meta.ChannelId,
 		TokenId:           meta.TokenId,
@@ -305,12 +305,35 @@ func postConsumeQuota(c *gin.Context, usage *relaymodel.Usage, meta *meta.Meta, 
 		IsStream:          meta.IsStream,
 		ElapsedTime:       helper.CalcElapsedTime(meta.StartTime),
 		SystemPromptReset: systemPromptReset,
-	})
+	}
+	fillConsumeLogTokenDetails(consumeLog, usage)
+	model.RecordConsumeLog(ctx, consumeLog)
 	model.UpdateUserUsedQuotaAndRequestCount(meta.UserId, quota)
 	model.UpdateChannelUsedQuota(meta.ChannelId, quota)
-	
+
 	if config.EnableHighCardinalityMetrics {
 		metrics.QuotaConsumedTotal.WithLabelValues(fmt.Sprintf("%d", meta.UserId)).Add(float64(quotaDelta))
+	}
+}
+
+// fillConsumeLogTokenDetails 把上游 usage 的明细 token 写入消费日志，便于与原厂账单逐项对齐。
+func fillConsumeLogTokenDetails(log *model.Log, usage *relaymodel.Usage) {
+	if log == nil || usage == nil {
+		return
+	}
+	if d := usage.PromptTokensDetails; d != nil {
+		log.CachedTokens = d.CachedTokens
+		log.CacheCreationTokens = d.CachedCreationTokens
+		log.ImagePromptTokens = d.ImageTokens
+		log.AudioPromptTokens = d.AudioTokens
+	}
+	// Anthropic 缓存创建按 5m/1h 分档透出，CachedCreationTokens 缺省时回退求和。
+	if log.CacheCreationTokens == 0 {
+		log.CacheCreationTokens = usage.ClaudeCacheCreation5mTokens + usage.ClaudeCacheCreation1hTokens
+	}
+	if d := usage.CompletionTokensDetails; d != nil {
+		log.ReasoningTokens = d.ReasoningTokens
+		log.AudioCompletionTokens = d.AudioTokens
 	}
 }
 

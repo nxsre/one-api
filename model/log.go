@@ -34,29 +34,36 @@ func initLogGroupColumn() {
 }
 
 type Log struct {
-	Id                int    `json:"id"`
-	UserId            int    `json:"-" gorm:"column:user_id;index"`
-	UserPublicID      string `json:"user_id" gorm:"-"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content           string `json:"content"`
-	Username          string `json:"username" gorm:"index:index_username_model_name,priority:2;default:''"`
-	TokenName         string `json:"token_name" gorm:"index;default:''"`
-	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota             int    `json:"quota" gorm:"default:0"`
-	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
-	UseTime           int    `json:"use_time" gorm:"default:0"` // 秒
-	ChannelId         int    `json:"channel" gorm:"column:channel_id;index"`
-	ChannelName       string `json:"channel_name" gorm:"-"`
-	TokenId           int    `json:"token_id" gorm:"default:0;index"`
-	Group             string `json:"group" gorm:"column:group;index;default:''"`
-	Ip                string `json:"ip" gorm:"index;default:''"`
-	RequestId         string `json:"request_id" gorm:"type:varchar(64);index;default:''"`
-	Other             string `json:"other" gorm:"type:text"`
-	ElapsedTime       int64  `json:"elapsed_time" gorm:"default:0"` // 毫秒，保留兼容
-	IsStream          bool   `json:"is_stream" gorm:"default:false"`
-	SystemPromptReset bool   `json:"system_prompt_reset" gorm:"default:false"`
+	Id               int    `json:"id"`
+	UserId           int    `json:"-" gorm:"column:user_id;index"`
+	UserPublicID     string `json:"user_id" gorm:"-"`
+	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_type"`
+	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
+	Content          string `json:"content"`
+	Username         string `json:"username" gorm:"index:index_username_model_name,priority:2;default:''"`
+	TokenName        string `json:"token_name" gorm:"index;default:''"`
+	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota            int    `json:"quota" gorm:"default:0"`
+	PromptTokens     int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens int    `json:"completion_tokens" gorm:"default:0"`
+	// 计费明细 token 项，便于与原厂账单逐项对齐（无值时为 0）。
+	CachedTokens          int    `json:"cached_tokens" gorm:"default:0"`           // 缓存命中（读）
+	CacheCreationTokens   int    `json:"cache_creation_tokens" gorm:"default:0"`   // 缓存写入（创建）
+	ReasoningTokens       int    `json:"reasoning_tokens" gorm:"default:0"`        // 推理
+	ImagePromptTokens     int    `json:"image_prompt_tokens" gorm:"default:0"`     // 图像输入
+	AudioPromptTokens     int    `json:"audio_prompt_tokens" gorm:"default:0"`     // 音频输入
+	AudioCompletionTokens int    `json:"audio_completion_tokens" gorm:"default:0"` // 音频输出
+	UseTime               int    `json:"use_time" gorm:"default:0"`                // 秒
+	ChannelId             int    `json:"channel" gorm:"column:channel_id;index"`
+	ChannelName           string `json:"channel_name" gorm:"-"`
+	TokenId               int    `json:"token_id" gorm:"default:0;index"`
+	Group                 string `json:"group" gorm:"column:group;index;default:''"`
+	Ip                    string `json:"ip" gorm:"index;default:''"`
+	RequestId             string `json:"request_id" gorm:"type:varchar(64);index;default:''"`
+	Other                 string `json:"other" gorm:"type:text"`
+	ElapsedTime           int64  `json:"elapsed_time" gorm:"default:0"` // 毫秒，保留兼容
+	IsStream              bool   `json:"is_stream" gorm:"default:false"`
+	SystemPromptReset     bool   `json:"system_prompt_reset" gorm:"default:false"`
 }
 
 const (
@@ -133,6 +140,10 @@ func recordLogHelper(ctx context.Context, log *Log) {
 	requestId := helper.GetRequestID(ctx)
 	if log.RequestId == "" {
 		log.RequestId = requestId
+	}
+	// 优先走异步队列，把写库移出请求热路径。队列满时返回 false，回退同步写入。
+	if enqueueLog(log) {
+		return
 	}
 	var err error
 	if config.LogShardByDay {
@@ -714,12 +725,18 @@ func DeleteOldLog(targetTimestamp int64) (int64, error) {
 }
 
 type LogStatistic struct {
-	Day              string `gorm:"column:day"`
-	ModelName        string `gorm:"column:model_name"`
-	RequestCount     int    `gorm:"column:request_count"`
-	Quota            int    `gorm:"column:quota"`
-	PromptTokens     int    `gorm:"column:prompt_tokens"`
-	CompletionTokens int    `gorm:"column:completion_tokens"`
+	Day                   string `gorm:"column:day"`
+	ModelName             string `gorm:"column:model_name"`
+	RequestCount          int    `gorm:"column:request_count"`
+	Quota                 int    `gorm:"column:quota"`
+	PromptTokens          int    `gorm:"column:prompt_tokens"`
+	CompletionTokens      int    `gorm:"column:completion_tokens"`
+	CachedTokens          int    `gorm:"column:cached_tokens"`
+	CacheCreationTokens   int    `gorm:"column:cache_creation_tokens"`
+	ReasoningTokens       int    `gorm:"column:reasoning_tokens"`
+	ImagePromptTokens     int    `gorm:"column:image_prompt_tokens"`
+	AudioPromptTokens     int    `gorm:"column:audio_prompt_tokens"`
+	AudioCompletionTokens int    `gorm:"column:audio_completion_tokens"`
 }
 
 func SearchLogsByDayAndModel(userId, start, end int) (LogStatistics []*LogStatistic, err error) {
@@ -743,7 +760,13 @@ func SearchLogsByDayAndModel(userId, start, end int) (LogStatistics []*LogStatis
 		model_name, count(1) as request_count,
 		sum(quota) as quota,
 		sum(prompt_tokens) as prompt_tokens,
-		sum(completion_tokens) as completion_tokens
+		sum(completion_tokens) as completion_tokens,
+		sum(cached_tokens) as cached_tokens,
+		sum(cache_creation_tokens) as cache_creation_tokens,
+		sum(reasoning_tokens) as reasoning_tokens,
+		sum(image_prompt_tokens) as image_prompt_tokens,
+		sum(audio_prompt_tokens) as audio_prompt_tokens,
+		sum(audio_completion_tokens) as audio_completion_tokens
 		FROM %s
 		WHERE type=?
 		AND user_id= ?
@@ -762,6 +785,12 @@ func SearchLogsByDayAndModel(userId, start, end int) (LogStatistics []*LogStatis
 					ex.Quota += row.Quota
 					ex.PromptTokens += row.PromptTokens
 					ex.CompletionTokens += row.CompletionTokens
+					ex.CachedTokens += row.CachedTokens
+					ex.CacheCreationTokens += row.CacheCreationTokens
+					ex.ReasoningTokens += row.ReasoningTokens
+					ex.ImagePromptTokens += row.ImagePromptTokens
+					ex.AudioPromptTokens += row.AudioPromptTokens
+					ex.AudioCompletionTokens += row.AudioCompletionTokens
 				} else {
 					cp := row
 					merged[key] = &cp
@@ -786,7 +815,13 @@ func SearchLogsByDayAndModel(userId, start, end int) (LogStatistics []*LogStatis
 		model_name, count(1) as request_count,
 		sum(quota) as quota,
 		sum(prompt_tokens) as prompt_tokens,
-		sum(completion_tokens) as completion_tokens
+		sum(completion_tokens) as completion_tokens,
+		sum(cached_tokens) as cached_tokens,
+		sum(cache_creation_tokens) as cache_creation_tokens,
+		sum(reasoning_tokens) as reasoning_tokens,
+		sum(image_prompt_tokens) as image_prompt_tokens,
+		sum(audio_prompt_tokens) as audio_prompt_tokens,
+		sum(audio_completion_tokens) as audio_completion_tokens
 		FROM logs
 		WHERE type=2
 		AND user_id= ?
@@ -796,4 +831,211 @@ func SearchLogsByDayAndModel(userId, start, end int) (LogStatistics []*LogStatis
 	`, userId, start, end).Scan(&LogStatistics).Error
 
 	return LogStatistics, err
+}
+
+// BillingSummaryRow 账单聚合的一行（维度 + 各 token 明细 + quota + 折算 USD）。
+type BillingSummaryRow struct {
+	Day                   string  `gorm:"column:day" json:"day,omitempty"`
+	ChannelId             int     `gorm:"column:channel_id" json:"channel_id,omitempty"`
+	ChannelName           string  `gorm:"-" json:"channel_name,omitempty"`
+	ModelName             string  `gorm:"column:model_name" json:"model_name,omitempty"`
+	TokenName             string  `gorm:"column:token_name" json:"token_name,omitempty"`
+	Group                 string  `gorm:"column:group" json:"group,omitempty"`
+	RequestCount          int     `gorm:"column:request_count" json:"request_count"`
+	PromptTokens          int     `gorm:"column:prompt_tokens" json:"prompt_tokens"`
+	CompletionTokens      int     `gorm:"column:completion_tokens" json:"completion_tokens"`
+	CachedTokens          int     `gorm:"column:cached_tokens" json:"cached_tokens"`
+	CacheCreationTokens   int     `gorm:"column:cache_creation_tokens" json:"cache_creation_tokens"`
+	ReasoningTokens       int     `gorm:"column:reasoning_tokens" json:"reasoning_tokens"`
+	ImagePromptTokens     int     `gorm:"column:image_prompt_tokens" json:"image_prompt_tokens"`
+	AudioPromptTokens     int     `gorm:"column:audio_prompt_tokens" json:"audio_prompt_tokens"`
+	AudioCompletionTokens int     `gorm:"column:audio_completion_tokens" json:"audio_completion_tokens"`
+	Quota                 int     `gorm:"column:quota" json:"quota"`
+	AmountUSD             float64 `gorm:"-" json:"amount_usd"`
+}
+
+// BillingSummaryParams 账单聚合查询条件。GroupBy 维度白名单：channel/model/token/group。
+type BillingSummaryParams struct {
+	StartTimestamp  int64
+	EndTimestamp    int64
+	TzOffsetMinutes int // 账单时区偏移（分钟，东八区=480）
+	WithDay         bool
+	GroupBy         []string
+	ModelName       string
+	Username        string
+	TokenName       string
+	Channel         int
+	Group           string
+}
+
+// dayGroupSelectTz 按账单时区把 created_at(unix 秒) 折算为本地自然日，用于 GROUP BY。
+func dayGroupSelectTz(tzOffsetMinutes int) string {
+	off := tzOffsetMinutes * 60
+	switch {
+	case common.UsingPostgreSQL:
+		return fmt.Sprintf("TO_CHAR(to_timestamp(created_at + %d), 'YYYY-MM-DD') as day", off)
+	case common.UsingSQLite:
+		return fmt.Sprintf("strftime('%%Y-%%m-%%d', datetime(created_at + %d, 'unixepoch')) as day", off)
+	default:
+		return fmt.Sprintf("DATE_FORMAT(FROM_UNIXTIME(created_at + %d), '%%Y-%%m-%%d') as day", off)
+	}
+}
+
+// billingSummaryAggCols 聚合度量列（与 BillingSummaryRow 对齐）。
+const billingSummaryAggCols = `count(1) as request_count,
+	sum(quota) as quota,
+	sum(prompt_tokens) as prompt_tokens,
+	sum(completion_tokens) as completion_tokens,
+	sum(cached_tokens) as cached_tokens,
+	sum(cache_creation_tokens) as cache_creation_tokens,
+	sum(reasoning_tokens) as reasoning_tokens,
+	sum(image_prompt_tokens) as image_prompt_tokens,
+	sum(audio_prompt_tokens) as audio_prompt_tokens,
+	sum(audio_completion_tokens) as audio_completion_tokens`
+
+// billingDimensions 解析 GroupBy 为 (SELECT 维度列, GROUP BY 列, 行 key 维度名)。仅白名单可用。
+func billingDimensions(p BillingSummaryParams) (selDims []string, groupDims []string) {
+	if p.WithDay {
+		selDims = append(selDims, dayGroupSelectTz(p.TzOffsetMinutes))
+		groupDims = append(groupDims, "day")
+	}
+	for _, g := range p.GroupBy {
+		switch g {
+		case "channel":
+			selDims = append(selDims, "channel_id")
+			groupDims = append(groupDims, "channel_id")
+		case "model":
+			selDims = append(selDims, "model_name")
+			groupDims = append(groupDims, "model_name")
+		case "token":
+			selDims = append(selDims, "token_name")
+			groupDims = append(groupDims, "token_name")
+		case "group":
+			selDims = append(selDims, logGroupCol+" as \"group\"")
+			groupDims = append(groupDims, logGroupCol)
+		}
+	}
+	return selDims, groupDims
+}
+
+func billingRowKey(r *BillingSummaryRow) string {
+	return strings.Join([]string{r.Day, fmt.Sprintf("%d", r.ChannelId), r.ModelName, r.TokenName, r.Group}, "\x00")
+}
+
+func mergeBillingRow(dst, src *BillingSummaryRow) {
+	dst.RequestCount += src.RequestCount
+	dst.PromptTokens += src.PromptTokens
+	dst.CompletionTokens += src.CompletionTokens
+	dst.CachedTokens += src.CachedTokens
+	dst.CacheCreationTokens += src.CacheCreationTokens
+	dst.ReasoningTokens += src.ReasoningTokens
+	dst.ImagePromptTokens += src.ImagePromptTokens
+	dst.AudioPromptTokens += src.AudioPromptTokens
+	dst.AudioCompletionTokens += src.AudioCompletionTokens
+	dst.Quota += src.Quota
+}
+
+// queryBillingOnTable 在单张表上执行账单聚合。
+func queryBillingOnTable(tbl string, p BillingSummaryParams, selDims, groupDims []string) ([]*BillingSummaryRow, error) {
+	selectClause := strings.Join(append(append([]string{}, selDims...), billingSummaryAggCols), ", ")
+	tx := LOG_DB.Table(tbl).Select(selectClause)
+	tx, err := applyLogConsumeStatFilters(tx, p.StartTimestamp, p.EndTimestamp, p.ModelName, p.Username, p.TokenName, p.Channel, p.Group)
+	if err != nil {
+		return nil, err
+	}
+	tx = tx.Where("type = ?", LogTypeConsume)
+	if len(groupDims) > 0 {
+		tx = tx.Group(strings.Join(groupDims, ", "))
+	}
+	var rows []*BillingSummaryRow
+	if err := tx.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// SummarizeBilling 按账期/时区做账单聚合，逐项透出 token 明细并折算 USD 金额。
+func SummarizeBilling(p BillingSummaryParams) ([]*BillingSummaryRow, error) {
+	selDims, groupDims := billingDimensions(p)
+
+	var rows []*BillingSummaryRow
+	if config.LogShardByDay {
+		tables, err := tablesForLogQuery(p.StartTimestamp, p.EndTimestamp)
+		if err != nil {
+			return nil, err
+		}
+		merged := make(map[string]*BillingSummaryRow)
+		for _, tbl := range tables {
+			batch, err := queryBillingOnTable(tbl, p, selDims, groupDims)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range batch {
+				key := billingRowKey(row)
+				if ex, ok := merged[key]; ok {
+					mergeBillingRow(ex, row)
+				} else {
+					merged[key] = row
+				}
+			}
+		}
+		rows = make([]*BillingSummaryRow, 0, len(merged))
+		for _, v := range merged {
+			rows = append(rows, v)
+		}
+	} else {
+		batch, err := queryBillingOnTable("logs", p, selDims, groupDims)
+		if err != nil {
+			return nil, err
+		}
+		rows = batch
+	}
+
+	for _, r := range rows {
+		r.AmountUSD = float64(r.Quota) / config.QuotaPerUnit
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Day != rows[j].Day {
+			return rows[i].Day < rows[j].Day
+		}
+		if rows[i].ChannelId != rows[j].ChannelId {
+			return rows[i].ChannelId < rows[j].ChannelId
+		}
+		return rows[i].ModelName < rows[j].ModelName
+	})
+	fillBillingChannelNames(rows)
+	return rows, nil
+}
+
+func fillBillingChannelNames(rows []*BillingSummaryRow) {
+	seen := map[int]struct{}{}
+	var ids []int
+	for _, r := range rows {
+		if r.ChannelId != 0 {
+			if _, ok := seen[r.ChannelId]; !ok {
+				seen[r.ChannelId] = struct{}{}
+				ids = append(ids, r.ChannelId)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	var crows []struct {
+		Id   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Table("channels").Select("id", "name").Where("id IN ?", ids).Find(&crows).Error; err != nil {
+		logger.SysError("fillBillingChannelNames: " + err.Error())
+		return
+	}
+	m := make(map[int]string, len(crows))
+	for _, r := range crows {
+		m[r.Id] = r.Name
+	}
+	for _, r := range rows {
+		if name := m[r.ChannelId]; name != "" {
+			r.ChannelName = name
+		}
+	}
 }

@@ -195,6 +195,14 @@
             <span v-if="record.completion_tokens == null" style="color: #999">—</span>
             <span v-else>{{ record.completion_tokens }}</span>
           </template>
+          <template v-else-if="column.key === 'cached_tokens'">
+            <span v-if="!record.cached_tokens" style="color: #999">—</span>
+            <span v-else>{{ record.cached_tokens }}</span>
+          </template>
+          <template v-else-if="column.key === 'reasoning_tokens'">
+            <span v-if="!record.reasoning_tokens" style="color: #999">—</span>
+            <span v-else>{{ record.reasoning_tokens }}</span>
+          </template>
 
           <template v-else-if="column.key === 'quota'">
             <span v-if="record.quota == null" style="color: #999">—</span>
@@ -247,6 +255,14 @@
           </a-checkbox>
           <a-button size="small" :loading="loading" @click="refresh">
             {{ t('log.buttons.refresh') }}
+          </a-button>
+          <a-button
+            v-if="isAdminUser"
+            size="small"
+            :loading="exporting"
+            @click="exportLogs"
+          >
+            导出 CSV
           </a-button>
         </div>
         <a-pagination
@@ -301,6 +317,7 @@ const { t } = useI18n();
 const logs = ref([]);
 const total = ref(0);
 const loading = ref(true);
+const exporting = ref(false);
 const activePage = ref(1);
 const logType = ref(0);
 const includeErrors = ref(false);
@@ -398,6 +415,8 @@ const columns = computed(() => {
     { title: 'IP', key: 'ip', sortField: 'ip', width: '7.5rem' },
     { title: t('log.table.prompt_tokens_short'), key: 'prompt_tokens', sortField: 'prompt_tokens', headerTitle: t('log.table.prompt_tokens'), width: '4.75rem', align: 'right' },
     { title: t('log.table.completion_tokens_short'), key: 'completion_tokens', sortField: 'completion_tokens', headerTitle: t('log.table.completion_tokens'), width: '4.75rem', align: 'right' },
+    { title: '缓存', key: 'cached_tokens', headerTitle: '缓存命中 token', width: '4.5rem', align: 'right' },
+    { title: '推理', key: 'reasoning_tokens', headerTitle: '推理 token', width: '4.5rem', align: 'right' },
     { title: t('log.table.quota'), key: 'quota', sortField: 'quota', width: '5.5rem', align: 'right' },
     { title: t('log.table.use_time'), key: 'use_time', sortField: 'use_time', width: '3.75rem', align: 'right' },
     { title: t('log.table.detail'), key: 'detail', class: 'log-col-detail' },
@@ -488,6 +507,30 @@ const loadLogs = async (page) => {
     showError(message);
   }
   loading.value = false;
+};
+
+const exportLogs = async () => {
+  exporting.value = true;
+  try {
+    const localStartTimestamp = Date.parse(inputs.start_timestamp) / 1000;
+    const localEndTimestamp = Date.parse(inputs.end_timestamp) / 1000;
+    const g = encodeURIComponent(inputs.group || '');
+    const rid = encodeURIComponent(inputs.request_id || '');
+    const url = `/api/log/export?type=${logType.value}&username=${encodeURIComponent(inputs.username)}&token_name=${encodeURIComponent(inputs.token_name)}&model_name=${encodeURIComponent(inputs.model_name)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${inputs.channel}&group=${g}&request_id=${rid}${includeErrorsQuery()}`;
+    const res = await API.get(url, { responseType: 'blob' });
+    const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' });
+    const dl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dl;
+    a.download = `logs_export_${localStartTimestamp}_${localEndTimestamp}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(dl);
+    showSuccess('账单 CSV 导出完成');
+  } catch (e) {
+    showError(e.message || '导出失败');
+  } finally {
+    exporting.value = false;
+  }
 };
 
 const onPaginationChange = async (page) => {

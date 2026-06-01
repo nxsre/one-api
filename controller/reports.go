@@ -15,7 +15,7 @@ import (
 func PlatformGetBillingReport(c *gin.Context) {
 	start, _ := strconv.ParseInt(c.Query("start_time"), 10, 64)
 	end, _ := strconv.ParseInt(c.Query("end_time"), 10, 64)
-	
+
 	if start == 0 {
 		start = time.Now().AddDate(0, -1, 0).Unix() // Default to last month
 	}
@@ -36,7 +36,7 @@ func PlatformGetBillingReport(c *gin.Context) {
 func PlatformExportBillingReport(c *gin.Context) {
 	start, _ := strconv.ParseInt(c.Query("start_time"), 10, 64)
 	end, _ := strconv.ParseInt(c.Query("end_time"), 10, 64)
-	
+
 	if start == 0 {
 		start = time.Now().AddDate(0, -1, 0).Unix()
 	}
@@ -50,20 +50,32 @@ func PlatformExportBillingReport(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/csv")
+	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment;filename=platform_billing_report.csv")
+	_, _ = c.Writer.WriteString("\xEF\xBB\xBF")
 
 	writer := csv.NewWriter(c.Writer)
-	writer.Write([]string{"Tenant ID", "Tenant Name", "Quota", "Request Count", "Prompt Tokens", "Completion Tokens"})
-	
+	writer.Write([]string{
+		"Tenant ID", "Tenant Name", "Quota", "Amount USD", "Request Count",
+		"Prompt Tokens", "Completion Tokens", "Cached Tokens", "Cache Creation Tokens",
+		"Reasoning Tokens", "Image Prompt Tokens", "Audio Prompt Tokens", "Audio Completion Tokens",
+	})
+
 	for _, r := range rows {
 		writer.Write([]string{
 			fmt.Sprintf("%d", r.TenantId),
 			r.TenantName,
 			fmt.Sprintf("%d", r.Quota),
+			fmt.Sprintf("%.6f", r.AmountUSD),
 			fmt.Sprintf("%d", r.RequestCount),
 			fmt.Sprintf("%d", r.PromptTokens),
 			fmt.Sprintf("%d", r.CompletionTokens),
+			fmt.Sprintf("%d", r.CachedTokens),
+			fmt.Sprintf("%d", r.CacheCreationTokens),
+			fmt.Sprintf("%d", r.ReasoningTokens),
+			fmt.Sprintf("%d", r.ImagePromptTokens),
+			fmt.Sprintf("%d", r.AudioPromptTokens),
+			fmt.Sprintf("%d", r.AudioCompletionTokens),
 		})
 	}
 	writer.Flush()
@@ -120,12 +132,17 @@ func TenantExportBillingReport(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/csv")
+	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment;filename=tenant_billing_report.csv")
+	_, _ = c.Writer.WriteString("\xEF\xBB\xBF")
 
 	writer := csv.NewWriter(c.Writer)
-	writer.Write([]string{"User ID", "Username", "Channel ID", "Channel Name", "Model Name", "Quota", "Request Count", "Prompt Tokens", "Completion Tokens"})
-	
+	writer.Write([]string{
+		"User ID", "Username", "Channel ID", "Channel Name", "Model Name", "Quota", "Amount USD",
+		"Request Count", "Prompt Tokens", "Completion Tokens", "Cached Tokens", "Cache Creation Tokens",
+		"Reasoning Tokens", "Image Prompt Tokens", "Audio Prompt Tokens", "Audio Completion Tokens",
+	})
+
 	for _, r := range rows {
 		writer.Write([]string{
 			fmt.Sprintf("%d", r.UserId),
@@ -134,9 +151,16 @@ func TenantExportBillingReport(c *gin.Context) {
 			r.ChannelName,
 			r.ModelName,
 			fmt.Sprintf("%d", r.Quota),
+			fmt.Sprintf("%.6f", r.AmountUSD),
 			fmt.Sprintf("%d", r.RequestCount),
 			fmt.Sprintf("%d", r.PromptTokens),
 			fmt.Sprintf("%d", r.CompletionTokens),
+			fmt.Sprintf("%d", r.CachedTokens),
+			fmt.Sprintf("%d", r.CacheCreationTokens),
+			fmt.Sprintf("%d", r.ReasoningTokens),
+			fmt.Sprintf("%d", r.ImagePromptTokens),
+			fmt.Sprintf("%d", r.AudioPromptTokens),
+			fmt.Sprintf("%d", r.AudioCompletionTokens),
 		})
 	}
 	writer.Flush()

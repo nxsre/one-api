@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
@@ -14,6 +16,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// HealthCheck 用作 K8s liveness/readiness 探针：校验主库连接是否可用。
+// DB 可达返回 200，否则返回 503，使探针能将无法服务的实例摘除。
+func HealthCheck(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+	if err := model.PingDB(ctx); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "unavailable",
+			"db":     "down",
+			"error":  err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"db":     "up",
+		"redis":  common.RedisEnabled,
+	})
+}
 
 func GetStatus(c *gin.Context) {
 	var data gin.H
