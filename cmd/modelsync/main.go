@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,6 +55,7 @@ type options struct {
 
 	litellmURL    string
 	openrouterURL string
+	modelsdevURL  string
 }
 
 // provider 描述一家原厂的拉取方式与回写目标。
@@ -67,7 +69,7 @@ type provider struct {
 func main() {
 	var o options
 	flag.StringVar(&o.providers, "providers", "openai,anthropic,gemini", "要更新的厂商，逗号分隔：openai,anthropic,gemini")
-	flag.StringVar(&o.source, "source", "api", "模型列表来源，可逗号分隔多个取并集：api(官方,需 key) | litellm(免 key) | openrouter(免 key)")
+	flag.StringVar(&o.source, "source", "api", "模型列表来源，可逗号分隔多个取并集：api(官方,需 key) | litellm | openrouter | models.dev（后三者免 key）")
 	flag.StringVar(&o.proxy, "proxy", "", "HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890（留空则用 HTTPS_PROXY/HTTP_PROXY 环境变量）")
 	flag.StringVar(&o.ua, "ua", defaultChromeUA, "请求使用的 User-Agent（默认 Chrome）")
 	flag.StringVar(&o.repoRoot, "repo", ".", "仓库根目录（用于定位各适配器 constants.go）")
@@ -80,6 +82,7 @@ func main() {
 	flag.StringVar(&o.geminiBase, "gemini-base", envOr("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"), "Gemini API Base URL")
 	flag.StringVar(&o.litellmURL, "litellm-url", "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json", "LiteLLM 模型价目 JSON 地址（免 key 源）")
 	flag.StringVar(&o.openrouterURL, "openrouter-url", "https://openrouter.ai/api/v1/models", "OpenRouter 模型列表地址（免 key 源）")
+	flag.StringVar(&o.modelsdevURL, "modelsdev-url", "https://models.dev/api.json", "models.dev 模型目录地址（免 key、中立开放源）")
 	flag.Parse()
 
 	c, err := newClient(o.proxy, o.ua, o.timeout)
@@ -95,15 +98,15 @@ func main() {
 
 	sources := splitCSV(o.source)
 	for _, s := range sources {
-		if s != "api" && s != "litellm" && s != "openrouter" {
-			fatal("未知 -source %q（可选 api|litellm|openrouter，可逗号分隔）", s)
+		if s != "api" && s != "litellm" && s != "openrouter" && s != "models.dev" {
+			fatal("未知 -source %q（可选 api|litellm|openrouter|models.dev，可逗号分隔）", s)
 		}
 	}
 
 	excludePatterns := splitCSV(o.exclude)
 
 	ctx := context.Background()
-	agg := &aggregator{c: c, litellmURL: o.litellmURL, openrouterURL: o.openrouterURL}
+	agg := &aggregator{c: c, litellmURL: o.litellmURL, openrouterURL: o.openrouterURL, modelsdevURL: o.modelsdevURL}
 	exitCode := 0
 	for _, name := range splitCSV(o.providers) {
 		p, ok := all[name]
@@ -125,6 +128,8 @@ func main() {
 				part, err = agg.litellm(ctx, p.name)
 			case "openrouter":
 				part, err = agg.openrouter(ctx, p.name)
+			case "models.dev":
+				part, err = agg.modelsdev(ctx, p.name)
 			}
 			if err != nil {
 				warn("[%s] 源 %s 拉取失败: %v", p.name, s, err)
@@ -321,9 +326,47 @@ type aggregator struct {
 	c             *client
 	litellmURL    string
 	openrouterURL string
+	modelsdevURL  string
 
 	liteCache map[string][]string // provider -> models
 	orCache   map[string][]string
+	mdCache   map[string][]string
+}
+
+// modelsdevProviderKey 把本工具的厂商名映射为 models.dev 的 provider key。
+var modelsdevProviderKey = map[string]string{
+	"openai":    "openai",
+	"anthropic": "anthropic",
+	"gemini":    "google",
+}
+
+func (a *aggregator) modelsdev(ctx context.Context, provider string) ([]string, error) {
+	if a.mdCache == nil {
+		// 顶层为 provider -> {models: {modelID -> {id}}}。
+		var raw map[string]struct {
+			Models map[string]struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		}
+		if err := a.c.getJSON(ctx, a.modelsdevURL, nil, &raw); err != nil {
+			return nil, err
+		}
+		a.mdCache = map[string][]string{}
+		for ourName, key := range modelsdevProviderKey {
+			for mid, m := range raw[key].Models {
+				id := m.ID
+				if id == "" {
+					id = mid
+				}
+				a.mdCache[ourName] = append(a.mdCache[ourName], id)
+			}
+		}
+	}
+	out := a.mdCache[provider]
+	if len(out) == 0 {
+		return nil, fmt.Errorf("models.dev 源中未找到 %s 的模型（provider=%s）", provider, modelsdevProviderKey[provider])
+	}
+	return out, nil
 }
 
 // litellmProviderKey 把本工具的厂商名映射为 LiteLLM 的 litellm_provider 取值。
@@ -455,12 +498,27 @@ func matchAny(id string, patterns []string) bool {
 	return false
 }
 
-// normalize 去重 + 排序，保证回写结果稳定。
+var claudeReorderRe = regexp.MustCompile(`^claude-(\d+)-(opus|sonnet|haiku)(-.*)?$`)
+
+// canonicalID 把不同来源对同一模型的命名变体归一，便于跨源去重。
+// Anthropic 命名约定在 Claude 4 起改为 family 在前（claude-opus-4），Claude 3 仍是
+// version 在前（claude-3-haiku）。故仅对 version>=4 把 LiteLLM 的 claude-4-opus-X
+// 归一为官方的 claude-opus-4-X，避免误伤 claude-3-haiku 等。
+func canonicalID(id string) string {
+	if m := claudeReorderRe.FindStringSubmatch(id); m != nil {
+		if n, err := strconv.Atoi(m[1]); err == nil && n >= 4 {
+			return "claude-" + m[2] + "-" + m[1] + m[3]
+		}
+	}
+	return id
+}
+
+// normalize 归一 + 去重 + 排序，保证回写结果稳定；跨源命名变体（如 claude-4-opus / claude-opus-4）会合并。
 func normalize(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]string, 0, len(in))
 	for _, s := range in {
-		s = strings.TrimSpace(s)
+		s = canonicalID(strings.TrimSpace(s))
 		if s == "" {
 			continue
 		}
