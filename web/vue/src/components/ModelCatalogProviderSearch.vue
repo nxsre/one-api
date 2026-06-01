@@ -93,21 +93,24 @@ function handleSearchChange(query) {
   }, 220);
 }
 
+// emit('change', value, exact)：exact 表示 value 命中某个已知 provider 选项（应走精确 provider_key 过滤），
+// 否则为手工输入（走模糊 filter_provider）。
 function handleChange(v) {
   searchText.value = '';
-  emit('change', v || '');
+  const val = v || '';
+  emit('change', val, optionExists(val));
 }
 
 function addCurrent() {
   const v = String(searchText.value ?? '').trim();
   if (!v) return;
   searchText.value = '';
-  emit('change', v);
+  emit('change', v, optionExists(v));
 }
 
 function handleBlur() {
   if (!String(props.value || '').trim() && mergedOptions.value.length === 1) {
-    emit('change', mergedOptions.value[0].value);
+    emit('change', mergedOptions.value[0].value, true);
   }
 }
 </script>

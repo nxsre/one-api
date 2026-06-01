@@ -57,16 +57,16 @@ func joinAnthropicModelsListURL(base string) string {
 }
 
 // fetchOpenAIStyleModelList 解析 OpenAI 兼容 GET /v1/models（含 OpenRouter、new-api 代理）。
+// authBearer 为空时匿名请求（如 OpenRouter /api/v1/models 为公开接口）；非空才带 Authorization。
 func fetchOpenAIStyleModelList(ctx context.Context, listURL, authBearer string, ownedByLabel, sourceTag string) ([]model.ModelCatalog, error) {
 	authBearer = strings.TrimSpace(authBearer)
-	if authBearer == "" {
-		return nil, fmt.Errorf("密钥为空")
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", bearerAuthorizationValue(authBearer))
+	if authBearer != "" {
+		req.Header.Set("Authorization", bearerAuthorizationValue(authBearer))
+	}
 	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -196,9 +196,9 @@ func fetchGeminiModelList(ctx context.Context, baseURL, apiKey, apiVersion strin
 }
 
 type geminiModelListFetchOpts struct {
-	useQueryKey  bool
+	useQueryKey   bool
 	useGoogHeader bool
-	useBearer    bool
+	useBearer     bool
 }
 
 func bearerAuthorizationValue(apiKey string) string {
@@ -467,11 +467,8 @@ func buildRowsForModelCatalogSync(ctx context.Context, req *modelCatalogSyncRequ
 		u := joinOpenAIModelsListURL(req.BaseURL)
 		return fetchOpenAIStyleModelList(ctx, u, key, "openai-compatible", "sync_openai_compatible")
 	case "openrouter":
-		key := strings.TrimSpace(req.APIKey)
-		if key == "" {
-			return nil, fmt.Errorf("需要 api_key")
-		}
-		return fetchOpenAIStyleModelList(ctx, "https://openrouter.ai/api/v1/models", key, "openrouter", "sync_openrouter")
+		// OpenRouter /api/v1/models 为公开接口，匿名即可拉取；若提供 key 则一并带上。
+		return fetchOpenAIStyleModelList(ctx, "https://openrouter.ai/api/v1/models", strings.TrimSpace(req.APIKey), "openrouter", "sync_openrouter")
 	case "anthropic", "claude":
 		key := strings.TrimSpace(req.APIKey)
 		if key == "" {

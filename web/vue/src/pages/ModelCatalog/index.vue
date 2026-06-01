@@ -253,11 +253,18 @@
           </a-form-item>
         </template>
 
-        <template v-if="syncSource === 'openai_compatible' || syncSource === 'openrouter'">
+        <template v-if="syncSource === 'openai_compatible'">
           <a-form-item :label="t('model_catalog.base_url')">
             <a-input v-model:value="syncBaseURL" placeholder="https://api.openai.com/v1" />
           </a-form-item>
           <a-form-item :label="t('model_catalog.api_key')">
+            <a-input-password v-model:value="syncApiKey" v-bind="noAutofillSecretProps" />
+          </a-form-item>
+        </template>
+
+        <template v-if="syncSource === 'openrouter'">
+          <a-alert type="info" :message="t('model_catalog.sync_openrouter_hint')" style="margin-bottom:12px" />
+          <a-form-item :label="t('model_catalog.api_key_optional')">
             <a-input-password v-model:value="syncApiKey" v-bind="noAutofillSecretProps" />
           </a-form-item>
         </template>
@@ -324,6 +331,7 @@ const EMPTY_FILTERS = {
   model_id: '',
   model_name: '',
   provider: '',
+  provider_exact: false,
   family: '',
   modalities_in: '',
   modalities_out: '',
@@ -431,7 +439,12 @@ async function load() {
     const f = filters;
     if (String(f.model_id || '').trim()) params.set('filter_model_id', String(f.model_id).trim());
     if (String(f.model_name || '').trim()) params.set('filter_model_name', String(f.model_name).trim());
-    if (String(f.provider || '').trim()) params.set('filter_provider', String(f.provider).trim());
+    if (String(f.provider || '').trim()) {
+      const pv = String(f.provider).trim();
+      // 选中已知提供方走精确匹配，避免「google」误中「google-vertex」。
+      if (f.provider_exact) params.set('filter_provider_key', pv);
+      else params.set('filter_provider', pv);
+    }
     if (String(f.family || '').trim()) params.set('filter_family', String(f.family).trim());
     if (String(f.modalities_in || '').trim()) params.set('filter_modalities_in', String(f.modalities_in).trim());
     if (String(f.modalities_out || '').trim()) params.set('filter_modalities_out', String(f.modalities_out).trim());
@@ -485,8 +498,10 @@ watch(totalPages, (tp) => {
   activePage.value = Math.min(Math.max(1, activePage.value), tp);
 });
 
-function onProviderChange(value) {
+function onProviderChange(value, exact) {
   filters.provider = value;
+  // 下拉选中已知提供方 → 精确(filter_provider_key)；手工输入 → 模糊(filter_provider)。
+  filters.provider_exact = !!exact;
   activePage.value = 1;
 }
 
@@ -583,9 +598,13 @@ async function runSync() {
     ) {
       const u = String(syncBaseURL.value || '').trim();
       if (u) body.base_url = u;
-    } else if (syncSource.value === SYNC_OPENAI || syncSource.value === SYNC_OPENROUTER) {
+    } else if (syncSource.value === SYNC_OPENAI) {
       body.base_url = String(syncBaseURL.value || '').trim();
       body.api_key = String(syncApiKey.value || '').trim();
+    } else if (syncSource.value === SYNC_OPENROUTER) {
+      // OpenRouter 公开接口，匿名即可；key 可选（留空则匿名拉取）。
+      const k = String(syncApiKey.value || '').trim();
+      if (k) body.api_key = k;
     } else if (syncSource.value === SYNC_ANTHROPIC || syncSource.value === SYNC_GEMINI) {
       body.api_key = String(syncApiKey.value || '').trim();
     } else if (syncSource.value === SYNC_NEW_API_MODELS) {
