@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,12 +34,21 @@ func payOption(key string) string {
 
 func wechatPayEnabled() bool { return payOption("WeChatPayEnabled") == "true" }
 
-// quotaPerYuan 每 1 元人民币折算的额度；未配置时回落 500000。
+// quotaPerYuan 每 1 元（面值）折算的额度；未配置时回落 500000。
 func quotaPerYuan() int64 {
 	if v, err := strconv.ParseInt(payOption("WeChatPayQuotaPerYuan"), 10, 64); err == nil && v > 0 {
 		return v
 	}
 	return 500000
+}
+
+// paymentDiscount 实付折扣（0,1]：实付金额 = 面值 × 折扣。未配置/非法回落 1（不打折）。
+// 例：充值面值 200、折扣 0.005 → 实付 1 元；到账额度仍按面值 200 计。
+func paymentDiscount() float64 {
+	if v, err := strconv.ParseFloat(payOption("WeChatPayDiscount"), 64); err == nil && v > 0 && v <= 1 {
+		return v
+	}
+	return 1
 }
 
 // normalizePEM 兼容把私钥粘贴成带字面量 \n 的单行情形。
@@ -141,14 +151,20 @@ func CreateWeChatNativeOrder(c *gin.Context) {
 		return
 	}
 
-	amountCents := req.Amount * 100
+	faceCents := req.Amount * 100
 	quota := int64(req.Amount) * quotaPerYuan()
+	// 实付 = 面值 × 折扣（向上取整到分，且不低于微信最小 1 分）。
+	amountCents := int(math.Ceil(float64(faceCents) * paymentDiscount()))
+	if amountCents < 1 {
+		amountCents = 1
+	}
 	orderNo := genOrderNo()
 	order := &model.PaymentOrder{
 		OrderNo:     orderNo,
 		UserId:      userId,
 		Channel:     "wxpay",
 		TradeType:   "NATIVE",
+		FaceCents:   faceCents,
 		AmountCents: amountCents,
 		Quota:       quota,
 		Status:      "pending",
@@ -189,10 +205,12 @@ func CreateWeChatNativeOrder(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"order_no": orderNo,
-			"code_url": codeURL,
-			"amount":   req.Amount,
-			"quota":    quota,
+			"order_no":   orderNo,
+			"code_url":   codeURL,
+			"amount":     req.Amount,                  // 面值（元）
+			"pay_amount": float64(amountCents) / 100.0, // 实付（元，已打折）
+			"discount":   paymentDiscount(),
+			"quota":      quota,
 		},
 	})
 }

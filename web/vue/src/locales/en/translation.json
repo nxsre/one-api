@@ -510,7 +510,9 @@
       "create": "Generate QR code",
       "scan_tip": "Scan with WeChat to pay",
       "paid": "Paid — quota credited",
-      "invalid_amount": "Please enter a valid amount"
+      "invalid_amount": "Please enter a valid amount",
+      "to_account": "Credit",
+      "actual_pay": "Pay"
     },
     "get_code": {
       "title": "Get Redemption Code",
@@ -541,6 +543,8 @@
       "apiv3": "APIv3 key",
       "notify_domain": "Notify domain (public)",
       "quota_per_yuan": "Quota per CNY",
+      "discount": "Payment discount",
+      "discount_hint": "Actual pay = face value × discount, range (0,1]; 1 = no discount. E.g. discount 0.005 means a face value of CNY 200 is paid as CNY 1, while credited quota still follows CNY 200.",
       "private_key": "Merchant private key (PEM)",
       "save": "Save WeChat Pay config",
       "saved": "WeChat Pay config saved"

@@ -71,6 +71,17 @@
               />
             </a-form-item>
           </a-col>
+          <a-col :xs="24" :md="12">
+            <a-form-item :label="t('payment.wechat.discount')">
+              <a-input
+                v-model:value="inputs.WeChatPayDiscount"
+                :readonly="!autofillUnlocked"
+                @focus="autofillUnlocked = true"
+                v-bind="noAutofillTextProps"
+              />
+              <div class="payment-hint" style="margin-top: 4px">{{ t('payment.wechat.discount_hint') }}</div>
+            </a-form-item>
+          </a-col>
           <a-col :span="24">
             <a-form-item :label="t('payment.wechat.private_key')">
               <a-textarea
@@ -154,6 +165,7 @@ const WECHAT_KEYS = [
   'WeChatPayApiV3Key',
   'WeChatPayNotifyDomain',
   'WeChatPayQuotaPerYuan',
+  'WeChatPayDiscount',
   'WeChatPayPrivateKey',
 ];
 
@@ -164,6 +176,7 @@ const inputs = reactive({
   WeChatPayApiV3Key: '',
   WeChatPayNotifyDomain: '',
   WeChatPayQuotaPerYuan: '500000',
+  WeChatPayDiscount: '1',
   WeChatPayPrivateKey: '',
 });
 const wxEnabled = ref(false);

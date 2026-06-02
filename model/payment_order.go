@@ -15,10 +15,11 @@ type PaymentOrder struct {
 	Id            int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	OrderNo       string `json:"order_no" gorm:"uniqueIndex;size:64;not null"`
 	UserId        int    `json:"user_id" gorm:"index;not null"`
-	Channel       string `json:"channel" gorm:"size:16;not null"` // wxpay 等
-	TradeType     string `json:"trade_type" gorm:"size:16"`       // NATIVE 等
-	AmountCents   int    `json:"amount_cents" gorm:"not null"`    // 支付金额（分）
-	Quota         int64  `json:"quota" gorm:"not null"`           // 到账额度
+	Channel       string `json:"channel" gorm:"size:16;not null"`        // wxpay 等
+	TradeType     string `json:"trade_type" gorm:"size:16"`              // NATIVE 等
+	FaceCents     int    `json:"face_cents" gorm:"not null;default:0"`   // 充值面值/原价（分），到账额度按此计
+	AmountCents   int    `json:"amount_cents" gorm:"not null"`           // 实付金额（分，已打折）
+	Quota         int64  `json:"quota" gorm:"not null"`                 // 到账额度
 	Status        string `json:"status" gorm:"size:16;index;not null;default:'pending'"`
 	TransactionId string `json:"transaction_id" gorm:"size:64"`
 	CodeUrl       string `json:"code_url" gorm:"size:512"`

@@ -86,7 +86,12 @@
                   style="width: 220px"
                 />
                 <span v-if="payAmount" class="wx-pay-quota">
-                  ≈ {{ renderQuota(payAmount * quotaPerYuan, t) }}
+                  {{ t('topup.wechat.to_account') }} ≈ {{ renderQuota(payAmount * quotaPerYuan, t) }}
+                  <template v-if="discount < 1">
+                    · {{ t('topup.wechat.actual_pay') }}
+                    <b style="color: #fa541c">¥{{ (payAmount * discount).toFixed(2) }}</b>
+                    <span style="text-decoration: line-through; margin-left: 4px">¥{{ payAmount.toFixed ? payAmount.toFixed(2) : payAmount }}</span>
+                  </template>
                 </span>
                 <a-button
                   type="primary"
@@ -105,7 +110,10 @@
                 />
                 <div class="wx-pay-tip">
                   <span v-if="payStatus === 'paid'" style="color: #21ba45">{{ t('topup.wechat.paid') }}</span>
-                  <span v-else>{{ t('topup.wechat.scan_tip') }}</span>
+                  <span v-else>
+                    {{ t('topup.wechat.scan_tip') }}
+                    <template v-if="payActual !== null"> · {{ t('topup.wechat.actual_pay') }} ¥{{ payActual }}</template>
+                  </span>
                 </div>
               </div>
             </div>
@@ -139,7 +147,9 @@ const user = ref({});
 // 微信扫码支付
 const wxAllowed = ref(false);
 const quotaPerYuan = ref(500000);
+const discount = ref(1);
 const payAmount = ref(10);
+const payActual = ref(null);
 const paying = ref(false);
 const codeUrl = ref('');
 const payOrderNo = ref('');
@@ -153,6 +163,7 @@ const loadPayChannels = async () => {
     if (success && data) {
       wxAllowed.value = (data.channels || []).includes('wxpay');
       if (data.quota_per_yuan) quotaPerYuan.value = data.quota_per_yuan;
+      if (data.discount && data.discount > 0) discount.value = data.discount;
     }
   } catch (e) {
     /* 静默：未开通即不展示 */
@@ -194,6 +205,7 @@ const createWxPay = async () => {
   codeUrl.value = '';
   payStatus.value = '';
   payOrderNo.value = '';
+  payActual.value = null;
   try {
     const res = await API.post('/api/user/pay/wechat/native', { amount: payAmount.value });
     const { success, message, data } = res.data;
@@ -201,6 +213,7 @@ const createWxPay = async () => {
       codeUrl.value = data.code_url;
       payOrderNo.value = data.order_no;
       payStatus.value = 'pending';
+      if (typeof data.pay_amount === 'number') payActual.value = data.pay_amount.toFixed(2);
       pollOrder();
     } else {
       showError(message);
