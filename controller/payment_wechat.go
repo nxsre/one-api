@@ -42,13 +42,17 @@ func quotaPerYuan() int64 {
 	return 500000
 }
 
-// paymentDiscount 实付折扣（0,1]：实付金额 = 面值 × 折扣。未配置/非法回落 1（不打折）。
-// 例：充值面值 200、折扣 0.005 → 实付 1 元；到账额度仍按面值 200 计。
+// paymentDiscount 全局默认实付折扣（0,1]：实付金额 = 面值 × 折扣。未配置/非法回落 1（不打折）。
 func paymentDiscount() float64 {
 	if v, err := strconv.ParseFloat(payOption("WeChatPayDiscount"), 64); err == nil && v > 0 && v <= 1 {
 		return v
 	}
 	return 1
+}
+
+// effectivePaymentDiscount 某用户的实付折扣：账号白名单/分组/标签规则优先（取最优），否则全局默认。
+func effectivePaymentDiscount(userId int) float64 {
+	return model.ResolveUserDiscount(userId, paymentDiscount())
 }
 
 // normalizePEM 兼容把私钥粘贴成带字面量 \n 的单行情形。
@@ -153,8 +157,9 @@ func CreateWeChatNativeOrder(c *gin.Context) {
 
 	faceCents := req.Amount * 100
 	quota := int64(req.Amount) * quotaPerYuan()
-	// 实付 = 面值 × 折扣（向上取整到分，且不低于微信最小 1 分）。
-	amountCents := int(math.Ceil(float64(faceCents) * paymentDiscount()))
+	// 实付 = 面值 × 折扣（按用户白名单/分组/标签规则,向上取整到分,且不低于微信最小 1 分）。
+	discount := effectivePaymentDiscount(userId)
+	amountCents := int(math.Ceil(float64(faceCents) * discount))
 	if amountCents < 1 {
 		amountCents = 1
 	}
@@ -209,7 +214,7 @@ func CreateWeChatNativeOrder(c *gin.Context) {
 			"code_url":   codeURL,
 			"amount":     req.Amount,                  // 面值（元）
 			"pay_amount": float64(amountCents) / 100.0, // 实付（元，已打折）
-			"discount":   paymentDiscount(),
+			"discount":   discount,
 			"quota":      quota,
 		},
 	})

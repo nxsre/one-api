@@ -102,6 +102,13 @@ func SetApiRouter(router *gin.Engine) {
 			paymentAccessRoute.PUT("", controller.SetPaymentAccess)
 			paymentAccessRoute.DELETE("", controller.DeletePaymentAccess)
 		}
+		paymentDiscountRoute := apiRouter.Group("/payment/discount")
+		paymentDiscountRoute.Use(middleware.SuperAdminAuth())
+		{
+			paymentDiscountRoute.GET("", controller.ListPaymentDiscount)
+			paymentDiscountRoute.PUT("", controller.SetPaymentDiscount)
+			paymentDiscountRoute.DELETE("", controller.DeletePaymentDiscount)
+		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{

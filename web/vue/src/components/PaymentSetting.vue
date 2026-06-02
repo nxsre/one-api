@@ -138,6 +138,43 @@
         </template>
       </a-table>
     </a-card>
+
+    <!-- 支付折扣规则 -->
+    <a-card :title="t('payment.discount.title')" size="small" style="margin-top: 16px">
+      <p class="payment-hint">
+        {{ t('payment.discount.hint') }}
+        <template v-if="discountGlobal !== null"> · {{ t('payment.discount.global') }}: {{ discountGlobal }}</template>
+      </p>
+      <a-space style="margin-bottom: 12px" wrap>
+        <a-select v-model:value="drule.match_type" style="width: 130px">
+          <a-select-option value="user">{{ t('payment.discount.by_user') }}</a-select-option>
+          <a-select-option value="group">{{ t('payment.discount.by_group') }}</a-select-option>
+          <a-select-option value="tag">{{ t('payment.discount.by_tag') }}</a-select-option>
+        </a-select>
+        <a-input v-model:value="drule.match_value" :placeholder="t('payment.discount.value_ph')" style="width: 200px" />
+        <a-input-number v-model:value="drule.discount" :min="0.0001" :max="1" :step="0.01" :placeholder="t('payment.discount.discount_ph')" style="width: 140px" />
+        <a-button type="primary" :loading="dsaving" @click="saveDiscountRule">{{ t('payment.discount.save') }}</a-button>
+      </a-space>
+
+      <a-table :data-source="discountRules" :columns="dcolumns" :pagination="false" row-key="id" size="small">
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'match_type'">
+            {{ record.match_type === 'user' ? t('payment.discount.by_user') : record.match_type === 'group' ? t('payment.discount.by_group') : t('payment.discount.by_tag') }}
+          </template>
+          <template v-else-if="column.key === 'enabled'">
+            <a-tag :color="record.enabled ? 'green' : 'default'">{{ record.enabled ? t('payment.discount.on') : t('payment.discount.off') }}</a-tag>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a @click="editDiscountRule(record)">{{ t('payment.access.edit') }}</a>
+              <a-popconfirm :title="t('payment.access.delete_confirm')" @confirm="deleteDiscountRule(record)">
+                <a style="color: #ff4d4f">{{ t('payment.access.delete') }}</a>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+    </a-card>
   </div>
 </template>
 
@@ -195,6 +232,80 @@ const columns = [
   { title: t('payment.access.col_channels'), key: 'channels' },
   { title: t('payment.access.col_action'), key: 'action', width: 140 },
 ];
+
+// 折扣规则
+const discountRules = ref([]);
+const discountGlobal = ref(null);
+const dsaving = ref(false);
+const drule = reactive({ match_type: 'user', match_value: '', discount: null });
+const dcolumns = [
+  { title: t('payment.discount.col_type'), key: 'match_type' },
+  { title: t('payment.discount.col_value'), dataIndex: 'match_value', key: 'match_value' },
+  { title: t('payment.discount.col_discount'), dataIndex: 'discount', key: 'discount' },
+  { title: t('payment.discount.col_enabled'), key: 'enabled' },
+  { title: t('payment.access.col_action'), key: 'action', width: 140 },
+];
+
+const loadDiscount = async () => {
+  const res = await API.get('/api/payment/discount');
+  const { success, message, data } = res.data;
+  if (!success) {
+    showError(message);
+    return;
+  }
+  discountRules.value = (data && data.items) || [];
+  if (data && typeof data.global === 'number') discountGlobal.value = data.global;
+};
+
+const saveDiscountRule = async () => {
+  if (!drule.match_value || !drule.match_value.trim()) {
+    showError(t('payment.discount.value_required'));
+    return;
+  }
+  if (!drule.discount || drule.discount <= 0 || drule.discount > 1) {
+    showError(t('payment.discount.discount_required'));
+    return;
+  }
+  dsaving.value = true;
+  try {
+    const res = await API.put('/api/payment/discount', {
+      match_type: drule.match_type,
+      match_value: drule.match_value.trim(),
+      discount: drule.discount,
+      enabled: true,
+    });
+    const { success, message } = res.data;
+    if (success) {
+      showSuccess(t('payment.discount.saved'));
+      drule.match_value = '';
+      drule.discount = null;
+      await loadDiscount();
+    } else {
+      showError(message);
+    }
+  } finally {
+    dsaving.value = false;
+  }
+};
+
+const editDiscountRule = (record) => {
+  drule.match_type = record.match_type;
+  drule.match_value = record.match_value;
+  drule.discount = record.discount;
+};
+
+const deleteDiscountRule = async (record) => {
+  const res = await API.delete('/api/payment/discount', {
+    params: { match_type: record.match_type, match_value: record.match_value },
+  });
+  const { success, message } = res.data;
+  if (success) {
+    showSuccess(t('payment.access.deleted'));
+    await loadDiscount();
+  } else {
+    showError(message);
+  }
+};
 
 const getOptions = async () => {
   const res = await API.get('/api/option/');
@@ -296,6 +407,7 @@ const deleteGrant = async (record) => {
 onMounted(() => {
   getOptions();
   loadGrants();
+  loadDiscount();
 });
 </script>
 

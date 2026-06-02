@@ -66,6 +66,8 @@ type User struct {
 	AllowedChannelIDs []int `json:"allowed_channel_ids,omitempty" gorm:"column:allowed_channel_ids;type:text;serializer:json"`
 	// TenantPermissions 租户内具体管理权限（例如：manage_users, manage_channels 等），授权普通子账号拥有租户控制台部分管理能力。
 	TenantPermissions []string `json:"tenant_permissions,omitempty" gorm:"column:tenant_permissions;type:text;serializer:json"`
+	// Tags 用户标签，用于运营分群（例如支付折扣按标签匹配）。
+	Tags []string `json:"tags,omitempty" gorm:"column:tags;type:text;serializer:json"`
 	S3Enabled        bool    `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
 	S3AccessKey      *string `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
 	S3SecretKey      *string `json:"-" gorm:"size:128;column:s3_secret_key"`

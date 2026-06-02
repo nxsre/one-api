@@ -566,6 +566,26 @@
       "col_scope": "Scope",
       "col_channels": "Channels",
       "col_action": "Action"
+    },
+    "discount": {
+      "title": "Payment discount rules",
+      "hint": "Set specific pay discounts by account whitelist / group / tag. Account whitelist wins; otherwise the best (lowest) matched discount applies. Falls back to the global discount.",
+      "global": "Global discount",
+      "by_user": "Account (username)",
+      "by_group": "Group",
+      "by_tag": "Tag",
+      "value_ph": "username / group / tag",
+      "discount_ph": "discount (0,1]",
+      "value_required": "Please enter a match value",
+      "discount_required": "Discount must be within (0,1]",
+      "save": "Save rule",
+      "saved": "Rule saved",
+      "on": "Enabled",
+      "off": "Disabled",
+      "col_type": "Dimension",
+      "col_value": "Match value",
+      "col_discount": "Discount",
+      "col_enabled": "Status"
     }
   },
   "model_square": {
@@ -1169,6 +1189,8 @@
       "display_name_placeholder": "Please enter new display name",
       "group": "Group",
       "group_placeholder": "Please select group",
+      "tags": "Tags",
+      "tags_placeholder": "Type a tag and press Enter; used for segmentation (e.g. discount by tag)",
       "group_addition": "Please edit group multipliers in system settings to add new group:",
       "quota": "Remaining Quota",
       "quota_placeholder": "Please enter new remaining quota",

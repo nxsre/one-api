@@ -42,6 +42,15 @@
                 @search="onGroupSearch"
               />
             </a-form-item>
+            <a-form-item :label="t('user.edit.tags')">
+              <a-select
+                v-model:value="inputs.tags"
+                mode="tags"
+                :placeholder="t('user.edit.tags_placeholder')"
+                :open="false"
+                v-bind="noAutofillDropdownProps"
+              />
+            </a-form-item>
             <a-form-item :label="t('user.table.role_text')">
               <a-select
                 v-model:value="inputs.role"
@@ -123,6 +132,7 @@ const inputs = reactive({
   quota: 0,
   group: 'default',
   role: 1,
+  tags: [],
 });
 const groupOptions = ref([]);
 const groupSearch = ref('');
@@ -214,6 +224,7 @@ const loadUser = async () => {
   if (success) {
     data.password = '';
     Object.assign(inputs, data);
+    if (!Array.isArray(inputs.tags)) inputs.tags = [];
   } else {
     showError(message);
   }

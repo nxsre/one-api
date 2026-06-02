@@ -43,7 +43,7 @@ func GetUserPaymentChannels(c *gin.Context) {
 		"data": gin.H{
 			"channels":       channels,
 			"quota_per_yuan": quotaPerYuan(),
-			"discount":       paymentDiscount(),
+			"discount":       effectivePaymentDiscount(userId),
 		},
 	})
 }

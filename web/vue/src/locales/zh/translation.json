@@ -566,6 +566,26 @@
       "col_scope": "作用域",
       "col_channels": "渠道",
       "col_action": "操作"
+    },
+    "discount": {
+      "title": "支付折扣规则",
+      "hint": "按 账号白名单 / 分组 / 标签 给用户设特定实付折扣；账号白名单优先,其余命中取最优(折扣最低)。未命中用全局折扣。",
+      "global": "全局折扣",
+      "by_user": "账号(用户名)",
+      "by_group": "分组",
+      "by_tag": "标签",
+      "value_ph": "用户名 / 分组名 / 标签",
+      "discount_ph": "折扣 (0,1]",
+      "value_required": "请填写匹配值",
+      "discount_required": "折扣须在 (0,1] 之间",
+      "save": "保存规则",
+      "saved": "规则已保存",
+      "on": "启用",
+      "off": "停用",
+      "col_type": "维度",
+      "col_value": "匹配值",
+      "col_discount": "折扣",
+      "col_enabled": "状态"
     }
   },
   "model_square": {
@@ -1169,6 +1189,8 @@
       "display_name_placeholder": "请输入新的显示名称",
       "group": "分组",
       "group_placeholder": "请选择分组",
+      "tags": "标签",
+      "tags_placeholder": "输入标签后回车；用于运营分群（如支付折扣按标签匹配）",
       "group_addition": "请在系统设置页面编辑分组倍率以添加新的分组：",
       "quota": "剩余额度",
       "quota_placeholder": "请输入新的剩余额度",
