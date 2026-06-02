@@ -11,7 +11,7 @@
         :pagination="false"
         size="small"
         bordered
-        :row-key="(_, i) => i"
+        :row-key="(r) => r.id"
       >
         <template #bodyCell="{ column, index, record }">
           <template v-if="column.key === 'from'">
@@ -22,22 +22,15 @@
             />
           </template>
           <template v-else-if="column.key === 'to'">
-            <a-select
-              v-if="upstreamOptions.length > 0"
-              show-search
-              :options="optionsForRow(record)"
-              :field-names="{ label: 'text', value: 'value' }"
+            <!-- 自动补全：既能从上游模型选,也能自由输入带前缀的自定义名(如 pa/claude-...),输入值不会被下拉刷新掉 -->
+            <a-auto-complete
               :value="record.to"
+              :options="autoCompleteOptions"
               :placeholder="t('channel.edit.model_mapping_ph_upstream')"
               style="width: 100%"
-              :filter-option="filterOption"
+              :filter-option="acFilterOption"
+              allow-clear
               @change="(v) => updateRow(index, 'to', v || '')"
-            />
-            <a-input
-              v-else
-              :placeholder="t('channel.edit.model_mapping_ph_upstream')"
-              :value="record.to"
-              @update:value="(v) => updateRow(index, 'to', v)"
             />
           </template>
           <template v-else-if="column.key === 'op'">
@@ -101,24 +94,28 @@ const MODEL_MAP_EXAMPLE_LINES = `{
   "gpt-4-0314": "gpt-4"
 }`;
 
+// 递增 id 作为行的稳定 key，避免编辑/回灌时按 index 重排导致行序跳动。
+let _rowUid = 0;
+const newRow = (from = '', to = '') => ({ id: ++_rowUid, from: String(from), to: String(to ?? '') });
+
 function parseMappingToRows(str) {
   const s = String(str ?? '').trim();
   if (!s) {
-    return [{ from: '', to: '' }];
+    return [newRow()];
   }
   try {
     const o = JSON.parse(s);
     if (o && typeof o === 'object' && !Array.isArray(o)) {
       const ent = Object.entries(o);
       if (ent.length === 0) {
-        return [{ from: '', to: '' }];
+        return [newRow()];
       }
-      return ent.map(([from, to]) => ({ from: String(from), to: String(to ?? '') }));
+      return ent.map(([from, to]) => newRow(from, to));
     }
   } catch {
     /* fallthrough */
   }
-  return [{ from: '', to: '' }];
+  return [newRow()];
 }
 
 function rowsToMappingJson(rowList) {
@@ -144,42 +141,42 @@ const columns = computed(() => [
   { title: '', key: 'op', width: 60 },
 ]);
 
-const upstreamOptions = computed(() => {
+// a-auto-complete 的建议项（上游模型，去重）。
+const autoCompleteOptions = computed(() => {
   const seen = new Set();
   const out = [];
   (props.upstreamModelOptions || []).forEach((id) => {
     const s = String(id || '').trim();
     if (!s || seen.has(s)) return;
     seen.add(s);
-    out.push({ key: s, value: s, text: s });
+    out.push({ value: s, label: s });
   });
   return out;
 });
 
-function optionsForRow(record) {
-  const current = String(record.to || '').trim();
-  if (!current || upstreamOptions.value.some((o) => o.value === current)) {
-    return upstreamOptions.value;
-  }
-  return [{ key: `custom-${current}`, value: current, text: current }, ...upstreamOptions.value];
-}
-
-function filterOption(input, option) {
-  return String(option.text || option.value || '')
+function acFilterOption(input, option) {
+  return String(option.value || '')
     .toLowerCase()
     .includes(String(input).toLowerCase());
 }
 
+// 记录最近一次本组件向外 emit 的值；父组件回灌相同值时跳过重解析，避免来回重建导致行序跳动 /
+// 丢失正在编辑(from 暂为空)的行。仅当 value 为「外部改变」时才重建行。
+const lastEmitted = ref(rowsToMappingJson(rows.value));
+
 watch(
   () => props.value,
   (v) => {
+    if (String(v ?? '') === String(lastEmitted.value ?? '')) return;
     rows.value = parseMappingToRows(v);
+    lastEmitted.value = String(v ?? '');
   }
 );
 
 function emitRows(next) {
   rows.value = next;
   const v = rowsToMappingJson(next);
+  lastEmitted.value = v;
   emit('change', v);
   emit('update:value', v);
 }
@@ -190,12 +187,12 @@ function updateRow(i, field, v) {
 }
 
 function addRow() {
-  emitRows([...rows.value, { from: '', to: '' }]);
+  emitRows([...rows.value, newRow()]);
 }
 
 function removeRow(i) {
   const next = rows.value.filter((_, j) => j !== i);
-  emitRows(next.length ? next : [{ from: '', to: '' }]);
+  emitRows(next.length ? next : [newRow()]);
 }
 
 function openJsonMode() {
@@ -211,7 +208,7 @@ function cancelJsonMode() {
 function applyJsonPaste() {
   const raw = jsonRaw.value.trim();
   if (!raw) {
-    emitRows([{ from: '', to: '' }]);
+    emitRows([newRow()]);
     jsonMode.value = false;
     return;
   }
