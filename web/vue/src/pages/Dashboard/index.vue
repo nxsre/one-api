@@ -44,6 +44,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+import { useDark } from '@/composables/useDark';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { LineChart, BarChart } from 'echarts/charts';
@@ -64,6 +65,7 @@ use([
 ]);
 
 const { t } = useI18n();
+const isDark = useDark();
 
 const chartConfig = {
   colors: {
@@ -353,6 +355,7 @@ const modelOption = computed(() => {
     legend: {
       bottom: 0,
       data: models.value,
+      textStyle: { color: isDark.value ? 'rgba(255,255,255,0.85)' : '#1f2a37' },
     },
     xAxis: {
       type: 'category',
@@ -436,6 +439,17 @@ onMounted(() => {
 
 .echart {
   width: 100%;
+}
+
+/* 关灯（暗色）模式：卡片内层、标题与外壳跟随深色，避免白底黑字 */
+html.dark .dashboard-container {
+  background-color: transparent;
+}
+html.dark .chart-container {
+  background-color: #1f1f1f;
+}
+html.dark .header {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 @media (max-width: 768px) {
