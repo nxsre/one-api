@@ -34,75 +34,81 @@
       </a-button>
     </div>
 
-    <a-form v-show="showFilters" layout="vertical" class="logs-filter-form">
-      <a-row :gutter="16">
-        <a-col :span="5">
+    <a-form v-show="showFilters" layout="vertical" class="logs-filter-form" @submit.prevent="refresh">
+      <a-row :gutter="12">
+        <a-col :xs="12" :md="5">
           <a-form-item :label="t('log.table.token_name')">
             <a-input
               v-model:value="inputs.token_name"
+              size="small"
+              allow-clear
               :placeholder="t('log.table.token_name_placeholder')"
+              @pressEnter="refresh"
             />
           </a-form-item>
         </a-col>
-        <a-col :span="5">
+        <a-col :xs="12" :md="5">
           <a-form-item :label="t('log.table.model_name')">
             <a-input
               v-model:value="inputs.model_name"
+              size="small"
+              allow-clear
               :placeholder="t('log.table.model_name_placeholder')"
+              @pressEnter="refresh"
             />
           </a-form-item>
         </a-col>
-        <a-col :span="9">
+        <a-col :xs="24" :md="14">
           <a-form-item :label="t('log.table.start_time') + ' ~ ' + t('log.table.end_time')">
             <a-range-picker
               v-model:value="dateRange"
               show-time
+              size="small"
               format="YYYY-MM-DD HH:mm:ss"
               style="width: 100%"
               @change="onDateRangeChange"
             />
           </a-form-item>
         </a-col>
-        <a-col :span="5">
-          <a-form-item :label="t('log.buttons.query')">
-            <a-button type="primary" block @click="refresh">
-              {{ t('log.buttons.submit') }}
-            </a-button>
-          </a-form-item>
-        </a-col>
       </a-row>
 
-      <a-row v-if="isAdminUser" :gutter="16">
-        <a-col :span="5">
+      <a-row :gutter="12">
+        <a-col v-if="isAdminUser" :xs="12" :md="5">
           <a-form-item :label="t('log.table.channel_id')">
             <a-input
               v-model:value="inputs.channel"
+              size="small"
+              allow-clear
               :placeholder="t('log.table.channel_id_placeholder')"
+              @pressEnter="refresh"
             />
           </a-form-item>
         </a-col>
-        <a-col :span="5">
+        <a-col v-if="isAdminUser" :xs="12" :md="5">
           <a-form-item :label="t('log.table.username')">
             <a-input
               v-model:value="inputs.username"
+              size="small"
+              allow-clear
               :placeholder="t('log.table.username_placeholder')"
               autocomplete="off"
+              @pressEnter="refresh"
             />
           </a-form-item>
         </a-col>
-      </a-row>
-
-      <a-row :gutter="16">
-        <a-col :span="5">
+        <a-col :xs="12" :md="5">
           <a-form-item label="分组">
-            <a-input v-model:value="inputs.group" placeholder="user group" />
+            <a-input v-model:value="inputs.group" size="small" allow-clear placeholder="user group" @pressEnter="refresh" />
           </a-form-item>
         </a-col>
-        <a-col :span="7">
+        <a-col :xs="12" :md="9">
           <a-form-item label="请求 ID">
             <a-input
               v-model:value="inputs.request_id"
+              size="small"
+              allow-clear
               placeholder="request_id 精确匹配"
+              @pressEnter="refresh"
             />
           </a-form-item>
         </a-col>
@@ -966,6 +972,17 @@ const copyDetail = async () => {
 }
 .logs-filter-form :deep(.ant-form-item) {
   margin-bottom: 8px;
+}
+.logs-filter-form :deep(.ant-form-item-label) {
+  padding-bottom: 2px;
+}
+.logs-filter-form :deep(.ant-form-item-label > label) {
+  height: auto;
+  font-size: 0.82rem;
+  color: rgba(0, 0, 0, 0.55);
+}
+html.dark .logs-filter-form :deep(.ant-form-item-label > label) {
+  color: rgba(255, 255, 255, 0.55);
 }
 html.dark .logs-quickbar__auto {
   color: rgba(255, 255, 255, 0.65);
