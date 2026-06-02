@@ -1117,6 +1117,14 @@
     "usage_details": "使用明细",
     "total_quota": "总消耗额度",
     "click_to_view": "点击查看",
+    "quick": {
+      "last5": "最近 5 分钟",
+      "last15": "最近 15 分钟",
+      "last30": "最近 30 分钟",
+      "auto_refresh": "自动刷新(5s)",
+      "show_filters": "筛选",
+      "hide_filters": "收起筛选"
+    },
     "type": {
       "select": "选择明细分类",
       "all": "全部",

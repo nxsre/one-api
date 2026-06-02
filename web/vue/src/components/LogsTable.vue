@@ -18,7 +18,23 @@
       </div>
     </div>
 
-    <a-form layout="vertical">
+    <div class="logs-quickbar">
+      <a-radio-group v-model:value="quickRange" button-style="solid" size="small" @change="applyQuickRange">
+        <a-radio-button :value="5">{{ t('log.quick.last5') }}</a-radio-button>
+        <a-radio-button :value="15">{{ t('log.quick.last15') }}</a-radio-button>
+        <a-radio-button :value="30">{{ t('log.quick.last30') }}</a-radio-button>
+      </a-radio-group>
+      <span class="logs-quickbar__auto">
+        <a-switch size="small" :checked="autoRefresh" @change="toggleAutoRefresh" />
+        {{ t('log.quick.auto_refresh') }}
+      </span>
+      <a-button type="primary" size="small" @click="refresh">{{ t('log.buttons.submit') }}</a-button>
+      <a-button size="small" @click="showFilters = !showFilters">
+        {{ showFilters ? t('log.quick.hide_filters') : t('log.quick.show_filters') }}
+      </a-button>
+    </div>
+
+    <a-form v-show="showFilters" layout="vertical" class="logs-filter-form">
       <a-row :gutter="16">
         <a-col :span="5">
           <a-form-item :label="t('log.table.token_name')">
@@ -295,7 +311,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import dayjs from 'dayjs';
 import { ExpandOutlined } from '@ant-design/icons-vue';
@@ -322,6 +338,13 @@ const activePage = ref(1);
 const logType = ref(0);
 const includeErrors = ref(false);
 const isAdminUser = isAdmin();
+
+// 快捷时间范围（分钟）+ 自动刷新（5 秒）+ 高级筛选折叠
+const quickRange = ref(5);
+const autoRefresh = ref(false);
+const showFilters = ref(false);
+const AUTO_REFRESH_MS = 5000;
+let autoTimer = null;
 
 const now = new Date();
 const inputs = reactive({
@@ -546,6 +569,34 @@ const refresh = async () => {
   await fetchUsageStat();
 };
 
+// 按当前 quickRange 把时间窗口设为「最近 N 分钟」（滑动窗口），再查询。
+const applyQuickRange = () => {
+  const n = Number(quickRange.value);
+  if (!n || n <= 0) return;
+  const end = new Date();
+  const start = new Date(end.getTime() - n * 60 * 1000);
+  inputs.start_timestamp = timestamp2string(start.getTime() / 1000);
+  inputs.end_timestamp = timestamp2string(end.getTime() / 1000);
+  dateRange.value = [dayjs(inputs.start_timestamp), dayjs(inputs.end_timestamp)];
+  refresh();
+};
+
+const stopAutoRefresh = () => {
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+};
+
+const toggleAutoRefresh = (checked) => {
+  autoRefresh.value = checked;
+  stopAutoRefresh();
+  if (checked) {
+    applyQuickRange(); // 立即刷新一次
+    autoTimer = setInterval(applyQuickRange, AUTO_REFRESH_MS);
+  }
+};
+
 watch([logType, includeErrors], () => {
   refresh();
 });
@@ -553,6 +604,8 @@ watch([logType, includeErrors], () => {
 onMounted(() => {
   refresh();
 });
+
+onUnmounted(stopAutoRefresh);
 
 const sortLog = (key) => {
   if (logs.value.length === 0) return;
@@ -891,3 +944,30 @@ const copyDetail = async () => {
   }
 };
 </script>
+
+<style scoped>
+.logs-quickbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.logs-quickbar__auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 0.9rem;
+}
+/* 折叠后的高级筛选更紧凑，腾出更多表格空间 */
+.logs-filter-form {
+  margin-bottom: 8px;
+}
+.logs-filter-form :deep(.ant-form-item) {
+  margin-bottom: 8px;
+}
+html.dark .logs-quickbar__auto {
+  color: rgba(255, 255, 255, 0.65);
+}
+</style>

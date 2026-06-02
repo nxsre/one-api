@@ -1117,6 +1117,14 @@
     "usage_details": "Usage Details",
     "total_quota": "Total Quota Used",
     "click_to_view": "Click to View",
+    "quick": {
+      "last5": "Last 5 min",
+      "last15": "Last 15 min",
+      "last30": "Last 30 min",
+      "auto_refresh": "Auto refresh (5s)",
+      "show_filters": "Filters",
+      "hide_filters": "Hide filters"
+    },
     "type": {
       "select": "Select Log Type",
       "all": "All",
