@@ -32,7 +32,7 @@ require (
 	github.com/openai/openai-go v1.12.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pkg/errors v0.9.1
-	github.com/pkoukk/tiktoken-go v0.1.7
+	github.com/pkoukk/tiktoken-go v0.1.9-0.20260512074532-200cf60c816f
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/samber/lo v1.53.0
