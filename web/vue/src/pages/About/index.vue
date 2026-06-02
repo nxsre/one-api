@@ -36,8 +36,10 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { marked } from 'marked';
 import { API, showError } from '@/helpers';
+import { useDark } from '@/composables/useDark';
 
 const { t } = useI18n();
+const isDark = useDark();
 
 const about = ref('');
 const aboutLoaded = ref(false);
@@ -103,20 +105,20 @@ const versionLine = computed(() =>
     : ''
 );
 
-const versionBannerStyle = {
+const versionBannerStyle = computed(() => ({
   fontSize: '0.9rem',
-  color: 'rgba(0,0,0,0.55)',
+  color: isDark.value ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)',
   marginTop: '12px',
   marginBottom: 0,
-};
+}));
 
-const iframeTopBarStyle = {
+const iframeTopBarStyle = computed(() => ({
   padding: '10px 24px',
   fontSize: '0.9rem',
-  color: '#555',
-  borderBottom: '1px solid #eee',
-  background: '#fafafa',
-};
+  color: isDark.value ? 'rgba(255,255,255,0.65)' : '#555',
+  borderBottom: isDark.value ? '1px solid #303030' : '1px solid #eee',
+  background: isDark.value ? '#1f1f1f' : '#fafafa',
+}));
 
 onMounted(() => {
   displayAbout();
