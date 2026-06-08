@@ -1,19 +1,15 @@
 import { getApiErrorMessage } from '@/api/client';
-import { fetchModelsPage } from '@/lib/modelCatalog';
+import { fetchModelSquare, filterToModelSquareCategory } from '@/lib/modelCatalog';
 import { fetchTokenById, fetchTokenPage, getCopyKeyValue } from '@/lib/tokens';
 
 const relayBase = import.meta.env.VITE_API_BASE || '';
 
 /** 语言模型列表（体验中心模型选择） */
 export async function fetchPlaygroundLanguageModels() {
-  const { items } = await fetchModelsPage({
-    page: 1,
-    pageSize: 100,
-    filterKey: 'language',
-    search: 'gpt-4o',
+  const { items } = await fetchModelSquare({
+    category: filterToModelSquareCategory('language'),
   });
   return (items || [])
-    .filter((row) => String(row.model_id || '').trim() === 'gpt-4o')
     .map((row) => ({
       id: row.model_id,
       label: row.model_name || row.model_id,
