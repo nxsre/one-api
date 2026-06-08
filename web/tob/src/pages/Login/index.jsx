@@ -207,23 +207,15 @@ export default function LoginPage() {
                       <div className="tob-captcha-segment-title">
                         <span>安全验证</span>
                         <span className="tob-captcha-segment-sub">
-                          {captcha.mode === 'slide'
-                            ? captcha.isComplete
-                              ? '已完成'
-                              : '滑动拼图'
-                            : captcha.mode === 'rotate'
-                              ? captcha.isComplete
-                                ? '已完成'
-                                : '旋转对齐'
-                              : `${captcha.clicks.length} / ${captcha.dotNum || '—'}`}
+                          {captcha.ready ? '已完成' : ''}
                         </span>
                       </div>
                       <button
                         type="button"
-                        className={`tob-btn-captcha${captcha.isComplete ? ' done' : ''}`}
+                        className={`tob-btn-captcha${captcha.ready ? ' done' : ''}`}
                         onClick={() => captcha.setModalOpen(true)}
                       >
-                        {captcha.isComplete ? '验证已完成' : '完成安全验证'}
+                        {captcha.ready ? '验证已完成' : '完成安全验证'}
                       </button>
                       {captcha.loadError && (
                         <p className="tob-error" style={{ marginTop: 8, marginBottom: 0 }}>
@@ -279,25 +271,16 @@ export default function LoginPage() {
       <LoginCaptchaModal
         open={captcha.modalOpen}
         onClose={() => captcha.setModalOpen(false)}
-        mode={captcha.mode}
-        thumbSrc={captcha.thumbSrc}
-        masterSrc={captcha.masterSrc}
+        challenge={captcha.challenge}
+        ready={captcha.ready}
         loading={captcha.loading}
         loadError={captcha.loadError}
-        thumbSize={captcha.thumbSize}
-        slideMeta={captcha.slideMeta}
-        masterSize={captcha.masterSize}
-        onMasterLoad={(ev) =>
-          captcha.setMasterSize({
-            w: ev.target.naturalWidth,
-            h: ev.target.naturalHeight,
-          })
-        }
         onRefresh={() => void captcha.refreshCaptcha()}
-        onRotateConfirm={captcha.onRotateConfirm}
-        onClickConfirm={captcha.onClickConfirm}
-        onSlideConfirm={captcha.onSlideConfirm}
-        captchaRef={captcha.captchaRef}
+        onClear={captcha.clearWidget}
+        onConfirm={captcha.confirmCaptcha}
+        onAnswerChange={captcha.setAnswer}
+        onReadyChange={captcha.setReady}
+        captchaWidgetRef={captcha.captchaWidgetRef}
       />
     </div>
   );

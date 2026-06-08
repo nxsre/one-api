@@ -2,46 +2,41 @@ import { API } from '@/api/client';
 import { encryptLoginPayloadAES } from '@/lib/loginPasswordAes';
 import { isSecurePasswordLoginEnabled, normalizeStatusResponse } from '@/lib/systemStatus';
 
+function resolveCaptchaAnswer(captcha) {
+  if (!captcha?.captcha_id) return null;
+  const mode = captcha.mode || 'click';
+  let answer = captcha.answer;
+  if (answer == null && captcha.mode === 'slide' && captcha.captcha_point) {
+    answer = captcha.captcha_point;
+  }
+  if (answer == null && captcha.mode === 'rotate' && captcha.captcha_angle != null) {
+    answer = { angle: captcha.captcha_angle };
+  }
+  if (answer == null && Array.isArray(captcha.captcha_clicks)) {
+    answer = captcha.captcha_clicks;
+  }
+  if (answer == null) return null;
+  if (Array.isArray(answer) && answer.length === 0) return null;
+  return { mode, answer, id: captcha.captcha_id };
+}
+
 /**
- * 构建登录 POST 体（与 default secureLogin.js 一致）
+ * 构建登录 POST 体（与 vue secureLogin.js 一致）
  */
 export async function buildLoginPayload(username, passwordPlain, captcha, loginProof) {
+  const resolved = resolveCaptchaAnswer(captcha);
+
   const buildCaptchaFields = async (encKey) => {
-    if (!captcha?.captcha_id) return {};
-    if (captcha.mode === 'slide' && captcha.captcha_point) {
-      const payload = JSON.stringify(captcha.captcha_point);
-      const base = { captcha_id: captcha.captcha_id, captcha_mode: 'slide' };
-      if (encKey) {
-        return {
-          ...base,
-          captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
-        };
-      }
-      return { ...base, captcha_dots_enc: payload };
+    if (!resolved) return {};
+    const payload = JSON.stringify(resolved.answer);
+    const base = { captcha_id: resolved.id, captcha_mode: resolved.mode };
+    if (encKey) {
+      return {
+        ...base,
+        captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
+      };
     }
-    if (captcha.mode === 'rotate' && captcha.captcha_angle != null) {
-      const payload = JSON.stringify({ angle: captcha.captcha_angle });
-      const base = { captcha_id: captcha.captcha_id, captcha_mode: 'rotate' };
-      if (encKey) {
-        return {
-          ...base,
-          captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
-        };
-      }
-      return { ...base, captcha_dots_enc: payload };
-    }
-    if (captcha?.captcha_clicks?.length > 0) {
-      const payload = JSON.stringify(captcha.captcha_clicks);
-      const base = { captcha_id: captcha.captcha_id, captcha_mode: 'click' };
-      if (encKey) {
-        return {
-          ...base,
-          captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
-        };
-      }
-      return { ...base, captcha_dots_enc: payload };
-    }
-    return {};
+    return { ...base, captcha_dots_enc: payload };
   };
 
   if (!isSecurePasswordLoginEnabled()) {

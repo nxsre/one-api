@@ -1,31 +1,11 @@
-.tob-captcha-widget-wrap {
+.captcha-modal {
+  width: fit-content;
   max-width: 92vw;
 }
 
-.tob-captcha-widget-wrap [class*='gocaptcha-module_wrapper'] {
-  --go-captcha-theme-btn-bg-color: var(--accent, #6366f1);
-  --go-captcha-theme-btn-border-color: var(--accent, #6366f1);
-  --go-captcha-theme-btn-disabled-color: rgba(99, 102, 241, 0.45);
-  --go-captcha-theme-active-color: var(--accent, #6366f1);
-  --go-captcha-theme-loading-icon-color: var(--accent, #6366f1);
-}
-
-.captcha-modal-fallback {
-  width: 360px;
-  max-width: 92vw;
-}
-
-.captcha-reload-btn {
-  width: 100%;
-  margin-top: 8px;
-}
-
-.captcha-size-probe {
-  position: absolute;
-  width: 0;
-  height: 0;
-  opacity: 0;
-  pointer-events: none;
+.captcha-widget {
+  width: fit-content;
+  max-width: 100%;
 }
 
 .tob-captcha-segment {
@@ -153,6 +133,46 @@
   border-radius: 6px;
   cursor: crosshair;
   object-fit: contain;
+}
+
+.captcha-master-slide {
+  cursor: default;
+}
+
+.captcha-slide-tile {
+  position: absolute;
+  height: auto;
+  pointer-events: none;
+}
+
+.captcha-rotate-wrap {
+  justify-content: center;
+}
+
+.captcha-rotate-inner {
+  position: relative;
+}
+
+.captcha-master-rotate {
+  border-radius: 50%;
+  cursor: default;
+}
+
+.captcha-rotate-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.captcha-slider-wrap {
+  margin-top: 12px;
+}
+
+.captcha-slider {
+  width: 100%;
+  accent-color: var(--accent, #6366f1);
 }
 
 .captcha-dot {
