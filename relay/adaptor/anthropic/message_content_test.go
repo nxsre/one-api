@@ -29,3 +29,52 @@ func TestMessageContents_blocks(t *testing.T) {
 		t.Fatalf("text: %q", req.Messages[0].Content[0].Text)
 	}
 }
+
+// tool_result.content 为字符串：解析正常，String() 取到文本，重序列化保持字符串。
+func TestToolResultContent_string(t *testing.T) {
+	var req Request
+	body := `{"model":"m","messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"done"}]}]}`
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatal(err)
+	}
+	c := req.Messages[0].Content[0]
+	if c.Content.String() != "done" {
+		t.Fatalf("text: %q", c.Content.String())
+	}
+	out, _ := json.Marshal(c)
+	if !json.Valid(out) || !contains(string(out), `"content":"done"`) {
+		t.Fatalf("remarshal: %s", out)
+	}
+}
+
+// tool_result.content 为内容块数组（客户端真实形态）：不再 400；抽取文本；原样回传数组结构。
+func TestToolResultContent_array(t *testing.T) {
+	var req Request
+	body := `{"model":"m","messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"ok"},{"type":"text","text":"!"}]}]}]}`
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatalf("数组形态不应报错: %v", err)
+	}
+	c := req.Messages[0].Content[0]
+	if c.Content.String() != "ok!" {
+		t.Fatalf("扁平化文本: %q", c.Content.String())
+	}
+	out, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 数组结构应原样保留，便于转发给上游（不丢失结构）。
+	if !contains(string(out), `[{"type":"text","text":"ok"}`) {
+		t.Fatalf("应保留数组结构, 实际: %s", out)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (func() bool {
+		for i := 0; i+len(sub) <= len(s); i++ {
+			if s[i:i+len(sub)] == sub {
+				return true
+			}
+		}
+		return false
+	})()
+}

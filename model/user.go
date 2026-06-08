@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/agentpolicy"
 	"github.com/songquanpeng/one-api/common/blacklist"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
@@ -38,26 +39,26 @@ const (
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int     `json:"-" gorm:"primaryKey"`
-	Uid              string  `json:"user_id" gorm:"column:uid;size:26" validate:"omitempty,len=26"`
-	Username         string  `json:"username" gorm:"unique;index" validate:"max=12"`
-	Password         string  `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	DisplayName      string  `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int     `json:"role" gorm:"type:int;default:1"`   // admin, util
-	Status           int     `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string  `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string  `json:"github_id" gorm:"column:github_id;index"`
-	WeChatId         string  `json:"wechat_id" gorm:"column:wechat_id;index"`
-	LarkId           string  `json:"lark_id" gorm:"column:lark_id;index"`
-	OidcId           string  `json:"oidc_id" gorm:"column:oidc_id;index"`
-	VerificationCode string  `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	AccessToken      string  `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int64   `json:"quota" gorm:"bigint;default:0"`
-	UsedQuota        int64   `json:"used_quota" gorm:"bigint;default:0;column:used_quota"` // used quota
-	RequestCount     int     `json:"request_count" gorm:"type:int;default:0;"`             // request number
-	Group            string  `json:"group" gorm:"type:varchar(32);default:'default'"`
-	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	InviterId        int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	Id               int    `json:"-" gorm:"primaryKey"`
+	Uid              string `json:"user_id" gorm:"column:uid;size:26" validate:"omitempty,len=26"`
+	Username         string `json:"username" gorm:"unique;index" validate:"max=12"`
+	Password         string `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	DisplayName      string `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int    `json:"role" gorm:"type:int;default:1"`   // admin, util
+	Status           int    `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId         string `json:"github_id" gorm:"column:github_id;index"`
+	WeChatId         string `json:"wechat_id" gorm:"column:wechat_id;index"`
+	LarkId           string `json:"lark_id" gorm:"column:lark_id;index"`
+	OidcId           string `json:"oidc_id" gorm:"column:oidc_id;index"`
+	VerificationCode string `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
+	AccessToken      string `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota            int64  `json:"quota" gorm:"bigint;default:0"`
+	UsedQuota        int64  `json:"used_quota" gorm:"bigint;default:0;column:used_quota"` // used quota
+	RequestCount     int    `json:"request_count" gorm:"type:int;default:0;"`             // request number
+	Group            string `json:"group" gorm:"type:varchar(32);default:'default'"`
+	AffCode          string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	InviterId        int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	// TenantID 非空表示属于某租户（子账号或租户管理员）；平台管理员与 Root 应为 NULL。
 	TenantID *int `json:"tenant_id,omitempty" gorm:"column:tenant_id;index"`
 	// AllowedModels 租户子账号可用模型白名单；空表示不额外限制（仍受分组 abilities、令牌 models 约束）。
@@ -68,9 +69,11 @@ type User struct {
 	TenantPermissions []string `json:"tenant_permissions,omitempty" gorm:"column:tenant_permissions;type:text;serializer:json"`
 	// Tags 用户标签，用于运营分群（例如支付折扣按标签匹配）。
 	Tags []string `json:"tags,omitempty" gorm:"column:tags;type:text;serializer:json"`
-	S3Enabled        bool    `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
-	S3AccessKey      *string `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
-	S3SecretKey      *string `json:"-" gorm:"size:128;column:s3_secret_key"`
+	// AgentClientPolicy 用户级 agent 客户端策略（白名单 + 可选限流）；空表示放开所有类型。
+	AgentClientPolicy *agentpolicy.Policy `json:"agent_client_policy,omitempty" gorm:"column:agent_client_policy;type:text;serializer:json"`
+	S3Enabled         bool                `json:"s3_enabled" gorm:"default:false;column:s3_enabled"`
+	S3AccessKey       *string             `json:"s3_access_key,omitempty" gorm:"size:64;uniqueIndex;column:s3_access_key"`
+	S3SecretKey       *string             `json:"-" gorm:"size:128;column:s3_secret_key"`
 }
 
 // UserListItem 管理端用户列表/搜索 API 返回字段（不含 access_token、OAuth ID、S3 密钥等）。
@@ -737,6 +740,23 @@ func GetUsernameById(id int) (username string) {
 	}
 	DB.Model(&User{}).Where("id = ?", id).Select("username").Find(&username)
 	return username
+}
+
+// GetUsernamesByIds 批量查询用户 id -> username 映射，用于列表接口回填创建人，避免 N+1 查询。
+func GetUsernamesByIds(ids []int) map[int]string {
+	result := make(map[int]string)
+	if DB == nil || len(ids) == 0 {
+		return result
+	}
+	var rows []struct {
+		Id       int
+		Username string
+	}
+	DB.Model(&User{}).Where("id IN ?", ids).Select("id", "username").Find(&rows)
+	for _, row := range rows {
+		result[row.Id] = row.Username
+	}
+	return result
 }
 
 // NewUserPublicID 生成 26 字符 ULID，作为对外用户标识（users.uid）。

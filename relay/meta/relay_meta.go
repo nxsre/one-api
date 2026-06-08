@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/agentdetect"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/channeltype"
@@ -25,13 +26,13 @@ type Meta struct {
 	UsingGroup   string
 	ModelMapping map[string]string
 	// BaseURL is the proxy url set in the channel config
-	BaseURL  string
+	BaseURL string
 	// ChannelKey is the upstream credential from channel config (not the client's sk- token).
 	ChannelKey string
 	APIKey     string
-	APIType  int
-	Config   model.ChannelConfig
-	IsStream bool
+	APIType    int
+	Config     model.ChannelConfig
+	IsStream   bool
 	// OriginModelName is the model name from the raw user request
 	OriginModelName string
 	// ActualModelName is the model name after mapping
@@ -42,6 +43,8 @@ type Meta struct {
 	PromptTokens       int // only for DoResponse
 	ForcedSystemPrompt string
 	StartTime          time.Time
+	// AgentClient 按请求头识别出的 agent 客户端（如 claude-code/openclaw/hermes），空表示未识别。
+	AgentClient string
 }
 
 func GetByContext(c *gin.Context) *Meta {
@@ -73,6 +76,10 @@ func GetByContext(c *gin.Context) *Meta {
 		meta.BaseURL = channeltype.DefaultBaseURL(meta.ChannelType)
 	}
 	meta.APIType = channeltype.ToAPIType(meta.ChannelType)
+	if res := agentdetect.DetectHeader(c.Request.Header); res.Client != "" {
+		meta.AgentClient = res.Client
+		c.Set(ctxkey.AgentClient, res.Client)
+	}
 	return &meta
 }
 

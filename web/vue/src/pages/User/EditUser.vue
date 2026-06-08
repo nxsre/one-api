@@ -58,6 +58,7 @@
                 :options="roleOptions"
               />
             </a-form-item>
+            <AgentClientPolicyEditor v-model="inputs.agent_client_policy" />
             <a-form-item :label="quotaLabel">
               <a-input
                 v-model:value="quotaText"
@@ -114,6 +115,7 @@ import {
   noAutofillDropdownProps,
   renderQuotaWithPrompt,
 } from '@/helpers';
+import AgentClientPolicyEditor from '@/components/AgentClientPolicyEditor.vue';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -133,6 +135,7 @@ const inputs = reactive({
   group: 'default',
   role: 1,
   tags: [],
+  agent_client_policy: null,
 });
 const groupOptions = ref([]);
 const groupSearch = ref('');

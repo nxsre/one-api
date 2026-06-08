@@ -53,6 +53,11 @@ function quotaPerUnitFromStorage() {
   return n;
 }
 
+/** 返回「每单位货币（$）对应额度」，无效时回退到默认 500000，供金额↔额度换算复用 */
+export function getQuotaPerUnit() {
+  return quotaPerUnitFromStorage() ?? 500000;
+}
+
 export function renderQuota(quota, t, precision = 2) {
   const displayInCurrency = localStorage.getItem('display_in_currency') === 'true';
   const safeQuota = Number.isFinite(Number(quota)) ? Number(quota) : 0;

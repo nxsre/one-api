@@ -2,6 +2,7 @@ package model
 
 import (
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/agentpolicy"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
@@ -109,6 +110,7 @@ func InitOptionMap() {
 	config.OptionMap["RelayRetryPolicy"] = "{}"
 	config.OptionMap["ModelAliasPolicy"] = "{}"
 	config.OptionMap["ModelRateLimitPolicy"] = "{}"
+	config.OptionMap["AgentClientPolicy"] = "{}"
 	config.OptionMap["DefaultTenantChannelPricePer1k"] = strconv.FormatFloat(config.DefaultTenantChannelPricePer1k, 'f', -1, 64)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
@@ -228,6 +230,10 @@ func updateOptionMap(key string, value string) (err error) {
 		}
 	}
 	switch key {
+	case "AgentClientPolicy":
+		if v := strings.TrimSpace(value); v != "" && v != "{}" && v != "null" {
+			agentpolicy.SetEnabled(true)
+		}
 	case "Force2FAForAllUsers":
 		common.Force2FAForAllUsers = value == "true"
 	case "EmailDomainWhitelist":

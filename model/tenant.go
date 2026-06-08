@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/agentpolicy"
 	"gorm.io/gorm"
 )
 
@@ -15,14 +16,16 @@ const (
 
 // Tenant 多租户空间；用户与渠道通过 tenant_id 关联（NULL 表示平台全局）。
 type Tenant struct {
-	Id          int    `json:"id" gorm:"primaryKey"`
-	Name        string `json:"name" gorm:"size:128;not null"`
-	Slug        string `json:"slug" gorm:"size:64;uniqueIndex;not null"` // URL/对外标识
-	Status      int    `json:"status" gorm:"type:int;default:1"`
-	DiscountRatio float64 `json:"discount_ratio" gorm:"type:double;default:1.0"` // 租户全局折扣倍率
+	Id                int     `json:"id" gorm:"primaryKey"`
+	Name              string  `json:"name" gorm:"size:128;not null"`
+	Slug              string  `json:"slug" gorm:"size:64;uniqueIndex;not null"` // URL/对外标识
+	Status            int     `json:"status" gorm:"type:int;default:1"`
+	DiscountRatio     float64 `json:"discount_ratio" gorm:"type:double;default:1.0"`         // 租户全局折扣倍率
 	PricePer1kApiCall float64 `json:"price_per_1k_api_call" gorm:"type:double;default:-1.0"` // 租户私有渠道默认千次调用单价（覆盖系统全局，-1表示未配置则用全局）
-	CreatedTime int64  `json:"created_time" gorm:"bigint"`
-	Remark      string `json:"remark" gorm:"type:varchar(512);default:''"`
+	CreatedTime       int64   `json:"created_time" gorm:"bigint"`
+	Remark            string  `json:"remark" gorm:"type:varchar(512);default:''"`
+	// AgentClientPolicy 租户级 agent 客户端策略（白名单 + 可选限流）；空表示放开所有类型。
+	AgentClientPolicy *agentpolicy.Policy `json:"agent_client_policy,omitempty" gorm:"column:agent_client_policy;type:text;serializer:json"`
 }
 
 func normalizeTenantSlug(s string) string {

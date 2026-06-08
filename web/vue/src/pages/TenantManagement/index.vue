@@ -24,6 +24,7 @@
             <a-space>
               <a-button size="small" @click="openEditModal(record)">编辑兜底计费</a-button>
               <a-button size="small" @click="openBillingRulesModal(record)">时效规则</a-button>
+              <a-button size="small" @click="openAgentPolicyModal(record)">客户端策略</a-button>
             </a-space>
           </template>
         </template>
@@ -86,6 +87,17 @@
       <div class="flex justify-end gap-2 mt-2">
         <a-button @click="editModalOpen = false">取消</a-button>
         <a-button type="primary" @click="submitEdit">保存</a-button>
+      </div>
+    </a-modal>
+
+    <!-- agent 客户端策略 -->
+    <a-modal v-model:open="agentPolicyModalOpen" :title="`客户端策略 - ${agentPolicyTenant?.name || ''}`" :footer="null" width="520px" @cancel="agentPolicyModalOpen = false">
+      <a-form layout="vertical">
+        <AgentClientPolicyEditor v-model="agentPolicyValue" />
+      </a-form>
+      <div class="flex justify-end gap-2 mt-2">
+        <a-button @click="agentPolicyModalOpen = false">取消</a-button>
+        <a-button type="primary" :loading="agentPolicySubmitting" @click="submitAgentPolicy">保存</a-button>
       </div>
     </a-modal>
 
@@ -183,6 +195,7 @@ import {
   noAutofillTextProps,
   noAutofillPasswordProps,
 } from '@/helpers';
+import AgentClientPolicyEditor from '@/components/AgentClientPolicyEditor.vue';
 
 /** Unix 秒 -> datetime-local 字符串（本地时区） */
 function tsToDatetimeLocal(ts) {
@@ -232,6 +245,41 @@ const editInputs = reactive({
   discount_ratio: 1.0,
   price_per_1k_api_call: -1.0,
 });
+
+// agent 客户端策略
+const agentPolicyModalOpen = ref(false);
+const agentPolicyTenant = ref(null);
+const agentPolicyValue = ref(null);
+const agentPolicySubmitting = ref(false);
+
+const openAgentPolicyModal = (tenant) => {
+  agentPolicyTenant.value = tenant;
+  agentPolicyValue.value = tenant.agent_client_policy || null;
+  agentPolicyModalOpen.value = true;
+};
+
+const submitAgentPolicy = async () => {
+  if (!agentPolicyTenant.value) return;
+  agentPolicySubmitting.value = true;
+  try {
+    const res = await API.put(
+      `/api/platform/tenants/${agentPolicyTenant.value.id}/agent_policy`,
+      { agent_client_policy: agentPolicyValue.value }
+    );
+    const { success, message } = res.data;
+    if (success) {
+      showSuccess('已保存客户端策略');
+      agentPolicyTenant.value.agent_client_policy = agentPolicyValue.value;
+      agentPolicyModalOpen.value = false;
+    } else {
+      showError(message);
+    }
+  } catch (e) {
+    showError(e.message || '保存失败');
+  } finally {
+    agentPolicySubmitting.value = false;
+  }
+};
 
 // billing rules
 const billingRulesModalOpen = ref(false);

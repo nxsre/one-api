@@ -17,11 +17,11 @@ type Content struct {
 	Text   string       `json:"text,omitempty"`
 	Source *ImageSource `json:"source,omitempty"`
 	// tool_calls
-	Id        string `json:"id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Input     any    `json:"input,omitempty"`
-	Content   string `json:"content,omitempty"`
-	ToolUseId string `json:"tool_use_id,omitempty"`
+	Id        string             `json:"id,omitempty"`
+	Name      string             `json:"name,omitempty"`
+	Input     any                `json:"input,omitempty"`
+	Content   *ToolResultContent `json:"content,omitempty"`
+	ToolUseId string             `json:"tool_use_id,omitempty"`
 }
 
 type Message struct {
@@ -42,26 +42,26 @@ type InputSchema struct {
 }
 
 type Request struct {
-	Model         string    `json:"model"`
-	Messages      []Message `json:"messages"`
+	Model         string       `json:"model"`
+	Messages      []Message    `json:"messages"`
 	System        SystemPrompt `json:"system,omitempty"`
-	MaxTokens     int       `json:"max_tokens,omitempty"`
-	StopSequences []string  `json:"stop_sequences,omitempty"`
-	Stream        bool      `json:"stream,omitempty"`
-	Temperature   *float64  `json:"temperature,omitempty"`
-	TopP          *float64  `json:"top_p,omitempty"`
-	TopK          int       `json:"top_k,omitempty"`
-	Tools         []Tool    `json:"tools,omitempty"`
-	ToolChoice    any       `json:"tool_choice,omitempty"`
+	MaxTokens     int          `json:"max_tokens,omitempty"`
+	StopSequences []string     `json:"stop_sequences,omitempty"`
+	Stream        bool         `json:"stream,omitempty"`
+	Temperature   *float64     `json:"temperature,omitempty"`
+	TopP          *float64     `json:"top_p,omitempty"`
+	TopK          int          `json:"top_k,omitempty"`
+	Tools         []Tool       `json:"tools,omitempty"`
+	ToolChoice    any          `json:"tool_choice,omitempty"`
 	//Metadata    `json:"metadata,omitempty"`
 }
 
 type Usage struct {
-	InputTokens              int                  `json:"input_tokens"`
-	OutputTokens             int                  `json:"output_tokens"`
-	CacheReadInputTokens     int                  `json:"cache_read_input_tokens,omitempty"`
-	CacheCreationInputTokens int                  `json:"cache_creation_input_tokens,omitempty"`
-	CacheCreation            *CacheCreationUsage  `json:"cache_creation,omitempty"`
+	InputTokens              int                 `json:"input_tokens"`
+	OutputTokens             int                 `json:"output_tokens"`
+	CacheReadInputTokens     int                 `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int                 `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreation            *CacheCreationUsage `json:"cache_creation,omitempty"`
 }
 
 type CacheCreationUsage struct {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/agentdetect"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/relayctx"
@@ -29,6 +30,12 @@ func ConsumeLogOtherJSON(c *gin.Context) string {
 			}
 			if hdrs := AuditHeaderSnapshot(c.Request.Header); len(hdrs) > 0 {
 				m["client_request_headers"] = hdrs
+			}
+			if client, via := detectAgentClient(c); client != "" {
+				m["agent_client"] = client
+				if via != "" {
+					m["agent_client_via"] = via
+				}
 			}
 		}
 		if v, ok := c.Get(ctxkey.ClientResponseHeadersLog); ok {
@@ -94,6 +101,20 @@ func ConsumeLogOtherJSON(c *gin.Context) string {
 		return ""
 	}
 	return string(out)
+}
+
+// detectAgentClient 识别请求来自哪个 agent 客户端。优先复用选路阶段（Meta）已按头识别的结果，
+// 否则用头 + 请求体（system/tools）做完整识别。
+func detectAgentClient(c *gin.Context) (client, via string) {
+	if v := c.GetString(ctxkey.AgentClient); v != "" {
+		return v, "header"
+	}
+	var body []byte
+	if raw, ok := c.Get(ctxkey.KeyRequestBody); ok {
+		body, _ = raw.([]byte)
+	}
+	res := agentdetect.Detect(c.Request.Header, body)
+	return res.Client, res.Via
 }
 
 // SnapClientResponse 快照返回给客户端的 HTTP 响应头（脱敏）。

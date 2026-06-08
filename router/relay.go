@@ -102,6 +102,7 @@ func SetRelayRouter(router *gin.Engine) {
 			middleware.TokenAuth(),
 			middleware.ConsumeLogCapture(),
 			middleware.RoutingPrep(),
+			middleware.AgentClientPolicy(),
 			middleware.Distribute(),
 		)
 	}

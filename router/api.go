@@ -95,6 +95,12 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
 		}
+		// agent 客户端策略元信息（已知类型清单 + 当前全局策略），供令牌/用户/租户/全局配置页使用。
+		agentPolicyRoute := apiRouter.Group("/agent_policy")
+		agentPolicyRoute.Use(middleware.AdminAuth())
+		{
+			agentPolicyRoute.GET("/meta", controller.GetAgentPolicyMeta)
+		}
 		paymentAccessRoute := apiRouter.Group("/payment/access")
 		paymentAccessRoute.Use(middleware.SuperAdminAuth())
 		{
@@ -150,6 +156,7 @@ func SetApiRouter(router *gin.Engine) {
 			platformTenantWrite.POST("/upgrades/:id/approve", controller.PlatformApproveTenantUpgrade)
 			platformTenantWrite.POST("/upgrades/:id/reject", controller.PlatformRejectTenantUpgrade)
 			platformTenantWrite.PUT("/:id/billing", controller.PlatformUpdateTenantBilling)
+			platformTenantWrite.PUT("/:id/agent_policy", controller.PlatformUpdateTenantAgentPolicy)
 			platformTenantWrite.GET("/:id/billing_rules", controller.PlatformGetTenantBillingRules)
 			platformTenantWrite.POST("/:id/billing_rules", controller.PlatformCreateTenantBillingRule)
 			platformTenantWrite.PUT("/:id/billing_rules/:rule_id", controller.PlatformUpdateTenantBillingRule)

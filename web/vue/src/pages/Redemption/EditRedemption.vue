@@ -23,6 +23,8 @@
             />
           </a-form-item>
 
+          <QuotaAmountInput class="mb-4" @apply="(q) => (inputs.quota = q)" />
+
           <a-form-item v-if="!isEdit" :label="t('redemption.edit.count')">
             <a-input-number
               v-model:value="inputs.count"
@@ -58,6 +60,7 @@ import {
   showSuccess,
   renderQuotaWithPrompt,
 } from '@/helpers';
+import QuotaAmountInput from '@/components/QuotaAmountInput.vue';
 
 const { t } = useI18n();
 const route = useRoute();

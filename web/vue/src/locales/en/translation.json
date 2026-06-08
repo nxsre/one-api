@@ -974,6 +974,7 @@
     "search": "Search tokens by name ...",
     "table": {
       "name": "Name",
+      "creator": "Creator",
       "status": "Status",
       "used_quota": "Used Quota",
       "remain_quota": "Remaining Quota",
@@ -1059,7 +1060,15 @@
     "quota": {
       "display": "Equivalent: ${amount}",
       "display_short": "${amount}",
-      "unit": "$"
+      "unit": "$",
+      "converter": {
+        "label": "Set by amount",
+        "amount_placeholder": "Amount",
+        "rate_label": "Rate 1$ =",
+        "usd": "USD ($)",
+        "cny": "CNY (¥)",
+        "unit": "quota"
+      }
     }
   },
   "redemption": {

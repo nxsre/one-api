@@ -85,7 +85,8 @@ func Redeem(ctx context.Context, key string, userId int) (quota int64, err error
 	if err != nil {
 		return 0, errors.New("兑换失败，" + err.Error())
 	}
-	RecordLog(ctx, userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s", common.LogQuota(redemption.Quota)))
+	// 用 RecordTopupLog 记录，确保日志的 Quota 字段带上充值额度（财务报表/充值记录按该字段统计金额）。
+	RecordTopupLog(ctx, userId, fmt.Sprintf("通过兑换码充值 %s", common.LogQuota(redemption.Quota)), int(redemption.Quota))
 	return redemption.Quota, nil
 }
 

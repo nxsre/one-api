@@ -974,6 +974,7 @@
     "search": "搜索令牌的名称 ...",
     "table": {
       "name": "名称",
+      "creator": "创建人",
       "status": "状态",
       "used_quota": "已用额度",
       "remain_quota": "剩余额度",
@@ -1059,7 +1060,15 @@
     "quota": {
       "display": "等价金额：${amount}",
       "display_short": "${amount}",
-      "unit": "$"
+      "unit": "$",
+      "converter": {
+        "label": "按金额设置",
+        "amount_placeholder": "金额",
+        "rate_label": "汇率 1$ =",
+        "usd": "美元 ($)",
+        "cny": "人民币 (¥)",
+        "unit": "额度"
+      }
     }
   },
   "redemption": {

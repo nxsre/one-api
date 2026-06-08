@@ -16,6 +16,9 @@
           <a-tab-pane key="payment" :tab="t('setting.tabs.payment')">
             <PaymentSetting />
           </a-tab-pane>
+          <a-tab-pane key="agent_policy" tab="客户端策略">
+            <AgentPolicySetting />
+          </a-tab-pane>
         </template>
       </a-tabs>
     </a-card>
@@ -30,6 +33,7 @@ import SystemSetting from '@/components/SystemSetting.vue';
 import OtherSetting from '@/components/OtherSetting.vue';
 import PersonalSetting from '@/components/PersonalSetting.vue';
 import PaymentSetting from '@/components/PaymentSetting.vue';
+import AgentPolicySetting from '@/components/AgentPolicySetting.vue';
 
 const { t } = useI18n();
 const root = isRoot();

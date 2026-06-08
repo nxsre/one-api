@@ -237,11 +237,12 @@ const topUp = async () => {
     const res = await API.post('/api/user/topup', {
       key: redemptionCode.value,
     });
-    const { success, message, data } = res.data;
+    const { success, message } = res.data;
     if (success) {
       showSuccess(t('topup.redeem_code.success'));
-      userQuota.value = userQuota.value + data;
       redemptionCode.value = '';
+      // 兑换成功后从服务端拉取最新额度，避免本地累加在初始值缺失时得到 NaN。
+      await getUserQuota();
     } else {
       showError(message);
     }

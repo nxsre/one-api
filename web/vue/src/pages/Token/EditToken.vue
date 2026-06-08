@@ -27,6 +27,8 @@
             />
           </a-form-item>
 
+          <AgentClientPolicyEditor v-model="inputs.agent_client_policy" />
+
           <a-form-item :label="t('token.edit.bulk_channels_label')">
             <div class="flex flex-wrap items-start gap-2">
               <a-select
@@ -85,6 +87,12 @@
             />
           </a-form-item>
 
+          <QuotaAmountInput
+            v-if="!inputs.unlimited_quota"
+            class="mb-4"
+            @apply="(q) => (inputs.remain_quota = q)"
+          />
+
           <div class="flex flex-wrap justify-between gap-2">
             <a-button @click="setUnlimitedQuota">
               {{ inputs.unlimited_quota ? t('token.edit.buttons.cancel_unlimited') : t('token.edit.buttons.unlimited_quota') }}
@@ -114,6 +122,8 @@ import {
   renderQuotaWithPrompt,
 } from '@/helpers';
 import MonacoEditor from '@/components/MonacoEditor.vue';
+import QuotaAmountInput from '@/components/QuotaAmountInput.vue';
+import AgentClientPolicyEditor from '@/components/AgentClientPolicyEditor.vue';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -129,6 +139,7 @@ const buildOriginInputs = () => ({
   unlimited_quota: false,
   models: [],
   subnet: '',
+  agent_client_policy: null,
 });
 
 const loading = ref(isEdit.value);

@@ -37,6 +37,10 @@
           {{ record.name ? record.name : t('token.table.no_name') }}
         </template>
 
+        <template v-else-if="column.key === 'username'">
+          {{ record.username || '-' }}
+        </template>
+
         <template v-else-if="column.key === 'status'">
           <a-tag :color="statusColor(record.status)">
             {{ statusText(record.status) }}
@@ -155,6 +159,8 @@ import {
   showWarning,
   timestamp2string,
   renderQuota,
+  isAdmin,
+  isTenantAdmin,
 } from '@/helpers';
 import { ITEMS_PER_PAGE } from '@/constants';
 
@@ -183,15 +189,29 @@ const searchKeyword = ref('');
 const searching = ref(false);
 const orderBy = ref('');
 
-const columns = [
-  { title: t('token.table.name'), key: 'name', sortKey: 'name' },
-  { title: t('token.table.status'), key: 'status', sortKey: 'status' },
-  { title: t('token.table.used_quota'), key: 'used_quota', sortKey: 'used_quota' },
-  { title: t('token.table.remain_quota'), key: 'remain_quota', sortKey: 'remain_quota' },
-  { title: t('token.table.created_time'), key: 'created_time', sortKey: 'created_time' },
-  { title: t('token.table.expired_time'), key: 'expired_time', sortKey: 'expired_time' },
-  { title: t('token.table.actions'), key: 'actions' },
-];
+// 平台管理员可见全部用户的令牌，租户管理员可见本租户成员的令牌，二者都需要「创建人」列；
+// 普通用户只看到自己的令牌，无需该列。
+const showCreator = isAdmin() || isTenantAdmin();
+
+const columns = computed(() => {
+  const cols = [
+    { title: t('token.table.name'), key: 'name', sortKey: 'name' },
+    { title: t('token.table.status'), key: 'status', sortKey: 'status' },
+    { title: t('token.table.used_quota'), key: 'used_quota', sortKey: 'used_quota' },
+    { title: t('token.table.remain_quota'), key: 'remain_quota', sortKey: 'remain_quota' },
+    { title: t('token.table.created_time'), key: 'created_time', sortKey: 'created_time' },
+    { title: t('token.table.expired_time'), key: 'expired_time', sortKey: 'expired_time' },
+    { title: t('token.table.actions'), key: 'actions' },
+  ];
+  if (showCreator) {
+    cols.splice(1, 0, {
+      title: t('token.table.creator'),
+      key: 'username',
+      sortKey: 'username',
+    });
+  }
+  return cols;
+});
 
 const orderByOptions = [
   { label: t('token.sort.default'), value: '' },

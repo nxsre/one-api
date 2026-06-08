@@ -106,7 +106,7 @@ func anthropicUserOrAssistantToOpenAIMessages(m anthropic.Message) ([]model.Mess
 			case "tool_result":
 				toolMsgs = append(toolMsgs, model.Message{
 					Role:       "tool",
-					Content:    part.Content,
+					Content:    part.Content.String(),
 					ToolCallId: part.ToolUseId,
 				})
 			}
