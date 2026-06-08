@@ -1,0 +1,5 @@
+{
+  "webServiceKey": "your_amap_webservice_key_here",
+  "oneApiBase": "https://your-one-api.example.com",
+  "oneApiToken": "sk-your-user-access-token"
+}
