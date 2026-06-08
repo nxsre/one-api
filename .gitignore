@@ -29,3 +29,19 @@ web/nacos-console/dist/assets/
 web/nacos-console/dist/css/
 web/nacos-console/dist/img/
 web/nacos-console/dist/*.svg
+# 本地编译产物(Mach-O 二进制,可由对应源码重建,勿提交)
+/aippt-check
+/amap-check
+/bench
+/kimi-search-check
+/model-verify-check
+/modelsync
+*.test
+# 本地缓存
+/tiktoken-cache/
+# 销售/业务文档(非代码)
+/TokenHub_Sales_Deck.pptx
+/build_sales_ppt.py
+/*.xlsx
+# 工具元数据
+/.antigravitycli/

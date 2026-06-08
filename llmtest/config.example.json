@@ -1,0 +1,45 @@
+{
+  "targets": [
+    {
+      "name": "one-api-gateway",
+      "protocol": "openai",
+      "base_url": "http://localhost:13000",
+      "api_key": "${ONEAPI_KEY}",
+      "models": {
+        "chat": "gpt-4o-mini",
+        "completion": "gpt-3.5-turbo-instruct",
+        "embedding": "text-embedding-3-small"
+      }
+    },
+    {
+      "name": "openai-native",
+      "protocol": "openai",
+      "base_url": "https://api.openai.com",
+      "api_key": "${OPENAI_API_KEY}",
+      "models": {
+        "chat": "gpt-4o-mini",
+        "embedding": "text-embedding-3-small"
+      }
+    },
+    {
+      "name": "anthropic-native",
+      "protocol": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key": "${ANTHROPIC_API_KEY}",
+      "models": {
+        "chat": "claude-3-5-sonnet-20241022"
+      }
+    },
+    {
+      "name": "gemini-native",
+      "protocol": "gemini",
+      "base_url": "https://generativelanguage.googleapis.com",
+      "api_key": "${GEMINI_API_KEY}",
+      "models": {
+        "chat": "gemini-1.5-flash"
+      }
+    }
+  ],
+  "timeout_seconds": 60,
+  "concurrency": 4
+}
