@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -28,7 +34,11 @@ import (
 	"github.com/songquanpeng/one-api/service"
 )
 
-//go:embed web/build/*
+// all: ensures files whose names start with '_' or '.' are embedded too —
+// Vite/Rolldown emits shared chunks like `_plugin-vue_export-helper.*.js`,
+// which the default embed pattern would silently drop (breaking the SPA).
+//
+//go:embed all:web/build
 var buildFS embed.FS
 
 //go:embed web/nacos-console/dist
@@ -86,6 +96,7 @@ func main() {
 
 	// Initialize options
 	model.InitOptionMap()
+	model.InitAgentPolicyEnabled()
 	if err := model.InitPricingEntryStore(); err != nil {
 		logger.SysError("init pricing entry store failed: " + err.Error())
 	}
@@ -103,6 +114,8 @@ func main() {
 		go model.SyncOptions(config.SyncFrequency)
 		go model.SyncChannelCache(config.SyncFrequency)
 	}
+	// 跨实例缓存失效：写入方发布事件后各实例立即重载，轮询作为兜底。Redis 未启用时为空操作。
+	model.StartCacheInvalidationSubscriber()
 	if fq := cfg.V.GetInt("channel_test_frequency"); fq > 0 {
 		go controller.AutomaticallyTestChannels(fq)
 	}
@@ -110,6 +123,7 @@ func main() {
 		logger.SysLog("batch update enabled with interval " + strconv.Itoa(config.BatchUpdateInterval) + "s")
 		model.InitBatchUpdater()
 	}
+	model.InitLogConsumer()
 	if config.EnableMetric {
 		logger.SysLog("metric enabled, will disable channel if too much request failed")
 	}
@@ -148,66 +162,99 @@ func main() {
 	service.StartS3Cleaner()
 	port := strconv.Itoa(common.Port)
 
-	startHTTPS := func(addr string, handler http.Handler) error {
+	// 各监听路径统一注册为显式的 *http.Server，并在后台 goroutine 启动，
+	// 主协程阻塞等待退出信号后对它们逐一 Shutdown，实现优雅关闭。
+	var servers []*http.Server
+	startHTTPS := func(addr string) {
 		srv := &http.Server{
 			Addr:      addr,
-			Handler:   handler,
+			Handler:   server,
 			TLSConfig: acme.TLSConfig(),
 		}
-		logger.SysLogf("server listening on https://0.0.0.0%s (ACME auto-renew)", addr)
-		return srv.ListenAndServeTLS("", "")
+		servers = append(servers, srv)
+		go func() {
+			logger.SysLogf("server listening on https://0.0.0.0%s (ACME auto-renew)", addr)
+			if e := srv.ListenAndServeTLS("", ""); e != nil && e != http.ErrServerClosed {
+				logger.FatalLog("failed to start HTTPS server: " + e.Error())
+			}
+		}()
+	}
+	startTLS := func(addr string) {
+		srv := &http.Server{Addr: addr, Handler: server}
+		servers = append(servers, srv)
+		go func() {
+			logger.SysLogf("server listening on https://0.0.0.0%s", addr)
+			if e := srv.ListenAndServeTLS(common.TLSCertFile, common.TLSKeyFile); e != nil && e != http.ErrServerClosed {
+				logger.FatalLog("failed to start HTTPS server: " + e.Error())
+			}
+		}()
+	}
+	startHTTP := func(addr string, handler http.Handler) {
+		srv := &http.Server{Addr: addr, Handler: handler}
+		servers = append(servers, srv)
+		go func() {
+			logger.SysLogf("server listening on http://0.0.0.0%s", addr)
+			if e := srv.ListenAndServe(); e != nil && e != http.ErrServerClosed {
+				logger.FatalLog("failed to start HTTP server: " + e.Error())
+			}
+		}()
 	}
 
 	switch {
 	case acme.Enabled() && common.HTTPSOnly:
-		err = startHTTPS(":"+port, server)
-		if err != nil {
-			logger.FatalLog("failed to start HTTPS server: " + err.Error())
-		}
+		startHTTPS(":" + port)
 	case acme.Enabled() && !common.HTTPSOnly:
 		httpsPort := common.TLSDualHTTPSPort
 		if httpsPort == port {
 			logger.FatalLog("HTTP and HTTPS cannot share the same PORT; set HTTPS_PORT to a different port")
 		}
-		go func() {
-			if e := startHTTPS(":"+httpsPort, server); e != nil {
-				logger.FatalLog("failed to start HTTPS server: " + e.Error())
-			}
-		}()
-		logger.SysLogf("server listening on http://0.0.0.0:%s and https://0.0.0.0:%s (ACME)", port, httpsPort)
-		err = (&http.Server{
-			Addr:    ":" + port,
-			Handler: acme.WrapHTTPHandler(server),
-		}).ListenAndServe()
-		if err != nil {
-			logger.FatalLog("failed to start HTTP server: " + err.Error())
-		}
+		startHTTPS(":" + httpsPort)
+		startHTTP(":"+port, acme.WrapHTTPHandler(server))
 	case common.TLSCertFile != "" && common.HTTPSOnly:
-		logger.SysLogf("server listening on https://0.0.0.0:%s", port)
-		err = server.RunTLS(":"+port, common.TLSCertFile, common.TLSKeyFile)
-		if err != nil {
-			logger.FatalLog("failed to start HTTPS server: " + err.Error())
-		}
+		startTLS(":" + port)
 	case common.TLSCertFile != "" && !common.HTTPSOnly:
 		httpsPort := common.TLSDualHTTPSPort
 		if httpsPort == port {
 			logger.FatalLog("HTTP and HTTPS cannot share the same PORT; set HTTPS_PORT to a different port")
 		}
-		go func() {
-			if e := server.RunTLS(":"+httpsPort, common.TLSCertFile, common.TLSKeyFile); e != nil {
-				logger.FatalLog("failed to start HTTPS server: " + e.Error())
-			}
-		}()
-		logger.SysLogf("server listening on http://0.0.0.0:%s and https://0.0.0.0:%s", port, httpsPort)
-		err = server.Run(":" + port)
-		if err != nil {
-			logger.FatalLog("failed to start HTTP server: " + err.Error())
-		}
+		startTLS(":" + httpsPort)
+		startHTTP(":"+port, server)
 	default:
-		logger.SysLogf("server started on http://localhost:%s", port)
-		err = server.Run(":" + port)
-		if err != nil {
-			logger.FatalLog("failed to start HTTP server: " + err.Error())
-		}
+		startHTTP(":"+port, server)
 	}
+
+	gracefulShutdown(servers)
+}
+
+// gracefulShutdown 阻塞等待 SIGINT/SIGTERM，随后停止接收新请求、等待在途请求处理
+// 完成，最后 flush 后台缓冲（异步日志队列、批量配额更新），确保退出前不丢数据。
+func gracefulShutdown(servers []*http.Server) {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	logger.SysLog("received signal " + sig.String() + ", shutting down gracefully...")
+
+	timeout := time.Duration(config.ServerShutdownTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for _, srv := range servers {
+		wg.Add(1)
+		go func(s *http.Server) {
+			defer wg.Done()
+			if err := s.Shutdown(ctx); err != nil {
+				logger.SysError("server shutdown error: " + err.Error())
+			}
+		}(srv)
+	}
+	wg.Wait()
+
+	// 服务器已停止接收新请求，此时再 flush 后台缓冲，保证不丢日志与配额。
+	model.FlushLogQueue()
+	model.FlushBatchUpdates()
+	logger.SysLog("graceful shutdown complete")
 }

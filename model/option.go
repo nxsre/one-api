@@ -2,6 +2,7 @@ package model
 
 import (
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/agentpolicy"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/logger"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
@@ -74,6 +75,9 @@ func InitOptionMap() {
 	config.OptionMap["QuotaForInvitee"] = strconv.FormatInt(config.QuotaForInvitee, 10)
 	config.OptionMap["QuotaRemindThreshold"] = strconv.FormatInt(config.QuotaRemindThreshold, 10)
 	config.OptionMap["PreConsumedQuota"] = strconv.FormatInt(config.PreConsumedQuota, 10)
+	config.OptionMap["DefaultBillingTzOffsetMinutes"] = strconv.Itoa(config.DefaultBillingTzOffsetMinutes)
+	config.OptionMap["BillingCycleDayOfMonth"] = strconv.Itoa(config.BillingCycleDayOfMonth)
+	config.OptionMap["BillingSettlementDays"] = strconv.Itoa(config.BillingSettlementDays)
 	config.OptionMap["ModelRatio"] = billingratio.ModelRatio2JSONString()
 	config.OptionMap["ModelPrice"] = billingratio.ModelPrice2JSONString()
 	config.OptionMap["GroupRatio"] = billingratio.GroupRatio2JSONString()
@@ -106,6 +110,7 @@ func InitOptionMap() {
 	config.OptionMap["RelayRetryPolicy"] = "{}"
 	config.OptionMap["ModelAliasPolicy"] = "{}"
 	config.OptionMap["ModelRateLimitPolicy"] = "{}"
+	config.OptionMap["AgentClientPolicy"] = "{}"
 	config.OptionMap["DefaultTenantChannelPricePer1k"] = strconv.FormatFloat(config.DefaultTenantChannelPricePer1k, 'f', -1, 64)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
@@ -168,6 +173,8 @@ func UpdateOption(key string, value string) error {
 			logger.SysError("record pricing version after save: " + verr.Error())
 		}
 	}
+	// 通知其它实例立即重载配置，而非等待下一轮轮询。
+	PublishOptionsChanged()
 	return err
 }
 
@@ -223,6 +230,10 @@ func updateOptionMap(key string, value string) (err error) {
 		}
 	}
 	switch key {
+	case "AgentClientPolicy":
+		if v := strings.TrimSpace(value); v != "" && v != "{}" && v != "null" {
+			agentpolicy.SetEnabled(true)
+		}
 	case "Force2FAForAllUsers":
 		common.Force2FAForAllUsers = value == "true"
 	case "EmailDomainWhitelist":
@@ -290,6 +301,14 @@ func updateOptionMap(key string, value string) (err error) {
 		config.QuotaRemindThreshold, _ = strconv.ParseInt(value, 10, 64)
 	case "PreConsumedQuota":
 		config.PreConsumedQuota, _ = strconv.ParseInt(value, 10, 64)
+	case "DefaultBillingTzOffsetMinutes":
+		config.DefaultBillingTzOffsetMinutes, _ = strconv.Atoi(value)
+	case "BillingCycleDayOfMonth":
+		if v, err := strconv.Atoi(value); err == nil && v >= 1 && v <= 28 {
+			config.BillingCycleDayOfMonth = v
+		}
+	case "BillingSettlementDays":
+		config.BillingSettlementDays, _ = strconv.Atoi(value)
 	case "RetryTimes":
 		config.RetryTimes, _ = strconv.Atoi(value)
 	case "ModelRatio":

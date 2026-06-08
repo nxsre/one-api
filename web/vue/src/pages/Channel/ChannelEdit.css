@@ -1,0 +1,134 @@
+/* 渠道创建/编辑：分区卡片、模型标签状态色与底部主操作 */
+.channel-edit-page .channel-edit-section {
+  margin-bottom: 1.35rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid rgba(34, 36, 38, 0.12);
+  border-radius: 6px;
+  background: rgba(34, 36, 38, 0.02);
+}
+
+.channel-edit-page .channel-edit-section__title {
+  margin: 0 0 0.85rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(34, 36, 38, 0.1);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.channel-edit-page .channel-edit-section--extended {
+  margin-bottom: 1.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.channel-edit-page .channel-edit-section--extended .channel-edit-section__title {
+  margin: 0 0 1rem;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.channel-edit-field-hint {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  margin: 0 0 0.75rem;
+}
+
+.channel-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(34, 36, 38, 0.12);
+}
+
+.channel-model-mapping-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.channel-edit-model-test-block {
+  margin: 0.35rem 0 1rem;
+}
+
+.channel-edit-model-test-summary {
+  margin: 0 0 0.5rem;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.channel-edit-model-test-progress {
+  margin: 0;
+}
+
+.channel-edit-models-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.channel-edit-models-toolbar .channel-edit-model-test-concurrency__label {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.channel-edit-page .model-tag--ok {
+  background-color: #21ba45 !important;
+  border-color: #21ba45 !important;
+  color: #fff !important;
+}
+
+.channel-edit-page .model-tag--fail {
+  background-color: #db2828 !important;
+  border-color: #db2828 !important;
+  color: #fff !important;
+}
+
+.channel-edit-page .model-tag--testing {
+  background-color: #fbbd08 !important;
+  border-color: #fbbd08 !important;
+  color: #1b1c1d !important;
+}
+
+.channel-edit-page .model-tag--skip {
+  background-color: #767676 !important;
+  border-color: #767676 !important;
+  color: #fff !important;
+}
+
+/* Base URL 与密钥同一行（窄屏自动折行） */
+.channel-edit-upstream-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  align-items: flex-start;
+}
+
+.channel-edit-upstream-row > .channel-edit-upstream-field {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin-bottom: 0;
+}

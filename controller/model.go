@@ -266,61 +266,52 @@ func RetrieveModel(c *gin.Context) {
 	}
 }
 
-func GetUserAvailableModels(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := c.GetInt(ctxkey.Id)
+// resolveUserAvailableModelIDs 解析某用户「可用模型 ID 列表」，与 GetUserAvailableModels /
+// 令牌 relay 入口完全一致：平台管理员=全部启用模型；否则=分组模型，租户子账号再过
+// AllowedModels/AllowedChannelIDs 白名单。供 /available_models 与 /model_square 复用。
+func resolveUserAvailableModelIDs(ctx context.Context, id int) ([]string, error) {
 	if model.IsAdmin(id) {
 		models, err := model.ListDistinctEnabledModels()
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
-			return
+			return nil, err
 		}
 		if len(models) == 0 {
 			models = distinctSortedModelIDsFromMerged()
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "",
-			"data":    models,
-		})
-		return
+		return models, nil
 	}
 	userGroup, err := model.CacheGetUserGroup(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
+		return nil, err
 	}
 	models, err := model.CacheGetGroupModels(ctx, userGroup)
+	if err != nil {
+		return nil, err
+	}
+	if u, uerr := model.GetUserById(id, false); uerr == nil {
+		models, err = filterGroupModelsByTenantSubUser(ctx, u, userGroup, models)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return models, nil
+}
+
+func GetUserAvailableModels(c *gin.Context) {
+	id := c.GetInt(ctxkey.Id)
+	models, err := resolveUserAvailableModelIDs(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
-	}
-	u, uerr := model.GetUserById(id, false)
-	if uerr == nil {
-		models, err = filterGroupModelsByTenantSubUser(ctx, u, userGroup, models)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
-			return
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data":    models,
 	})
-	return
 }
 
 // GetUserAvailableModelsDetail GET /user/available_models_detail

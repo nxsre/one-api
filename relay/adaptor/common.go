@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +35,7 @@ func DoRequestHelper(a Adaptor, c *gin.Context, meta *meta.Meta, requestBody io.
 			return nil, fmt.Errorf("get request url failed: %w", err)
 		}
 	}
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(requestContext(c), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -92,4 +93,11 @@ func DoRequest(c *gin.Context, req *http.Request) (*http.Response, error) {
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()
 	return resp, nil
+}
+
+func requestContext(c *gin.Context) context.Context {
+	if c == nil || c.Request == nil || c.Request.Context() == nil {
+		return context.Background()
+	}
+	return c.Request.Context()
 }

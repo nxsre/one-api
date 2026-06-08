@@ -18,10 +18,16 @@ type ChannelModelTestResult struct {
 	BaseURL     string `json:"base_url" gorm:"size:768;not null;default:''"`
 	BaseURLHash string `json:"-" gorm:"size:64;uniqueIndex:idx_cmtr_unique,priority:2;column:base_url_hash;not null;default:''"`
 	ModelId     string `json:"model_id" gorm:"uniqueIndex:idx_cmtr_unique,priority:3;size:191;not null;column:model_id"`
-	Success     bool   `json:"success" gorm:"not null"`
-	Message     string `json:"message" gorm:"type:text"`
-	ElapsedMs   int64  `json:"elapsed_ms" gorm:"default:0"`
-	TestedAt    int64  `json:"tested_at" gorm:"bigint;index;not null"`
+	Success      bool   `json:"success" gorm:"not null"`
+	Skipped      bool   `json:"skipped" gorm:"not null;default:0"`
+	TimedOut     bool   `json:"timed_out" gorm:"not null;default:0"`
+	TestKind     string `json:"test_kind" gorm:"size:32;not null;default:''"`
+	TestProtocol string `json:"test_protocol" gorm:"size:64;not null;default:''"`
+	Message      string `json:"message" gorm:"type:text"`
+	DetailJSON   string `json:"-" gorm:"type:text;column:detail_json"`
+	StartedAt    int64  `json:"started_at" gorm:"bigint;default:0"`
+	ElapsedMs    int64  `json:"elapsed_ms" gorm:"default:0"`
+	TestedAt     int64  `json:"tested_at" gorm:"bigint;index;not null"`
 }
 
 func channelTestBaseURLHash(baseURL string) string {
@@ -50,7 +56,7 @@ func NormalizeChannelTestBaseURL(formBase string, channelType int) string {
 }
 
 // UpsertChannelModelTestResult 写入/更新某渠道在某 Base URL 下某模型的最后一次测试结果。
-func UpsertChannelModelTestResult(channelID int, baseURL, modelID string, success bool, message string, elapsedMs int64) error {
+func UpsertChannelModelTestResult(channelID int, baseURL, modelID string, success, skipped, timedOut bool, testKind, testProtocol, message, detailJSON string, startedAt, elapsedMs int64) error {
 	if channelID <= 0 {
 		return nil
 	}
@@ -64,10 +70,16 @@ func UpsertChannelModelTestResult(channelID int, baseURL, modelID string, succes
 		BaseURL:     base,
 		BaseURLHash: channelTestBaseURLHash(base),
 		ModelId:     modelID,
-		Success:     success,
-		Message:     strings.TrimSpace(message),
-		ElapsedMs:   elapsedMs,
-		TestedAt:    helper.GetTimestamp(),
+		Success:      success,
+		Skipped:      skipped,
+		TimedOut:     timedOut,
+		TestKind:     strings.TrimSpace(testKind),
+		TestProtocol: strings.TrimSpace(testProtocol),
+		Message:      strings.TrimSpace(message),
+		DetailJSON:   strings.TrimSpace(detailJSON),
+		StartedAt:    startedAt,
+		ElapsedMs:    elapsedMs,
+		TestedAt:     helper.GetTimestamp(),
 	}
 	return DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
@@ -75,7 +87,7 @@ func UpsertChannelModelTestResult(channelID int, baseURL, modelID string, succes
 			{Name: "base_url_hash"},
 			{Name: "model_id"},
 		},
-		DoUpdates: clause.AssignmentColumns([]string{"base_url", "success", "message", "elapsed_ms", "tested_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"base_url", "success", "skipped", "timed_out", "test_kind", "test_protocol", "message", "detail_json", "started_at", "elapsed_ms", "tested_at"}),
 	}).Create(&row).Error
 }
 

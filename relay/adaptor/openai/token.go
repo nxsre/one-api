@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 
 	"github.com/pkoukk/tiktoken-go"
 
@@ -73,6 +74,44 @@ func getTokenNum(tokenEncoder *tiktoken.Tiktoken, text string) int {
 	return len(tokenEncoder.Encode(text, nil, nil))
 }
 
+// token 计数缓存。tiktoken 编码是 (encoder, text) 的纯函数，缓存结果总是正确。
+// 主要收益：每条消息都会编码 role（"user"/"assistant"/"system"）等高频重复短串，
+// 以及重复的系统提示 / few-shot / 重试请求。只缓存较短文本以控制内存并保持高命中率，
+// 用真实字符串作 key（非哈希）从而零碰撞风险。
+const (
+	tokenCountCacheMaxKeyLen = 512
+	tokenCountCacheMaxSize   = 8192
+)
+
+var (
+	tokenCountCache   = make(map[string]int, tokenCountCacheMaxSize)
+	tokenCountCacheMu sync.RWMutex
+)
+
+// cachedTokenNum 等价于 getTokenNum，但对短文本做缓存。model 参与 key，
+// 因为不同模型可能使用不同 encoder（不同 token 数）。
+func cachedTokenNum(model string, tokenEncoder *tiktoken.Tiktoken, text string) int {
+	if config.ApproximateTokenEnabled || len(text) == 0 || len(text) > tokenCountCacheMaxKeyLen {
+		return getTokenNum(tokenEncoder, text)
+	}
+	key := model + "\x00" + text
+	tokenCountCacheMu.RLock()
+	n, ok := tokenCountCache[key]
+	tokenCountCacheMu.RUnlock()
+	if ok {
+		return n
+	}
+	n = getTokenNum(tokenEncoder, text)
+	tokenCountCacheMu.Lock()
+	if len(tokenCountCache) >= tokenCountCacheMaxSize {
+		// 简单有界：超限即清空。目标是有限的重复短串，正常情况下极少触发。
+		tokenCountCache = make(map[string]int, tokenCountCacheMaxSize)
+	}
+	tokenCountCache[key] = n
+	tokenCountCacheMu.Unlock()
+	return n
+}
+
 func CountTokenMessages(messages []model.Message, model string) int {
 	tokenEncoder := getTokenEncoder(model)
 	// Reference:
@@ -94,7 +133,7 @@ func CountTokenMessages(messages []model.Message, model string) int {
 		tokenNum += tokensPerMessage
 		switch v := message.Content.(type) {
 		case string:
-			tokenNum += getTokenNum(tokenEncoder, v)
+			tokenNum += cachedTokenNum(model, tokenEncoder, v)
 		case []any:
 			for _, it := range v {
 				m := it.(map[string]any)
@@ -102,7 +141,7 @@ func CountTokenMessages(messages []model.Message, model string) int {
 				case "text":
 					if textValue, ok := m["text"]; ok {
 						if textString, ok := textValue.(string); ok {
-							tokenNum += getTokenNum(tokenEncoder, textString)
+							tokenNum += cachedTokenNum(model, tokenEncoder, textString)
 						}
 					}
 				case "image_url":
@@ -123,10 +162,10 @@ func CountTokenMessages(messages []model.Message, model string) int {
 				}
 			}
 		}
-		tokenNum += getTokenNum(tokenEncoder, message.Role)
+		tokenNum += cachedTokenNum(model, tokenEncoder, message.Role)
 		if message.Name != nil {
 			tokenNum += tokensPerName
-			tokenNum += getTokenNum(tokenEncoder, *message.Name)
+			tokenNum += cachedTokenNum(model, tokenEncoder, *message.Name)
 		}
 	}
 	tokenNum += 3 // Every reply is primed with <|start|>assistant<|message|>
@@ -235,7 +274,7 @@ func CountTokenInput(input any, model string) int {
 
 func CountTokenText(text string, model string) int {
 	tokenEncoder := getTokenEncoder(model)
-	return getTokenNum(tokenEncoder, text)
+	return cachedTokenNum(model, tokenEncoder, text)
 }
 
 func CountToken(text string) int {

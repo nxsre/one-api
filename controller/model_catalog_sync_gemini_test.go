@@ -14,5 +14,14 @@ func TestBuildGeminiModelsListURL(t *testing.T) {
 			"https://www.anyfast.ai/v1beta/models?key=sk-abc")
 		So(buildGeminiModelsListURL("https://proxy.example/", "v1", "k"), ShouldEqual,
 			"https://proxy.example/v1/models?key=k")
+		So(buildGeminiModelsListURL("https://proxy.example/", "v1", ""), ShouldEqual,
+			"https://proxy.example/v1/models")
+	})
+}
+
+func TestBearerAuthorizationValue(t *testing.T) {
+	Convey("bearerAuthorizationValue", t, func() {
+		So(bearerAuthorizationValue("sk-abc"), ShouldEqual, "Bearer sk-abc")
+		So(bearerAuthorizationValue("Bearer sk-abc"), ShouldEqual, "Bearer sk-abc")
 	})
 }

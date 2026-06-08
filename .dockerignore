@@ -39,3 +39,22 @@ config.docker.toml
 **/.DS_Store
 .idea/
 .vscode/
+
+# 本地工具/AI 客户端目录（含指向宿主机的符号链接，COPY . . 会因越界 symlink 失败）
+.antigravitycli/
+.claude/
+.gemini/
+skills/
+
+# 本地编译出的辅助二进制 / 测试产物（非 Go 主程序所需，且体积大）
+bench
+modelsync
+aippt-check
+amap-check
+kimi-search-check
+*.test
+
+# 销售/调研等非工程文件
+*.pptx
+*.xlsx
+build_sales_ppt.py

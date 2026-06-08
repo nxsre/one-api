@@ -15,17 +15,18 @@ import (
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
+	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/relay"
-	"github.com/songquanpeng/one-api/relay/billing"
 	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
 	"github.com/songquanpeng/one-api/relay/adaptor/gemini"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
+	"github.com/songquanpeng/one-api/relay/billing"
+	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/protocolbridge"
 	"github.com/songquanpeng/one-api/relay/relaymode"
-	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 )
 
 // 客户端可能用 ?key= 传 one-api 令牌（仿 Google）；转发上游时必须去掉，由渠道 x-goog-api-key 鉴权。
@@ -50,7 +51,7 @@ func estimateAnthropicTokens(req *anthropic.Request) int {
 	for _, msg := range req.Messages {
 		for _, part := range msg.Content {
 			b.WriteString(part.Text)
-			b.WriteString(part.Content)
+			b.WriteString(part.Content.String())
 		}
 	}
 	s := b.String()
@@ -300,6 +301,15 @@ func relayGeminiNativeStream(c *gin.Context, resp *http.Response, meta *meta.Met
 	return usage, nil
 }
 
+// truncateBytesForLog 截断请求体用于日志输出，避免超大 body 刷屏；并把换行折叠为单行。
+func truncateBytesForLog(b []byte, n int) string {
+	s := string(b)
+	if len(s) > n {
+		s = s[:n] + "…(truncated)"
+	}
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", "\\n"), "\r", "")
+}
+
 // RelayAnthropicNativeOnce handles POST /v1/messages (Anthropic Messages API pass-through).
 func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	ctx := c.Request.Context()
@@ -313,6 +323,10 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 	var req anthropic.Request
 	if err := json.Unmarshal(body, &req); err != nil {
+		// 调试：请求体解析失败时打印原始请求体（截断），便于定位客户端发来的非法字段，
+		// 例如 message.content 既非字符串也非内容块数组等。
+		logger.Errorf(ctx, "[anthropic-native] request body unmarshal failed: %v | content-type=%q | len=%d | body=%s",
+			err, c.GetHeader("Content-Type"), len(body), truncateBytesForLog(body, 8192))
 		return openai.ErrorWrapper(err, "invalid_json", http.StatusBadRequest)
 	}
 	if req.Model == "" {

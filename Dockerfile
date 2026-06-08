@@ -2,7 +2,7 @@
 #
 # 三阶段前端/后端分离，便于 BuildKit 按变更层重建：
 #   1) build-nacos-console — Nacos 新版 Vite +（可选）Legacy 控制台，产出 /web/nacos-console/dist
-#   2) build-one-api-web    — default / berry / air 主题，产出 /web/build
+#   2) build-one-api-web    — vue 主题（Ant Design Vue），产出 /web/build
 #   3) builder-backend      — Go 编译 + embed 上述产物，产出 one-api 二进制
 #
 # 单独验证某一前端层（不产出最终运行镜像，常用于预热缓存）：
@@ -15,7 +15,7 @@
 #     --cache-from type=local,src=.docker-buildcache \
 #     -t one-api:local .
 
-FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/library/node:24 AS web-toolchain-base
+FROM --platform=$BUILDPLATFORM node:24 AS web-toolchain-base
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
@@ -65,20 +65,18 @@ WORKDIR /web
 COPY ./VERSION .
 COPY ./web .
 
+# 可选构建期代理（仅本步引用，避免污染其它层缓存）；DNS 不通的内网环境用它拉 npm 依赖。
+ARG BUILD_PROXY=
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --prefix /web/default && \
-    npm install --prefix /web/berry && \
-    npm install --prefix /web/air
+    HTTPS_PROXY="${BUILD_PROXY}" HTTP_PROXY="${BUILD_PROXY}" npm install --prefix /web/vue
 
 RUN --mount=type=cache,target=/root/.npm \
     V="$(cat ./VERSION)" && \
-    export DISABLE_ESLINT_PLUGIN=true REACT_APP_VERSION="$V" && \
-    npm run build --prefix /web/default && \
-    npm run build --prefix /web/berry && \
-    npm run build --prefix /web/air
+    export DISABLE_ESLINT_PLUGIN=true VITE_APP_VERSION="$V" && \
+    npm run build --prefix /web/vue
 
 RUN shopt -s nullglob && \
-    for theme in default berry air; do \
+    for theme in vue; do \
       [[ -f "/web/build/${theme}/index.html" ]] || { echo "missing /web/build/${theme}/index.html"; exit 1; }; \
       bundles=(/web/build/"${theme}"/static/js/*.js); \
       ((${#bundles[@]} >= 1)) || { echo "missing JS bundles for ${theme}"; ls -la "/web/build/${theme}/static" || true; exit 1; }; \
@@ -89,42 +87,43 @@ RUN shopt -s nullglob && \
 # -----------------------------------------------------------------------------
 FROM golang:alpine AS builder-backend
 
-RUN apk add --no-cache \
-    gcc \
-    musl-dev \
-    sqlite-dev \
-    build-base
-
+# 纯 Go 构建（CGO_ENABLED=0）：sqlite 走 glebarez（纯 Go），生产二进制无需 cgo，
+# 故无需 gcc/musl-dev 等工具链，避免受限网络下 apk 联网失败。
 ENV GO111MODULE=on \
-    CGO_ENABLED=1 \
+    CGO_ENABLED=0 \
     GOOS=linux \
     GOMODCACHE=/go/pkg/mod \
     GOCACHE=/root/.cache/go-build
 
 WORKDIR /build
 
-ADD go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go mod download
+# 依赖通过 vendor/ 固化，构建期不拉取 Go 模块（适配受限网络）；go 命令统一走 -mod=vendor。
+ARG BUILD_PROXY=
+ENV GOFLAGS=-mod=vendor
 
 COPY . .
 COPY --from=build-one-api-web /web/build ./web/build
 COPY --from=build-nacos-console /web/nacos-console/dist ./web/nacos-console/dist
 
+# tiktoken 编码表仍需联网下载（Azure blob），经构建期代理；模块本身来自 vendor。
 ENV TIKTOKEN_CACHE_DIR=/build/tiktoken-cache
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    mkdir -p /build/tiktoken-cache && go run ./cmd/prefetch-tiktoken
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p /build/tiktoken-cache && \
+    HTTPS_PROXY="${BUILD_PROXY}" HTTP_PROXY="${BUILD_PROXY}" go run ./cmd/prefetch-tiktoken
 
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,target=/root/.cache/go-build \
     BUILD_TS=$(date -u +%Y%m%d%H%M%S) && \
-    go build -trimpath -ldflags "-s -w -X github.com/songquanpeng/one-api/common.Version=$(cat VERSION) -X github.com/songquanpeng/one-api/common.BuildID=${BUILD_TS} -linkmode external -extldflags '-static'" -o one-api
+    go build -trimpath -tags timetzdata -ldflags "-s -w -X github.com/songquanpeng/one-api/common.Version=$(cat VERSION) -X github.com/songquanpeng/one-api/common.BuildID=${BUILD_TS}" -o one-api
 
-FROM alpine:latest AS runtime
+FROM debian:13 AS runtime
 
-RUN apk add --no-cache ca-certificates tzdata
+# 用 Debian 原生 apt 安装运行期所需：ca-certificates（上游 TLS）、tzdata（时区）、
+# wget（docker-compose 健康检查）。apt 遵循 http(s)_proxy，故受限网络下经构建期代理安装。
+ARG BUILD_PROXY=
+RUN http_proxy="${BUILD_PROXY}" https_proxy="${BUILD_PROXY}" apt-get update && \
+    http_proxy="${BUILD_PROXY}" https_proxy="${BUILD_PROXY}" apt-get install -y --no-install-recommends \
+        ca-certificates tzdata wget && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-backend /build/one-api /
 COPY --from=builder-backend /build/tiktoken-cache /tiktoken-cache

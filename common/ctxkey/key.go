@@ -1,8 +1,8 @@
 package ctxkey
 
 const (
-	Config            = "config"
-	Id                = "id"
+	Config = "config"
+	Id     = "id"
 	// UserTenantID 中继选路用：令牌所属用户的租户 ID，平台用户为 0。
 	UserTenantID = "user_tenant_id"
 	// UserAllowedChannelIDs 租户子账号允许使用的渠道 ID 集合（map[int]struct{}）；未设置表示不按用户白名单限制渠道。
@@ -10,7 +10,7 @@ const (
 	// UserAllowedModels 租户子账号允许使用的模型名集合（map[string]struct{}）；未设置表示不按用户白名单限制模型。
 	UserAllowedModels = "user_allowed_models"
 	// TokenBoundGroup 令牌绑定的分组覆盖（非空则覆盖用户默认分组参与别名解析与选路）。
-	TokenBoundGroup = "token_bound_group"
+	TokenBoundGroup   = "token_bound_group"
 	Username          = "username"
 	Role              = "role"
 	Status            = "status"
@@ -24,22 +24,26 @@ const (
 	// UserGroup 用户账号所属分组（选路前），用于 GroupGroupRatio。
 	UserGroup = "user_group"
 	// UsingGroup 本次请求实际使用渠道的分组标签（首个），用于 GroupGroupRatio。
-	UsingGroup = "using_group"
-	ModelMapping      = "model_mapping"
-	ChannelName       = "channel_name"
-	TokenId           = "token_id"
-	TokenName         = "token_name"
-	BaseURL           = "base_url"
+	UsingGroup   = "using_group"
+	ModelMapping = "model_mapping"
+	ChannelName  = "channel_name"
+	TokenId      = "token_id"
+	TokenName    = "token_name"
+	BaseURL      = "base_url"
 	// ChannelKey 为选中渠道的密钥（上游凭据），与客户端 Authorization 中的 sk- 令牌无关。
-	ChannelKey                 = "channel_key"
-	AvailableModels            = "available_models"
-	KeyRequestBody             = "key_request_body"
-	SystemPrompt               = "system_prompt"
-	RoutingStickyKey           = "routing_sticky_key"
-	LogicalModel               = "logical_model"
+	ChannelKey       = "channel_key"
+	AvailableModels  = "available_models"
+	KeyRequestBody   = "key_request_body"
+	SystemPrompt     = "system_prompt"
+	RoutingStickyKey = "routing_sticky_key"
+	LogicalModel     = "logical_model"
 	// AnthropicModelVariant Claude Code 档位后缀，如 [1m]（对应上游 anthropic-beta）。
 	AnthropicModelVariant = "anthropic_model_variant"
-	ChannelRoutingProvider     = "channel_routing_provider"
+	// AgentClient 识别出的 agent 客户端标识（如 claude-code/openclaw/hermes），供选路/限流与日志打标。
+	AgentClient = "agent_client"
+	// TokenAgentPolicy TokenAuth 阶段从已缓存令牌带出的 *agentpolicy.Policy，避免中间件再查库。
+	TokenAgentPolicy       = "token_agent_policy"
+	ChannelRoutingProvider = "channel_routing_provider"
 	// ChannelAutoBan 为 true 时允许在满足全局策略时自动禁用渠道（与渠道 auto_ban 字段对应，默认 true）。
 	ChannelAutoBan = "channel_auto_ban"
 	// OpenAIOrganization 非空时写入 OpenAI-Organization 请求头。
@@ -51,8 +55,8 @@ const (
 	// ChannelHeaderOverride 解析后的 map[string]string，用于额外请求头。
 	ChannelHeaderOverride = "channel_header_override"
 	// ParamOverrideRuntimeHeaders param_override operations 生成的完整 header_override 状态（小写键）；与 ParamOverrideHeadersExclusive 联用。
-	ParamOverrideRuntimeHeaders  = "param_override_runtime_headers"
-	ParamOverrideHeadersExclusive  = "param_override_headers_exclusive"
+	ParamOverrideRuntimeHeaders   = "param_override_runtime_headers"
+	ParamOverrideHeadersExclusive = "param_override_headers_exclusive"
 
 	// RequestAuditRecorder 挂载 *requestaudit.Recorder（Relay 审计，可选）。
 	RequestAuditRecorder = "request_audit_recorder"

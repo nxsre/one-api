@@ -27,7 +27,14 @@ func truncCatalogErr(s string, n int) string {
 func joinOpenAIModelsListURL(base string) string {
 	b := strings.TrimRight(strings.TrimSpace(base), "/")
 	if b == "" {
-		b = "https://api.openai.com/v1"
+		return "https://api.openai.com/v1/models"
+	}
+	if strings.HasSuffix(b, "/models") {
+		return b
+	}
+	// Gemini 官方 OpenAI 兼容根地址 …/v1beta/openai
+	if strings.HasSuffix(b, "/openai") {
+		return b + "/models"
 	}
 	if strings.HasSuffix(b, "/v1") {
 		return b + "/models"
@@ -49,13 +56,17 @@ func joinAnthropicModelsListURL(base string) string {
 	return b + "/v1/models"
 }
 
-// fetchOpenAIStyleModelList 解析 OpenAI 兼容 GET /v1/models（含 OpenRouter）。
+// fetchOpenAIStyleModelList 解析 OpenAI 兼容 GET /v1/models（含 OpenRouter、new-api 代理）。
+// authBearer 为空时匿名请求（如 OpenRouter /api/v1/models 为公开接口）；非空才带 Authorization。
 func fetchOpenAIStyleModelList(ctx context.Context, listURL, authBearer string, ownedByLabel, sourceTag string) ([]model.ModelCatalog, error) {
+	authBearer = strings.TrimSpace(authBearer)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(authBearer))
+	if authBearer != "" {
+		req.Header.Set("Authorization", bearerAuthorizationValue(authBearer))
+	}
 	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -90,13 +101,20 @@ func fetchOpenAIStyleModelList(ctx context.Context, listURL, authBearer string, 
 	return rows, nil
 }
 
-func fetchAnthropicModelList(ctx context.Context, baseURL, apiKey string) ([]model.ModelCatalog, error) {
+func fetchAnthropicModelList(ctx context.Context, baseURL, apiKey string, opts anthropicModelListFetchOpts) ([]model.ModelCatalog, error) {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return nil, fmt.Errorf("密钥为空")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, joinAnthropicModelsListURL(baseURL), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", strings.TrimSpace(apiKey))
+	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
+	if opts.useBearer {
+		req.Header.Set("Authorization", bearerAuthorizationValue(apiKey))
+	}
 	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -107,6 +125,14 @@ func fetchAnthropicModelList(ctx context.Context, baseURL, apiKey string) ([]mod
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncCatalogErr(string(raw), 480))
 	}
+	return parseAnthropicModelListPayload(raw)
+}
+
+type anthropicModelListFetchOpts struct {
+	useBearer bool
+}
+
+func parseAnthropicModelListPayload(raw []byte) ([]model.ModelCatalog, error) {
 	var out struct {
 		Data []struct {
 			ID          string `json:"id"`
@@ -136,13 +162,26 @@ func fetchAnthropicModelList(ctx context.Context, baseURL, apiKey string) ([]mod
 	return rows, nil
 }
 
-func fetchGeminiModelList(ctx context.Context, baseURL, apiKey, apiVersion string) ([]model.ModelCatalog, error) {
-	u := buildGeminiModelsListURL(baseURL, apiVersion, apiKey)
+func fetchGeminiModelList(ctx context.Context, baseURL, apiKey, apiVersion string, opts geminiModelListFetchOpts) ([]model.ModelCatalog, error) {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return nil, fmt.Errorf("密钥为空")
+	}
+	queryKey := apiKey
+	if !opts.useQueryKey {
+		queryKey = ""
+	}
+	u := buildGeminiModelsListURL(baseURL, apiVersion, queryKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	if opts.useGoogHeader {
+		req.Header.Set("x-goog-api-key", apiKey)
+	}
+	if opts.useBearer {
+		req.Header.Set("Authorization", bearerAuthorizationValue(apiKey))
+	}
 	client := client.NewOutboundHTTPClient(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -153,6 +192,24 @@ func fetchGeminiModelList(ctx context.Context, baseURL, apiKey, apiVersion strin
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncCatalogErr(string(raw), 480))
 	}
+	return parseGeminiModelListPayload(raw)
+}
+
+type geminiModelListFetchOpts struct {
+	useQueryKey   bool
+	useGoogHeader bool
+	useBearer     bool
+}
+
+func bearerAuthorizationValue(apiKey string) string {
+	token := strings.TrimSpace(apiKey)
+	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
+		return token
+	}
+	return "Bearer " + token
+}
+
+func parseGeminiModelListPayload(raw []byte) ([]model.ModelCatalog, error) {
 	var root map[string]any
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("parse json: %w", err)
@@ -193,7 +250,11 @@ func buildGeminiModelsListURL(baseURL, apiVersion, apiKey string) string {
 	if version == "" {
 		version = "v1beta"
 	}
-	return fmt.Sprintf("%s/%s/models?key=%s", base, version, url.QueryEscape(strings.TrimSpace(apiKey)))
+	u := fmt.Sprintf("%s/%s/models", base, version)
+	if k := strings.TrimSpace(apiKey); k != "" {
+		u += "?key=" + url.QueryEscape(k)
+	}
+	return u
 }
 
 // modelsDevAPIURL 默认官方 api.json；base_url 可传镜像完整 URL 或仅 origin（自动补 /api.json）。
@@ -290,8 +351,10 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 	}
 	sort.Strings(provKeys)
 
-	// 同一 model id 在多 provider 下可能出现：按 provider 键名字典序保留首次
-	byModelID := make(map[string]model.ModelCatalog)
+	// 同一 model id 可能挂在多个 provider 下（如 gpt-4o 同时属于 openai / azure / openrouter）。
+	// 这里按 (provider, model id) 各保留一行，不跨 provider 去重——使每个 provider 名下都能筛到完整模型集。
+	// 行身份 (source, provider_key, model_id) 由 BatchUpsertModelCatalogForSync 独立版本化。
+	rows := make([]model.ModelCatalog, 0, len(root)*8)
 
 	for _, pkey := range provKeys {
 		var sp devProv
@@ -327,9 +390,6 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 			if id == "" {
 				continue
 			}
-			if _, dup := byModelID[id]; dup {
-				continue
-			}
 			displayName := strings.TrimSpace(m.Name)
 			if displayName == "" {
 				displayName = id
@@ -341,7 +401,7 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 			if provDisplay == "" {
 				provDisplay = provID
 			}
-			byModelID[id] = model.ModelCatalog{
+			rows = append(rows, model.ModelCatalog{
 				ModelId:         id,
 				OwnedBy:         ob,
 				Enabled:         true,
@@ -369,20 +429,12 @@ func rowsFromProviderTreePayload(raw []byte, sourceTag, catalogLabel string) ([]
 				KnowledgeCutoff: strings.TrimSpace(m.Knowledge),
 				ReleaseDate:     strings.TrimSpace(m.ReleaseDate),
 				LastUpdatedDev:  strings.TrimSpace(m.LastUpdated),
-			}
+			})
 		}
 	}
 
-	ids := make([]string, 0, len(byModelID))
-	for id := range byModelID {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	out := make([]model.ModelCatalog, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, byModelID[id])
-	}
-	return out, nil
+	// provKeys 已按字典序遍历，provider 内 mkeys 亦已排序，故 rows 已是稳定顺序。
+	return rows, nil
 }
 
 type modelCatalogSyncRequest struct {
@@ -406,23 +458,22 @@ func buildRowsForModelCatalogSync(ctx context.Context, req *modelCatalogSyncRequ
 		u := joinOpenAIModelsListURL(req.BaseURL)
 		return fetchOpenAIStyleModelList(ctx, u, key, "openai-compatible", "sync_openai_compatible")
 	case "openrouter":
-		key := strings.TrimSpace(req.APIKey)
-		if key == "" {
-			return nil, fmt.Errorf("需要 api_key")
-		}
-		return fetchOpenAIStyleModelList(ctx, "https://openrouter.ai/api/v1/models", key, "openrouter", "sync_openrouter")
+		// OpenRouter /api/v1/models 为公开接口，匿名即可拉取；若提供 key 则一并带上。
+		return fetchOpenAIStyleModelList(ctx, "https://openrouter.ai/api/v1/models", strings.TrimSpace(req.APIKey), "openrouter", "sync_openrouter")
 	case "anthropic", "claude":
 		key := strings.TrimSpace(req.APIKey)
 		if key == "" {
 			return nil, fmt.Errorf("需要 api_key")
 		}
-		return fetchAnthropicModelList(ctx, req.BaseURL, key)
+		return fetchAnthropicModelList(ctx, req.BaseURL, key, anthropicModelListFetchOpts{})
 	case "gemini", "google":
 		key := strings.TrimSpace(req.APIKey)
 		if key == "" {
 			return nil, fmt.Errorf("需要 api_key")
 		}
-		return fetchGeminiModelList(ctx, "", key, "v1beta")
+		return fetchGeminiModelList(ctx, "", key, "v1beta", geminiModelListFetchOpts{
+			useQueryKey: true, useGoogHeader: true,
+		})
 	case "models_dev", "models.dev", "modelsdev":
 		u := modelsDevAPIURL(req.BaseURL)
 		return fetchModelsDevCatalog(ctx, u)
@@ -508,30 +559,65 @@ func FetchUpstreamOpenAIStyleModelIDs(ctx context.Context, listURL, bearer strin
 
 // FetchUpstreamAnthropicModelIDs 拉取 Anthropic Messages 模型 id；baseURL 为空时使用 https://api.anthropic.com。
 func FetchUpstreamAnthropicModelIDs(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	rows, err := fetchAnthropicModelList(ctx, baseURL, apiKey)
+	rows, err := fetchAnthropicModelList(ctx, baseURL, apiKey, anthropicModelListFetchOpts{})
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(rows))
-	for _, r := range rows {
-		if s := strings.TrimSpace(r.ModelId); s != "" {
-			ids = append(ids, s)
+	return modelCatalogRowsToIDs(rows), nil
+}
+
+// FetchUpstreamAnthropicCompatibleProxyModelIDs 第三方 Anthropic 兼容代理（new-api 等）：ListModels 同时带 x-api-key 与 Bearer，失败时回退 OpenAI /v1/models。
+func FetchUpstreamAnthropicCompatibleProxyModelIDs(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	rows, err := fetchAnthropicModelList(ctx, baseURL, apiKey, anthropicModelListFetchOpts{useBearer: true})
+	if err == nil && len(rows) > 0 {
+		return modelCatalogRowsToIDs(rows), nil
+	}
+	if strings.TrimSpace(baseURL) != "" {
+		if ids, err2 := FetchUpstreamOpenAIStyleModelIDs(ctx, joinOpenAIModelsListURL(baseURL), apiKey); err2 == nil && len(ids) > 0 {
+			return ids, nil
 		}
 	}
-	return ids, nil
+	if err != nil {
+		return nil, err
+	}
+	return modelCatalogRowsToIDs(rows), nil
 }
 
 // FetchUpstreamGeminiModelIDs 拉取 Generative Language 模型 id；baseURL 为空时使用 Google 官方根地址。
 func FetchUpstreamGeminiModelIDs(ctx context.Context, baseURL, apiKey, apiVersion string) ([]string, error) {
-	rows, err := fetchGeminiModelList(ctx, baseURL, apiKey, apiVersion)
+	rows, err := fetchGeminiModelList(ctx, baseURL, apiKey, apiVersion, geminiModelListFetchOpts{
+		useQueryKey: true, useGoogHeader: true,
+	})
 	if err != nil {
 		return nil, err
 	}
+	return modelCatalogRowsToIDs(rows), nil
+}
+
+// FetchUpstreamGeminiNativeProxyModelIDs 第三方 Gemini 原生代理（如 Anyfast/new-api）：ListModels 需 Bearer，且可能忽略 ?key=。
+func FetchUpstreamGeminiNativeProxyModelIDs(ctx context.Context, baseURL, apiKey, apiVersion string) ([]string, error) {
+	opts := geminiModelListFetchOpts{useGoogHeader: true, useBearer: true}
+	rows, err := fetchGeminiModelList(ctx, baseURL, apiKey, apiVersion, opts)
+	if err == nil && len(rows) > 0 {
+		return modelCatalogRowsToIDs(rows), nil
+	}
+	if strings.TrimSpace(baseURL) != "" {
+		if ids, err2 := FetchUpstreamOpenAIStyleModelIDs(ctx, joinOpenAIModelsListURL(baseURL), apiKey); err2 == nil && len(ids) > 0 {
+			return ids, nil
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return modelCatalogRowsToIDs(rows), nil
+}
+
+func modelCatalogRowsToIDs(rows []model.ModelCatalog) []string {
 	ids := make([]string, 0, len(rows))
 	for _, r := range rows {
 		if s := strings.TrimSpace(r.ModelId); s != "" {
 			ids = append(ids, s)
 		}
 	}
-	return ids, nil
+	return ids
 }

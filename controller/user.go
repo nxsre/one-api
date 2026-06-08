@@ -28,14 +28,15 @@ import (
 const sessionKeyTenantLoginGate = "tenant_login_gate"
 
 type LoginRequest struct {
-	Username         string          `json:"username"`
-	Password         string          `json:"password"`
-	CaptchaID        string          `json:"captcha_id"`
-	CaptchaDotsEnc   string          `json:"captcha_dots_enc"`
-	LoginRequestID   string          `json:"login_request_id"`
-	LoginRequestTs   int64           `json:"login_request_ts"`
-	LoginRequestSig  string          `json:"login_request_sig"`
-	TenantIDRaw      json.RawMessage `json:"tenant_id"`
+	Username        string          `json:"username"`
+	Password        string          `json:"password"`
+	CaptchaID       string          `json:"captcha_id"`
+	CaptchaMode     string          `json:"captcha_mode"`
+	CaptchaDotsEnc  string          `json:"captcha_dots_enc"`
+	LoginRequestID  string          `json:"login_request_id"`
+	LoginRequestTs  int64           `json:"login_request_ts"`
+	LoginRequestSig string          `json:"login_request_sig"`
+	TenantIDRaw     json.RawMessage `json:"tenant_id"`
 }
 
 func Login(c *gin.Context) {
@@ -73,7 +74,7 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
-	password, captchaDots, resolveErr := resolveLoginPasswordAndCaptcha(c, loginRequest)
+	password, captchaAnswer, resolveErr := resolveLoginPasswordAndCaptcha(c, loginRequest)
 	if resolveErr != "" {
 		c.JSON(http.StatusOK, gin.H{
 			"message": resolveErr,
@@ -87,7 +88,7 @@ func Login(c *gin.Context) {
 		sess := sessions.Default(c)
 		if common.RedisEnabled && common.RDB != nil {
 			pendingRaw := sess.Get("pending_login_captcha_id")
-			if !service.ConsumeLoginClickCaptchaRedis(loginRequest.CaptchaID, asStringSession(pendingRaw), captchaDots) {
+			if !service.ConsumeLoginCaptchaRedis(loginRequest.CaptchaID, asStringSession(pendingRaw), captchaAnswer) {
 				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
 				return
 			}
@@ -102,7 +103,7 @@ func Login(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
 				return
 			}
-			if !service.ValidateLoginClickCaptcha([]byte(jsonStr), captchaDots) {
+			if !service.ValidateLoginCaptchaSession([]byte(jsonStr), captchaAnswer) {
 				c.JSON(http.StatusOK, gin.H{"message": "验证码错误", "success": false})
 				return
 			}
@@ -685,12 +686,14 @@ func GetSelf(c *gin.Context) {
 		return
 	}
 	data := gin.H{
-		"user_id":      user.Uid,
-		"username":             user.Username,
-		"display_name":         user.DisplayName,
-		"role":                 user.Role,
-		"status":               user.Status,
-		"group":                user.Group,
+		"user_id":         user.Uid,
+		"username":        user.Username,
+		"display_name":    user.DisplayName,
+		"role":            user.Role,
+		"status":          user.Status,
+		"group":           user.Group,
+		"quota":           user.Quota,
+		"used_quota":      user.UsedQuota,
 		"s3_site_enabled": common.S3SiteOpen(),
 		"s3_region":       common.S3Region,
 		"s3_enabled":      user.S3Enabled,

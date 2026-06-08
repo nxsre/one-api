@@ -16,6 +16,7 @@ func SetApiRouter(router *gin.Engine) {
 	{
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/ratio_config", controller.GetPublicRatioConfig)
+		apiRouter.POST("/pay/wechat/notify", controller.WeChatPayNotifyHandler)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/about", controller.GetAbout)
@@ -56,6 +57,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/topup", controller.TopUp)
 				selfRoute.GET("/available_models", controller.GetUserAvailableModels)
 				selfRoute.GET("/available_models_detail", controller.GetUserAvailableModelsDetail)
+				selfRoute.GET("/model_square", controller.GetUserModelSquare)
+				selfRoute.GET("/pay/channels", controller.GetUserPaymentChannels)
+				selfRoute.POST("/pay/wechat/native", controller.CreateWeChatNativeOrder)
+				selfRoute.GET("/pay/order/:order_no", controller.GetPaymentOrderStatus)
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
 				selfRoute.POST("/2fa/setup", controller.Setup2FA)
 				selfRoute.POST("/2fa/enable", controller.Enable2FA)
@@ -89,6 +94,26 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
+		}
+		// agent 客户端策略元信息（已知类型清单 + 当前全局策略），供令牌/用户/租户/全局配置页使用。
+		agentPolicyRoute := apiRouter.Group("/agent_policy")
+		agentPolicyRoute.Use(middleware.AdminAuth())
+		{
+			agentPolicyRoute.GET("/meta", controller.GetAgentPolicyMeta)
+		}
+		paymentAccessRoute := apiRouter.Group("/payment/access")
+		paymentAccessRoute.Use(middleware.SuperAdminAuth())
+		{
+			paymentAccessRoute.GET("", controller.ListPaymentAccess)
+			paymentAccessRoute.PUT("", controller.SetPaymentAccess)
+			paymentAccessRoute.DELETE("", controller.DeletePaymentAccess)
+		}
+		paymentDiscountRoute := apiRouter.Group("/payment/discount")
+		paymentDiscountRoute.Use(middleware.SuperAdminAuth())
+		{
+			paymentDiscountRoute.GET("", controller.ListPaymentDiscount)
+			paymentDiscountRoute.PUT("", controller.SetPaymentDiscount)
+			paymentDiscountRoute.DELETE("", controller.DeletePaymentDiscount)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
@@ -125,12 +150,13 @@ func SetApiRouter(router *gin.Engine) {
 			platformTenantRead.GET("/upgrades", controller.PlatformListTenantUpgrades)
 		}
 		platformTenantWrite := apiRouter.Group("/platform/tenants")
-		platformTenantWrite.Use(middleware.RootAuth())
+		platformTenantWrite.Use(middleware.SuperAdminAuth(), middleware.PlatformConsoleOnly())
 		{
 			platformTenantWrite.POST("/", controller.PlatformCreateTenant)
 			platformTenantWrite.POST("/upgrades/:id/approve", controller.PlatformApproveTenantUpgrade)
 			platformTenantWrite.POST("/upgrades/:id/reject", controller.PlatformRejectTenantUpgrade)
 			platformTenantWrite.PUT("/:id/billing", controller.PlatformUpdateTenantBilling)
+			platformTenantWrite.PUT("/:id/agent_policy", controller.PlatformUpdateTenantAgentPolicy)
 			platformTenantWrite.GET("/:id/billing_rules", controller.PlatformGetTenantBillingRules)
 			platformTenantWrite.POST("/:id/billing_rules", controller.PlatformCreateTenantBillingRule)
 			platformTenantWrite.PUT("/:id/billing_rules/:rule_id", controller.PlatformUpdateTenantBillingRule)
@@ -166,6 +192,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/test_models_preview", controller.PreviewTestChannelModels)
 			channelRoute.POST("/test_models/jobs", controller.StartChannelModelTestJob)
 			channelRoute.GET("/test_models/jobs/status", controller.GetChannelModelTestJobStatus)
+			channelRoute.POST("/test_models/jobs/control", controller.ControlChannelModelTestJob)
 			channelRoute.GET("/:id/model_test_results", controller.GetChannelModelTestResults)
 			channelRoute.POST("/fix", controller.FixChannelsAbilities)
 			channelRoute.POST("/batch", controller.DeleteChannelBatch)
@@ -223,6 +250,8 @@ func SetApiRouter(router *gin.Engine) {
 		logAdmin.DELETE("/", controller.DeleteHistoryLogs)
 		logAdmin.GET("/stat", controller.GetLogsStat)
 		logAdmin.GET("/search", controller.SearchAllLogs)
+		logAdmin.GET("/billing", controller.GetBillingSummary)
+		logAdmin.GET("/export", controller.ExportLogs)
 		apiRouter.GET("/log/token", middleware.TokenAuth(), controller.GetLogByKey)
 		apiRouter.GET("/log/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
 		apiRouter.GET("/log/self", middleware.UserAuth(), controller.GetUserLogs)
@@ -313,6 +342,7 @@ func SetApiRouter(router *gin.Engine) {
 			tenantConsole.POST("/meta/channel/test_models_preview", controller.PreviewTestChannelModels)
 			tenantConsole.POST("/meta/channel/test_models/jobs", controller.TenantStartChannelModelTestJob)
 			tenantConsole.GET("/meta/channel/test_models/jobs/status", controller.TenantGetChannelModelTestJobStatus)
+			tenantConsole.POST("/meta/channel/test_models/jobs/control", controller.TenantControlChannelModelTestJob)
 			tenantConsole.GET("/meta/channel/:id/model_test_results", controller.TenantGetChannelModelTestResults)
 			tenantConsole.GET("/meta/groups", controller.GetGroups)
 			tenantConsole.GET("/meta/all_models", controller.ListAllModels)

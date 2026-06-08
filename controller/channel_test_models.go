@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -20,12 +19,18 @@ type testChannelModelsPreviewReq struct {
 }
 
 type channelModelTestResult struct {
-	Model     string  `json:"model"`
-	Success   bool    `json:"success"`
-	Message   string  `json:"message"`
-	Time      float64 `json:"time"`
-	TestedAt  int64   `json:"tested_at,omitempty"`
-	ElapsedMs int64   `json:"elapsed_ms,omitempty"`
+	Model     string                      `json:"model"`
+	Success   bool                        `json:"success"`
+	Skipped      bool                        `json:"skipped,omitempty"`
+	TimedOut     bool                        `json:"timed_out,omitempty"`
+	TestKind     string                      `json:"test_kind,omitempty"`
+	TestProtocol string                      `json:"test_protocol,omitempty"`
+	Message      string                      `json:"message"`
+	Detail       *channelModelTestHTTPDetail `json:"detail,omitempty"`
+	Time         float64                     `json:"time"`
+	StartedAt    int64                       `json:"started_at,omitempty"`
+	TestedAt     int64                       `json:"tested_at,omitempty"`
+	ElapsedMs    int64                       `json:"elapsed_ms,omitempty"`
 }
 
 // PreviewTestChannelModels POST /api/channel/test_models_preview
@@ -60,34 +65,8 @@ func PreviewTestChannelModels(c *gin.Context) {
 	ctx := c.Request.Context()
 	results := make([]channelModelTestResult, 0, len(models))
 	for _, modelName := range models {
-		tik := time.Now()
-		msg, testErr, _ := testChannelByModel(ctx, ch, modelName)
-		elapsed := time.Since(tik)
-		elapsedMs := elapsed.Milliseconds()
-		row := channelModelTestResult{
-			Model:     modelName,
-			Time:      elapsed.Seconds(),
-			ElapsedMs: elapsedMs,
-		}
-		if testErr != nil {
-			row.Success = false
-			row.Message = testErr.Error()
-		} else {
-			row.Success = true
-			row.Message = msg
-		}
-		if req.ChannelId > 0 {
-			testedAt := time.Now().Unix()
-			row.TestedAt = testedAt
-			_ = model.UpsertChannelModelTestResult(
-				req.ChannelId,
-				testBaseURL,
-				modelName,
-				row.Success,
-				row.Message,
-				elapsedMs,
-			)
-		}
+		row, elapsedMs := runSingleChannelModelTest(ctx, ch, modelName)
+		persistChannelModelTestResult(req.ChannelId, testBaseURL, &row, elapsedMs)
 		results = append(results, row)
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -141,14 +120,23 @@ func GetChannelModelTestResults(c *gin.Context) {
 	}
 	out := make([]channelModelTestResult, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, channelModelTestResult{
-			Model:     row.ModelId,
-			Success:   row.Success,
-			Message:   row.Message,
-			Time:      float64(row.ElapsedMs) / 1000.0,
-			TestedAt:  row.TestedAt,
-			ElapsedMs: row.ElapsedMs,
-		})
+		item := channelModelTestResult{
+			Model:        row.ModelId,
+			Success:      row.Success,
+			Skipped:      row.Skipped,
+			TimedOut:     row.TimedOut,
+			TestKind:     row.TestKind,
+			TestProtocol: row.TestProtocol,
+			Message:      row.Message,
+			Time:         float64(row.ElapsedMs) / 1000.0,
+			StartedAt:    row.StartedAt,
+			TestedAt:     row.TestedAt,
+			ElapsedMs:    row.ElapsedMs,
+		}
+		if d := parseChannelModelTestDetail(row.DetailJSON); d != nil {
+			item.Detail = d
+		}
+		out = append(out, item)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

@@ -2,7 +2,6 @@ package openai
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -137,9 +136,6 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 		requestaudit.SetNonStreamResponse(rec, string(responseBody))
 	}
 
-	// Reset response body
-	resp.Body = io.NopCloser(bytes.NewBuffer(responseBody))
-
 	// We shouldn't set the header before we parse the response body, because the parse part may fail.
 	// And then we will have to send an error response, but in this case, the header has already been set.
 	// So the HTTPClient will be confused by the response.
@@ -148,13 +144,9 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 		c.Writer.Header().Set(k, v[0])
 	}
 	c.Writer.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(c.Writer, resp.Body)
-	if err != nil {
-		return ErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError), nil
-	}
-	err = resp.Body.Close()
-	if err != nil {
-		return ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError), nil
+	// 响应体已在上面 ReadAll 进内存，直接写回客户端即可，无需再包一层 bytes.Buffer + io.Copy 二次拷贝。
+	if _, err = c.Writer.Write(responseBody); err != nil {
+		return ErrorWrapper(err, "write_response_body_failed", http.StatusInternalServerError), nil
 	}
 
 	if textResponse.Usage.TotalTokens == 0 || (textResponse.Usage.PromptTokens == 0 && textResponse.Usage.CompletionTokens == 0) {

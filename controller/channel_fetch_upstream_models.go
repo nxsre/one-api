@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/model"
+	"github.com/songquanpeng/one-api/relay/adaptor/gemini"
 	"github.com/songquanpeng/one-api/relay/channeltype"
 )
 
@@ -106,6 +107,10 @@ func PreviewFetchUpstreamChannelModels(c *gin.Context) {
 		return
 	}
 	apiKey := channelFirstAPIKey(ch)
+	if apiKey == "" {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "密钥为空，请填写密钥或点击「获取密钥」后再试"})
+		return
+	}
 
 	ids, err := fetchUpstreamModelIDsForChannel(c.Request.Context(), ch, apiKey)
 	if err != nil {
@@ -177,17 +182,21 @@ func channelGeminiAPIVersion(ch *model.Channel) string {
 			return v
 		}
 	}
-	return "v1beta"
+	return gemini.DefaultAPIVersionForChannel(ch.Type)
 }
 
 func fetchUpstreamModelIDsForChannel(ctx context.Context, ch *model.Channel, key string) ([]string, error) {
 	base := resolveChannelListBase(ch)
 
 	switch ch.Type {
-	case channeltype.Anthropic, channeltype.AnthropicCompatible:
+	case channeltype.Anthropic:
 		return FetchUpstreamAnthropicModelIDs(ctx, base, key)
-	case channeltype.Gemini, channeltype.GeminiNativeCompatible:
+	case channeltype.AnthropicCompatible:
+		return FetchUpstreamAnthropicCompatibleProxyModelIDs(ctx, base, key)
+	case channeltype.Gemini:
 		return FetchUpstreamGeminiModelIDs(ctx, base, key, channelGeminiAPIVersion(ch))
+	case channeltype.GeminiNativeCompatible:
+		return FetchUpstreamGeminiNativeProxyModelIDs(ctx, base, key, channelGeminiAPIVersion(ch))
 	case channeltype.Ali:
 		if base == "" {
 			return nil, fmt.Errorf("无法解析 Base URL（请在渠道中填写或依赖内置默认）")

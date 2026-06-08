@@ -1,12 +1,14 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"gorm.io/gorm"
 
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/common/agentpolicy"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
@@ -34,8 +36,12 @@ type Token struct {
 	UsedQuota      int64   `json:"used_quota" gorm:"bigint;default:0"` // used quota
 	Models         *string `json:"models" gorm:"type:text"`            // allowed models
 	// Group 非空时中继按该分组选路，覆盖用户默认分组（仍须与渠道 abilities 中的分组匹配）。
-	Group          *string `json:"group" gorm:"size:64;column:token_group"`
-	Subnet         *string `json:"subnet" gorm:"default:''"`           // allowed subnet
+	Group  *string `json:"group" gorm:"size:64;column:token_group"`
+	Subnet *string `json:"subnet" gorm:"default:''"` // allowed subnet
+	// AgentClientPolicy 令牌级 agent 客户端策略（允许的客户端类型白名单 + 可选限流）；空表示放开所有类型。
+	AgentClientPolicy *agentpolicy.Policy `json:"agent_client_policy,omitempty" gorm:"column:agent_client_policy;type:text;serializer:json"`
+	// Username 为创建人（令牌所属用户）的用户名，非数据库字段，仅在列表接口中按需回填供前端展示。
+	Username string `json:"username" gorm:"-"`
 }
 
 func GetAllUserTokens(userId int, startIdx int, num int, order string) ([]*Token, error) {
@@ -58,6 +64,56 @@ func GetAllUserTokens(userId int, startIdx int, num int, order string) ([]*Token
 
 func SearchUserTokens(userId int, keyword string) (tokens []*Token, err error) {
 	err = DB.Where("user_id = ?", userId).Where("name LIKE ?", keyword+"%").Find(&tokens).Error
+	return tokens, err
+}
+
+// GetAllTokensForAdmin 返回全部用户的令牌（不按 user_id 过滤），供管理员查看与管理。
+func GetAllTokensForAdmin(startIdx int, num int, order string) ([]*Token, error) {
+	var tokens []*Token
+	query := DB
+
+	switch order {
+	case "remain_quota":
+		query = query.Order("unlimited_quota desc, remain_quota desc")
+	case "used_quota":
+		query = query.Order("used_quota desc")
+	default:
+		query = query.Order("id desc")
+	}
+
+	err := query.Limit(num).Offset(startIdx).Find(&tokens).Error
+	return tokens, err
+}
+
+// SearchAllTokens 在全部用户的令牌范围内按名称搜索，供管理员使用。
+func SearchAllTokens(keyword string) (tokens []*Token, err error) {
+	err = DB.Where("name LIKE ?", keyword+"%").Find(&tokens).Error
+	return tokens, err
+}
+
+// GetTenantTokens 返回某租户下全部成员的令牌（按 user_id 属于该租户过滤），供租户管理员查看与管理。
+func GetTenantTokens(tenantID int, startIdx int, num int, order string) ([]*Token, error) {
+	var tokens []*Token
+	memberIDs := DB.Model(&User{}).Select("id").Where("tenant_id = ?", tenantID)
+	query := DB.Where("user_id IN (?)", memberIDs)
+
+	switch order {
+	case "remain_quota":
+		query = query.Order("unlimited_quota desc, remain_quota desc")
+	case "used_quota":
+		query = query.Order("used_quota desc")
+	default:
+		query = query.Order("id desc")
+	}
+
+	err := query.Limit(num).Offset(startIdx).Find(&tokens).Error
+	return tokens, err
+}
+
+// SearchTenantTokens 在某租户全部成员的令牌范围内按名称搜索，供租户管理员使用。
+func SearchTenantTokens(tenantID int, keyword string) (tokens []*Token, err error) {
+	memberIDs := DB.Model(&User{}).Select("id").Where("tenant_id = ?", tenantID)
+	err = DB.Where("user_id IN (?)", memberIDs).Where("name LIKE ?", keyword+"%").Find(&tokens).Error
 	return tokens, err
 }
 
@@ -134,7 +190,7 @@ func (t *Token) Insert() error {
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (t *Token) Update() error {
 	var err error
-	err = DB.Model(t).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "models", "subnet", "token_group").Updates(t).Error
+	err = DB.Model(t).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "models", "subnet", "token_group", "agent_client_policy").Updates(t).Error
 	if err == nil {
 		CacheInvalidateTokenByKey(t.Key)
 	}
@@ -176,6 +232,19 @@ func DeleteTokenById(id int, userId int) (err error) {
 	}
 	token := Token{Id: id, UserId: userId}
 	err = DB.Where(token).First(&token).Error
+	if err != nil {
+		return err
+	}
+	return token.Delete()
+}
+
+// DeleteTokenByIdOnly 仅按 id 删除令牌，不校验所属用户，供管理员删除任意用户的令牌。
+func DeleteTokenByIdOnly(id int) (err error) {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	token := Token{Id: id}
+	err = DB.Where("id = ?", id).First(&token).Error
 	if err != nil {
 		return err
 	}
@@ -243,7 +312,9 @@ func PreConsumeTokenQuota(tokenId int, quota int64) (err error) {
 	if !token.UnlimitedQuota && token.RemainQuota < quota {
 		return errors.New("令牌额度不足")
 	}
-	userQuota, err := GetUserQuota(token.UserId)
+	// 用户额度走 Redis 缓存读（relay 调用方此前已 CacheGetUserQuota 预热），
+	// 省掉这里的冗余 DB SELECT；Redis 未启用时 CacheGetUserQuota 自动回退到 DB，行为不变。
+	userQuota, err := CacheGetUserQuota(context.Background(), token.UserId)
 	if err != nil {
 		return err
 	}

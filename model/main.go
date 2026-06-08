@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/songquanpeng/one-api/common"
@@ -217,6 +218,9 @@ func migrateDB() error {
 		return err
 	}
 	backfillModelCatalogVersionStatus()
+	if err = DB.AutoMigrate(&PaymentOrder{}, &PaymentChannelAccess{}, &PaymentDiscountRule{}); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&TenantUpgradeRequest{}, &TenantBillingRule{}); err != nil {
 		return err
 	}
@@ -360,7 +364,20 @@ func setDBConns(db *gorm.DB) *sql.DB {
 	sqlDB.SetMaxIdleConns(env.IntAlways("sql_max_idle_conns"))
 	sqlDB.SetMaxOpenConns(env.IntAlways("sql_max_open_conns"))
 	sqlDB.SetConnMaxLifetime(time.Second * time.Duration(env.IntAlways("sql_max_lifetime")))
+	// SQLite 是单写者：用大连接池只会触发 "database is locked" 争用，强制单连接。
+	if common.UsingSQLite {
+		sqlDB.SetMaxOpenConns(1)
+	}
 	return sqlDB
+}
+
+// PingDB 校验主库连接可用，供 /healthz 就绪探针使用。
+func PingDB(ctx context.Context) error {
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
 }
 
 func closeDB(db *gorm.DB) error {
@@ -387,6 +404,16 @@ func migrateModelCatalogVersionStatus() error {
 		err := DB.Migrator().DropIndex(&ModelCatalog{}, "uk_model_catalog_mid")
 		if err != nil {
 			logger.SysError("failed to drop uk_model_catalog_mid: " + err.Error())
+		}
+	}
+	// 行身份由 (source, model_id) 扩展为 (source, provider_key, model_id)：丢弃旧复合索引，
+	// 让随后的 AutoMigrate 按新名（idx_mc_src_pk_mid_*）重建含 provider_key 的索引。
+	// 新键在旧键基础上多一列，只会更唯一、不会引入冲突，故重建安全。
+	for _, old := range []string{"idx_mc_src_mid_ver", "idx_mc_src_mid_status"} {
+		if DB.Migrator().HasIndex(&ModelCatalog{}, old) {
+			if err := DB.Migrator().DropIndex(&ModelCatalog{}, old); err != nil {
+				logger.SysError("failed to drop " + old + ": " + err.Error())
+			}
 		}
 	}
 	return nil

@@ -17,6 +17,8 @@ const (
 	modelTestKindImage
 	modelTestKindTTS
 	modelTestKindModeration
+	modelTestKindResponses
+	modelTestKindRealtime
 	modelTestKindSkip
 )
 
@@ -24,10 +26,15 @@ type modelTestSpec struct {
 	Kind       modelTestKind
 	RelayMode  int
 	Path       string
+	Protocol   string
 	SkipReason string
 }
 
 func classifyModelTestSpec(modelName string) modelTestSpec {
+	return classifyModelTestSpecByName(modelName)
+}
+
+func classifyModelTestSpecByName(modelName string) modelTestSpec {
 	m := strings.ToLower(strings.TrimSpace(modelName))
 	if m == "" {
 		return modelTestSpec{
@@ -58,6 +65,20 @@ func classifyModelTestSpec(modelName string) modelTestSpec {
 			Kind:      modelTestKindModeration,
 			RelayMode: relaymode.Moderations,
 			Path:      "/v1/moderations",
+		}
+	}
+	if isResponsesOnlyTestModel(m) {
+		return modelTestSpec{
+			Kind:      modelTestKindResponses,
+			RelayMode: relaymode.OpenAIResponses,
+			Path:      "/v1/responses",
+		}
+	}
+	if isRealtimeTestModel(m) {
+		return modelTestSpec{
+			Kind:      modelTestKindRealtime,
+			RelayMode: relaymode.OpenAIRealtimeSessions,
+			Path:      "/v1/realtime/sessions",
 		}
 	}
 	if isTTSTestModel(m) {
@@ -101,10 +122,6 @@ var modelTestSkipRules = []modelTestSkipRule{
 		reason: "说话人分离模型需上传音频，跳过自动探测",
 	},
 	{
-		match:  func(m string) bool { return strings.Contains(m, "realtime") },
-		reason: "Realtime 模型需 WebSocket，跳过自动探测",
-	},
-	{
 		match:  func(m string) bool { return strings.Contains(m, "lyria") || strings.Contains(m, "musicgen") || strings.Contains(m, "suno") },
 		reason: "音乐生成模型跳过自动探测",
 	},
@@ -123,6 +140,32 @@ func isEmbeddingTestModel(m string) bool {
 
 func isModerationTestModel(m string) bool {
 	return strings.Contains(m, "moderation")
+}
+
+// isResponsesOnlyTestModel 仅支持 OpenAI Responses API（/v1/responses），不支持 chat/completions。
+func isResponsesOnlyTestModel(m string) bool {
+	base := strings.ToLower(strings.TrimSpace(m))
+	if base == "" {
+		return false
+	}
+	if idx := strings.Index(base, ":"); idx > 0 {
+		base = base[:idx]
+	}
+	if base == "gpt-5.4-pro" || strings.HasPrefix(base, "gpt-5.4-pro-") {
+		return true
+	}
+	// GPT-5.x pro 档（排除 mini/nano）通常仅开放 Responses API
+	if strings.HasPrefix(base, "gpt-5") && strings.Contains(base, "-pro") {
+		if strings.Contains(base, "-mini") || strings.Contains(base, "-nano") {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func isRealtimeTestModel(m string) bool {
+	return strings.Contains(m, "realtime")
 }
 
 func isTTSTestModel(m string) bool {
@@ -162,6 +205,10 @@ func modelTestKindLabel(kind modelTestKind) string {
 		return "tts"
 	case modelTestKindModeration:
 		return "moderation"
+	case modelTestKindResponses:
+		return "responses"
+	case modelTestKindRealtime:
+		return "realtime"
 	case modelTestKindSkip:
 		return "skip"
 	default:
@@ -196,6 +243,21 @@ func buildModerationTestRequest(model string) *relaymodel.GeneralOpenAIRequest {
 	return req
 }
 
+func buildResponsesTestRequest(model string) map[string]interface{} {
+	return map[string]interface{}{
+		"model": model,
+		"input": config.TestPrompt,
+	}
+}
+
+func buildRealtimeSessionTestRequest(model string) map[string]interface{} {
+	return map[string]interface{}{
+		"model":      model,
+		"modalities": []string{"text", "audio"},
+		"voice":      "alloy",
+	}
+}
+
 func buildImageTestRequest(model string) *relaymodel.ImageRequest {
 	size := "1024x1024"
 	if strings.Contains(strings.ToLower(model), "dall-e-2") || model == "dall-e-2" {
@@ -219,7 +281,10 @@ func buildTTSTestRequest(model string) openai.TextToSpeechRequest {
 }
 
 func summarizeModelTestSuccess(spec modelTestSpec, responseMessage string) string {
-	if strings.TrimSpace(responseMessage) != "" {
+	// 仅文本类（chat/responses）采用传入的原始/解析后消息；非文本类（embedding/image/tts/
+	// moderation/realtime）忽略响应体，只给固定摘要，避免把大体积响应（向量、图片 base64、
+	// 音频二进制、审核明细）写进「说明」字段。与 shouldRecordModelTestBodyDetail 清空 body 对齐。
+	if modelTestKindIsTextual(spec.Kind) && strings.TrimSpace(responseMessage) != "" {
 		return responseMessage
 	}
 	switch spec.Kind {
@@ -231,7 +296,28 @@ func summarizeModelTestSuccess(spec modelTestSpec, responseMessage string) strin
 		return "语音合成接口响应正常"
 	case modelTestKindModeration:
 		return "内容审核接口响应正常"
+	case modelTestKindResponses:
+		return "Responses API 响应正常"
+	case modelTestKindRealtime:
+		return "Realtime 会话创建响应正常"
 	default:
 		return "接口响应正常"
 	}
+}
+
+func modelTestKindIsTextual(kind modelTestKind) bool {
+	switch kind {
+	case modelTestKindChat, modelTestKindResponses:
+		return true
+	default:
+		return false
+	}
+}
+
+// shouldRecordModelTestBodyDetail 非文本类探测默认不记录成功体；失败时保留体便于排障。
+func shouldRecordModelTestBodyDetail(spec modelTestSpec, testErr error) bool {
+	if testErr != nil {
+		return true
+	}
+	return modelTestKindIsTextual(spec.Kind)
 }

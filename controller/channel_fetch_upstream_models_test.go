@@ -7,6 +7,25 @@ import (
 	"github.com/songquanpeng/one-api/relay/channeltype"
 )
 
+func TestJoinOpenAIModelsListURL(t *testing.T) {
+	tests := []struct {
+		base string
+		want string
+	}{
+		{"", "https://api.openai.com/v1/models"},
+		{"https://api.openai.com", "https://api.openai.com/v1/models"},
+		{"https://api.openai.com/v1", "https://api.openai.com/v1/models"},
+		{"https://www.anyfast.ai", "https://www.anyfast.ai/v1/models"},
+		{"https://generativelanguage.googleapis.com/v1beta/openai", "https://generativelanguage.googleapis.com/v1beta/openai/models"},
+		{"https://proxy.example/v1/models", "https://proxy.example/v1/models"},
+	}
+	for _, tc := range tests {
+		if got := joinOpenAIModelsListURL(tc.base); got != tc.want {
+			t.Fatalf("joinOpenAIModelsListURL(%q) = %q, want %q", tc.base, got, tc.want)
+		}
+	}
+}
+
 func TestJoinAnthropicModelsListURL(t *testing.T) {
 	tests := []struct {
 		base string

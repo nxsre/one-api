@@ -12,11 +12,15 @@ import (
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/env"
 	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/controller"
 	"github.com/songquanpeng/one-api/middleware"
 )
 
 func SetRouter(router *gin.Engine, buildFS embed.FS, nacosConsoleFS embed.FS) {
 	router.Use(middleware.NacosFeatureGate())
+
+	// 健康检查：无鉴权、无限流，供 K8s liveness/readiness 探针使用。
+	router.GET("/healthz", controller.HealthCheck)
 
 	metricsGroup := router.Group("/metrics")
 	metricsGroup.Use(middleware.MetricsAuth())

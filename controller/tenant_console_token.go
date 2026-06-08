@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/songquanpeng/one-api/common/agentpolicy"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/random"
@@ -244,17 +245,21 @@ func TenantConsoleAddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:         ownerPK,
-		Name:           token.Name,
-		Key:            random.GenerateKey(),
-		CreatedTime:    helper.GetTimestamp(),
-		AccessedTime:   helper.GetTimestamp(),
-		ExpiredTime:    token.ExpiredTime,
-		RemainQuota:    token.RemainQuota,
-		UnlimitedQuota: token.UnlimitedQuota,
-		Models:         token.Models,
-		Group:          token.Group,
-		Subnet:         token.Subnet,
+		UserId:            ownerPK,
+		Name:              token.Name,
+		Key:               random.GenerateKey(),
+		CreatedTime:       helper.GetTimestamp(),
+		AccessedTime:      helper.GetTimestamp(),
+		ExpiredTime:       token.ExpiredTime,
+		RemainQuota:       token.RemainQuota,
+		UnlimitedQuota:    token.UnlimitedQuota,
+		Models:            token.Models,
+		Group:             token.Group,
+		Subnet:            token.Subnet,
+		AgentClientPolicy: token.AgentClientPolicy,
+	}
+	if cleanToken.AgentClientPolicy != nil && !cleanToken.AgentClientPolicy.IsZero() {
+		agentpolicy.SetEnabled(true)
 	}
 	if err := cleanToken.Insert(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -316,6 +321,10 @@ func TenantConsoleUpdateToken(c *gin.Context) {
 		cleanToken.Models = token.Models
 		cleanToken.Subnet = token.Subnet
 		cleanToken.Group = token.Group
+		cleanToken.AgentClientPolicy = token.AgentClientPolicy
+		if cleanToken.AgentClientPolicy != nil && !cleanToken.AgentClientPolicy.IsZero() {
+			agentpolicy.SetEnabled(true)
+		}
 	}
 	if err := cleanToken.Update(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})

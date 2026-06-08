@@ -42,9 +42,9 @@ func PickChannel(channels []*dbmodel.Channel, ignoreFirstPriority bool, opts Sel
 	sort.SliceStable(cand, func(i, j int) bool { return cand[i].Id < cand[j].Id })
 
 	if pol.SelectionMode == SelectionConsistentHash && opts.StickyKey != "" {
-		return pickConsistentHash(cand, opts.StickyKey, pol.ConsistentHashSeed, opts.RequestModel), nil
+		return pickConsistentHash(cand, opts.StickyKey, pol.ConsistentHashSeed, opts.RequestModel, pol), nil
 	}
-	return pickWeightedRandom(cand), nil
+	return pickWeightedRandom(cand, pol), nil
 }
 
 func sliceCandidatesForPriority(channels []*dbmodel.Channel, ignoreFirstPriority bool) ([]*dbmodel.Channel, error) {
@@ -91,10 +91,11 @@ func filterCandidates(in []*dbmodel.Channel, opts SelectOpts) []*dbmodel.Channel
 	return out
 }
 
-func effectiveWeight(ch *dbmodel.Channel) uint {
+// effectiveWeight 接收调用方已取好的路由策略，避免在每个渠道上重复解析策略 JSON
+// （CurrentRoutingPolicy 每次调用都会做一次 json.Unmarshal，放进逐渠道循环会被放大 N 倍）。
+func effectiveWeight(ch *dbmodel.Channel, p RoutingPolicy) uint {
 	w := ch.GetWeight()
 	mul := GetManualWeightMultiplier(ch.Id)
-	p := CurrentRoutingPolicy()
 	if p.AutoAdaptiveEnabled && ch.RoutingAdaptiveEffective() {
 		mul *= GetAutoWeightMultiplier(ch.Id)
 	}
@@ -105,11 +106,11 @@ func effectiveWeight(ch *dbmodel.Channel) uint {
 	return uint(v + 0.999) // ceil without import math
 }
 
-func pickWeightedRandom(cand []*dbmodel.Channel) *dbmodel.Channel {
+func pickWeightedRandom(cand []*dbmodel.Channel, pol RoutingPolicy) *dbmodel.Channel {
 	var sum uint64
 	weights := make([]uint, len(cand))
 	for i, ch := range cand {
-		w := effectiveWeight(ch)
+		w := effectiveWeight(ch, pol)
 		weights[i] = w
 		sum += uint64(w)
 	}
@@ -127,14 +128,14 @@ func pickWeightedRandom(cand []*dbmodel.Channel) *dbmodel.Channel {
 	return cand[len(cand)-1]
 }
 
-func pickConsistentHash(cand []*dbmodel.Channel, stickyKey, seed, requestModel string) *dbmodel.Channel {
+func pickConsistentHash(cand []*dbmodel.Channel, stickyKey, seed, requestModel string, pol RoutingPolicy) *dbmodel.Channel {
 	h := fnv.New64a()
 	_, _ = fmt.Fprintf(h, "%s|%s|%s", seed, stickyKey, requestModel)
 	sumHash := h.Sum64()
 	var sum uint64
 	weights := make([]uint, len(cand))
 	for i, ch := range cand {
-		w := effectiveWeight(ch)
+		w := effectiveWeight(ch, pol)
 		weights[i] = w
 		sum += uint64(w)
 	}
