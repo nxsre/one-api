@@ -361,6 +361,12 @@
   font-size: 14px;
 }
 
+.models-count {
+  font-size: 12px;
+  color: var(--text3);
+  text-align: right;
+}
+
 /* 标签（与 mockup 一致） */
 .tag {
   display: inline-flex;

@@ -2,14 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Select, message } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
-import { useUser } from '@/context/UserContext';
 import {
   fetchPlaygroundLanguageModels,
   fetchPlaygroundTokens,
   streamChatCompletion,
   resolveTokenKey,
 } from '@/lib/playground';
-import { fetchUserAvailableModelIds, isAdminUser } from '@/lib/modelCatalog';
 import MarkdownContent from './MarkdownContent';
 import './playground.css';
 
@@ -18,8 +16,6 @@ function newMessage(role, content) {
 }
 
 export default function PlaygroundPage() {
-  const { user } = useUser();
-  const admin = isAdminUser(user);
   const [models, setModels] = useState([]);
   const [tokens, setTokens] = useState([]);
   const [modelId, setModelId] = useState('');
@@ -37,13 +33,8 @@ export default function PlaygroundPage() {
     (async () => {
       setLoadingMeta(true);
       try {
-        let availableSet = null;
-        if (!admin) {
-          const ids = await fetchUserAvailableModelIds();
-          availableSet = new Set(ids);
-        }
         const [modelList, tokenList] = await Promise.all([
-          fetchPlaygroundLanguageModels(user, availableSet),
+          fetchPlaygroundLanguageModels(),
           fetchPlaygroundTokens(),
         ]);
         if (cancelled) return;
@@ -60,7 +51,7 @@ export default function PlaygroundPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, admin]);
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });

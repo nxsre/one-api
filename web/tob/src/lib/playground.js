@@ -5,13 +5,11 @@ import { fetchTokenById, fetchTokenPage, getCopyKeyValue } from '@/lib/tokens';
 const relayBase = import.meta.env.VITE_API_BASE || '';
 
 /** 语言模型列表（体验中心模型选择） */
-export async function fetchPlaygroundLanguageModels(user, availableSet) {
+export async function fetchPlaygroundLanguageModels() {
   const { items } = await fetchModelsPage({
-    user,
     page: 1,
     pageSize: 100,
     filterKey: 'language',
-    availableSet,
     search: 'gpt-4o',
   });
   return (items || [])

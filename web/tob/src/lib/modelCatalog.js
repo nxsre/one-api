@@ -163,10 +163,10 @@ export function matchesCategory(row, filterKey) {
   return true;
 }
 
-/** 分类筛选下推到 GET /api/model_catalog?filter_category= */
-export function filterToApiParams(filterKey) {
-  if (!filterKey || filterKey === 'all') return {};
-  return { filterCategory: filterKey };
+/** 分类筛选 → GET /api/user/model_square?category= */
+export function filterToModelSquareCategory(filterKey) {
+  if (!filterKey || filterKey === 'all') return '';
+  return filterKey;
 }
 
 export function matchesSearch(row, query) {
@@ -202,7 +202,30 @@ export async function fetchUserAvailableModelIds() {
   return [...new Set(list.map((id) => String(id || '').trim()).filter(Boolean))];
 }
 
-/** GET /api/model_catalog 单页（与 ModelCatalog 页一致） */
+/**
+ * GET /api/user/model_square
+ * 与远程 /model-square 页一致：返回当前账号可调用的模型（服务端按 category / keyword 筛选）
+ */
+export async function fetchModelSquare({ category = '', keyword = '' } = {}) {
+  const params = {};
+  const cat = String(category || '').trim();
+  const kw = String(keyword || '').trim();
+  if (cat) params.category = cat;
+  if (kw) params.keyword = kw;
+
+  const res = await API.get('/api/user/model_square', { params });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || '加载模型广场失败');
+  }
+  const data = res.data.data;
+  const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+  return {
+    items: normalizeCatalogRows(items),
+    total: items.length,
+  };
+}
+
+/** GET /api/model_catalog 单页（管理端目录，模型广场不再使用） */
 export async function fetchModelCatalogPage({
   page = 1,
   pageSize = MODEL_PAGE_SIZE,
@@ -250,75 +273,39 @@ function normalizeCatalogRows(items) {
 }
 
 /**
- * 分页加载模型广场（对齐 ModelCatalog GET /api/model_catalog）
- * @param {object} opts
- * @param {Set<string>|null} [opts.availableSet] 非管理员可用模型 ID，由页面缓存
+ * 客户端分页切片
+ */
+export function paginateModelItems(items, page = 1, pageSize = MODEL_PAGE_SIZE) {
+  const list = items || [];
+  const total = list.length;
+  const start = (page - 1) * pageSize;
+  return {
+    items: list.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+/**
+ * 分页加载模型广场（每次请求拉全量，由调用方缓存后做前端分页）
  */
 export async function fetchModelsPage({
-  user,
   page = 1,
   pageSize = MODEL_PAGE_SIZE,
   search = '',
   filterKey = 'all',
-  availableSet = null,
-}) {
-  const admin = isAdminUser(user);
-  let allowed = availableSet;
-  if (!admin && !allowed) {
-    allowed = new Set(await fetchUserAvailableModelIds());
-  }
+} = {}) {
+  const { items: allItems } = await fetchModelSquare({
+    category: filterToModelSquareCategory(filterKey),
+    keyword: String(search || '').trim(),
+  });
 
-  const apiFilters = filterToApiParams(filterKey);
-
-  try {
-    const { items, total, grandTotal } = await fetchModelCatalogPage({
-      page,
-      pageSize,
-      search: String(search || '').trim(),
-      ...apiFilters,
-    });
-
-    let list = normalizeCatalogRows(items);
-    if (!admin && allowed) {
-      list = list.filter((row) => allowed.has(String(row.model_id || '').trim()));
-    }
-
-    return {
-      items: list,
-      total,
-      grandTotal,
-      page,
-      pageSize,
-      fromCatalog: true,
-      availableCount: allowed ? allowed.size : total,
-    };
-  } catch (err) {
-    if (!admin && allowed?.size) {
-      const ids = [...allowed].sort();
-      const q = String(search || '').trim().toLowerCase();
-      const matched = ids.filter((id) => !q || id.toLowerCase().includes(q));
-      const filteredIds =
-        filterKey && filterKey !== 'all'
-          ? matched.filter((id) => matchesCategory({ model_id: id }, filterKey))
-          : matched;
-      const totalFb = filteredIds.length;
-      const start = (page - 1) * pageSize;
-      const slice = filteredIds.slice(start, start + pageSize).map((model_id) => ({
-        model_id,
-        model_name: model_id,
-        enabled: true,
-        status: 'current',
-      }));
-      return {
-        items: slice,
-        total: totalFb,
-        grandTotal: totalFb,
-        page,
-        pageSize,
-        fromCatalog: false,
-        availableCount: allowed.size,
-      };
-    }
-    throw err;
-  }
+  const paged = paginateModelItems(allItems, page, pageSize);
+  return {
+    ...paged,
+    grandTotal: paged.total,
+    fromCatalog: true,
+    availableCount: paged.total,
+  };
 }

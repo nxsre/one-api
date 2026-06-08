@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import Pagination from '@/components/Pagination';
@@ -8,11 +8,10 @@ import { copyText } from '@/lib/tokens';
 import {
   MODEL_FILTERS,
   MODEL_PAGE_SIZE,
-  fetchModelsPage,
-  fetchUserAvailableModelIds,
-  isAdminUser,
+  fetchModelSquare,
+  filterToModelSquareCategory,
+  paginateModelItems,
 } from '@/lib/modelCatalog';
-import { useUser } from '@/context/UserContext';
 import './models.css';
 
 function SearchIcon() {
@@ -25,37 +24,14 @@ function SearchIcon() {
 }
 
 export default function ModelsPage() {
-  const { user } = useUser();
   const navigate = useNavigate();
-  const [rows, setRows] = useState([]);
+  const [allItems, setAllItems] = useState([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [availableSet, setAvailableSet] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-
-  const admin = isAdminUser(user);
-
-  useEffect(() => {
-    if (admin) {
-      setAvailableSet(null);
-      return;
-    }
-    let cancelled = false;
-    fetchUserAvailableModelIds()
-      .then((ids) => {
-        if (!cancelled) setAvailableSet(new Set(ids));
-      })
-      .catch(() => {
-        if (!cancelled) setAvailableSet(new Set());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [admin, user]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchQuery(searchInput.trim()), 300);
@@ -66,34 +42,35 @@ export default function ModelsPage() {
     setPage(1);
   }, [searchQuery, filter]);
 
-  const load = useCallback(async () => {
-    if (!admin && availableSet === null) return;
-
-    setLoading(true);
-    setError('');
-    try {
-      const result = await fetchModelsPage({
-        user,
-        page,
-        pageSize: MODEL_PAGE_SIZE,
-        search: searchQuery,
-        filterKey: filter,
-        availableSet,
-      });
-      setRows(result.items);
-      setTotal(result.total);
-    } catch (e) {
-      setError(getApiErrorMessage(e));
-      setRows([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, page, searchQuery, filter, availableSet, admin]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const { items } = await fetchModelSquare({
+          category: filterToModelSquareCategory(filter),
+          keyword: searchQuery,
+        });
+        if (!cancelled) setAllItems(items);
+      } catch (e) {
+        if (!cancelled) {
+          setError(getApiErrorMessage(e));
+          setAllItems([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery, filter]);
+
+  const { items: rows, total } = useMemo(
+    () => paginateModelItems(allItems, page, MODEL_PAGE_SIZE),
+    [allItems, page]
+  );
 
   const handleCopyId = async (row) => {
     const id = row?.model_id || '';
@@ -112,7 +89,7 @@ export default function ModelsPage() {
         <div>
           <div className="models-section-title">模型广场</div>
           <div className="models-section-sub">
-            100+ 全球顶级模型，OpenAI 兼容接口，一键接入
+            以下为当前账号可调用的模型；可按分类筛选或搜索。
           </div>
         </div>
       </div>
@@ -134,7 +111,7 @@ export default function ModelsPage() {
           <SearchIcon />
           <input
             type="search"
-            placeholder="搜索模型..."
+            placeholder="搜索模型 ID / 名称…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
@@ -146,9 +123,7 @@ export default function ModelsPage() {
           <div className="models-loading">加载模型目录…</div>
         ) : rows.length === 0 ? (
           <div className="models-empty">
-            {total === 0
-              ? '暂无可用模型，请联系管理员配置渠道与模型目录。'
-              : '本页没有匹配的模型，请调整筛选或搜索关键词。'}
+            {total === 0 ? '暂无可用模型' : '本页没有匹配的模型，请调整筛选或搜索关键词。'}
           </div>
         ) : (
           rows.map((row) => (
@@ -161,6 +136,10 @@ export default function ModelsPage() {
           ))
         )}
       </div>
+
+      {!loading && total > 0 ? (
+        <div className="models-count">共 {total} 个可用模型</div>
+      ) : null}
 
       {!loading ? (
         <Pagination
