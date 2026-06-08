@@ -1,3 +1,33 @@
+.tob-captcha-widget-wrap {
+  max-width: 92vw;
+}
+
+.tob-captcha-widget-wrap [class*='gocaptcha-module_wrapper'] {
+  --go-captcha-theme-btn-bg-color: var(--accent, #6366f1);
+  --go-captcha-theme-btn-border-color: var(--accent, #6366f1);
+  --go-captcha-theme-btn-disabled-color: rgba(99, 102, 241, 0.45);
+  --go-captcha-theme-active-color: var(--accent, #6366f1);
+  --go-captcha-theme-loading-icon-color: var(--accent, #6366f1);
+}
+
+.captcha-modal-fallback {
+  width: 360px;
+  max-width: 92vw;
+}
+
+.captcha-reload-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.captcha-size-probe {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .tob-captcha-segment {
   margin-bottom: 16px;
   padding: 12px;

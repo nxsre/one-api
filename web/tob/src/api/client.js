@@ -38,6 +38,9 @@ API.interceptors.response.use(
 );
 
 export function getApiErrorMessage(error) {
+  if (error?.response?.status === 429) {
+    return '请求过于频繁，请稍后再试';
+  }
   const data = error?.response?.data;
   if (typeof data?.message === 'string' && data.message.trim()) {
     return data.message.trim();

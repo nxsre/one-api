@@ -67,7 +67,7 @@ cd web/tob
 ./build-image.sh --run -p 9000
 
 # 自定义标签
-IMAGE_TAG=v20260527_02 ./build-image.sh
+IMAGE_TAG=v20260528_01 ./build-image.sh
 
 # 前后端分离：构建时写入 API 根地址
 VITE_API_BASE=https://your-one-api.example.com ./build-image.sh
@@ -76,7 +76,7 @@ VITE_API_BASE=https://your-one-api.example.com ./build-image.sh
 推送阿里云（需先 `docker login` 对应 registry）：
 
 ```bash
-docker push crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v20260527_02
+docker push crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v20260528_01
 ```
 
 等价命令：
@@ -84,7 +84,7 @@ docker push crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/on
 ```bash
 docker build -t crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v202605215_01 .
 docker run -d --rm -p 13442:80 --name one-api-tob \
-  crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v20260527_02
+  crpi-begxsocwym8a9lwq.cn-hangzhou.personal.cr.aliyuncs.com/hjbonc/one-api-tob:v20260528_01
 ```
 
 nginx 将 `/api/` 反代到后端，见 `nginx.conf`。与 compose 联调时，把 `proxy_pass` 改成你的服务名或地址。

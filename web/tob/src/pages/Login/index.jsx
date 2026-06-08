@@ -207,7 +207,15 @@ export default function LoginPage() {
                       <div className="tob-captcha-segment-title">
                         <span>安全验证</span>
                         <span className="tob-captcha-segment-sub">
-                          {captcha.clicks.length} / {captcha.dotNum || '—'}
+                          {captcha.mode === 'slide'
+                            ? captcha.isComplete
+                              ? '已完成'
+                              : '滑动拼图'
+                            : captcha.mode === 'rotate'
+                              ? captcha.isComplete
+                                ? '已完成'
+                                : '旋转对齐'
+                              : `${captcha.clicks.length} / ${captcha.dotNum || '—'}`}
                         </span>
                       </div>
                       <button
@@ -215,7 +223,7 @@ export default function LoginPage() {
                         className={`tob-btn-captcha${captcha.isComplete ? ' done' : ''}`}
                         onClick={() => captcha.setModalOpen(true)}
                       >
-                        {captcha.isComplete ? '验证已完成' : '完成点击验证'}
+                        {captcha.isComplete ? '验证已完成' : '完成安全验证'}
                       </button>
                       {captcha.loadError && (
                         <p className="tob-error" style={{ marginTop: 8, marginBottom: 0 }}>
@@ -271,12 +279,13 @@ export default function LoginPage() {
       <LoginCaptchaModal
         open={captcha.modalOpen}
         onClose={() => captcha.setModalOpen(false)}
+        mode={captcha.mode}
         thumbSrc={captcha.thumbSrc}
         masterSrc={captcha.masterSrc}
         loading={captcha.loading}
         loadError={captcha.loadError}
-        dotNum={captcha.dotNum}
-        clicks={captcha.clicks}
+        thumbSize={captcha.thumbSize}
+        slideMeta={captcha.slideMeta}
         masterSize={captcha.masterSize}
         onMasterLoad={(ev) =>
           captcha.setMasterSize({
@@ -284,9 +293,11 @@ export default function LoginPage() {
             h: ev.target.naturalHeight,
           })
         }
-        onMasterClick={captcha.onMasterClick}
-        onClear={() => captcha.setClicks([])}
-        onRefresh={() => void captcha.loadCaptcha()}
+        onRefresh={() => void captcha.refreshCaptcha()}
+        onRotateConfirm={captcha.onRotateConfirm}
+        onClickConfirm={captcha.onClickConfirm}
+        onSlideConfirm={captcha.onSlideConfirm}
+        captchaRef={captcha.captchaRef}
       />
     </div>
   );

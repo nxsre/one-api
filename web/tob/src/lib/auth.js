@@ -6,13 +6,47 @@ import { isSecurePasswordLoginEnabled, normalizeStatusResponse } from '@/lib/sys
  * 构建登录 POST 体（与 default secureLogin.js 一致）
  */
 export async function buildLoginPayload(username, passwordPlain, captcha, loginProof) {
+  const buildCaptchaFields = async (encKey) => {
+    if (!captcha?.captcha_id) return {};
+    if (captcha.mode === 'slide' && captcha.captcha_point) {
+      const payload = JSON.stringify(captcha.captcha_point);
+      const base = { captcha_id: captcha.captcha_id, captcha_mode: 'slide' };
+      if (encKey) {
+        return {
+          ...base,
+          captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
+        };
+      }
+      return { ...base, captcha_dots_enc: payload };
+    }
+    if (captcha.mode === 'rotate' && captcha.captcha_angle != null) {
+      const payload = JSON.stringify({ angle: captcha.captcha_angle });
+      const base = { captcha_id: captcha.captcha_id, captcha_mode: 'rotate' };
+      if (encKey) {
+        return {
+          ...base,
+          captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
+        };
+      }
+      return { ...base, captcha_dots_enc: payload };
+    }
+    if (captcha?.captcha_clicks?.length > 0) {
+      const payload = JSON.stringify(captcha.captcha_clicks);
+      const base = { captcha_id: captcha.captcha_id, captcha_mode: 'click' };
+      if (encKey) {
+        return {
+          ...base,
+          captcha_dots_enc: await encryptLoginPayloadAES(encKey, payload),
+        };
+      }
+      return { ...base, captcha_dots_enc: payload };
+    }
+    return {};
+  };
+
   if (!isSecurePasswordLoginEnabled()) {
     const out = { username, password: passwordPlain };
-    if (captcha?.captcha_clicks?.length > 0 && captcha?.captcha_id) {
-      out.captcha_id = captcha.captcha_id;
-      out.captcha_dots_enc = JSON.stringify(captcha.captcha_clicks);
-    }
-    return out;
+    return { ...out, ...(await buildCaptchaFields(null)) };
   }
 
   let d;
@@ -49,14 +83,7 @@ export async function buildLoginPayload(username, passwordPlain, captcha, loginP
     login_request_ts: d.login_request_ts,
     login_request_sig: d.login_request_sig,
   };
-  if (captcha?.captcha_clicks?.length > 0 && captcha?.captcha_id) {
-    out.captcha_id = captcha.captcha_id;
-    out.captcha_dots_enc = await encryptLoginPayloadAES(
-      d.login_enc_key,
-      JSON.stringify(captcha.captcha_clicks)
-    );
-  }
-  return out;
+  return { ...out, ...(await buildCaptchaFields(d.login_enc_key)) };
 }
 
 export async function fetchSystemStatus() {
