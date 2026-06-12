@@ -21,9 +21,10 @@ type ChannelTypeOption struct {
 	Description     string `json:"description,omitempty"`
 	Protocol        string `json:"protocol"`
 	TypeKind        string `json:"type_kind"`
-	AutoImported    bool   `json:"auto_imported"`
-	ImportSourceURL string `json:"import_source_url,omitempty"`
-	DefaultBaseURL  string `json:"default_base_url,omitempty"`
+	AutoImported    bool     `json:"auto_imported"`
+	ImportSourceURL string   `json:"import_source_url,omitempty"`
+	DefaultBaseURL  string   `json:"default_base_url,omitempty"`
+	BuiltinModels   []string `json:"builtin_models,omitempty"` // 渠道类型内置模型（适配器 GetModelList，目录表外），供前端并入下拉/自动填入
 }
 
 // GetModelCatalogEditorOptions GET /api/model_catalog/editor_options
@@ -47,6 +48,17 @@ func GetModelCatalogEditorOptions(c *gin.Context) {
 		}
 		defURL := strings.TrimSpace(channeltype.DefaultBaseURL(id))
 
+		// 内置模型（如高德 amap、AiPPT、深知 deep-research）只在适配器代码里，不入模型目录表；
+		// 一并返回，前端选中类型时并入下拉选项并在模型为空时自动填入。
+		var builtinModels []string
+		if ms, ok := channelId2Models[id]; ok {
+			for _, m := range ms {
+				if m = strings.TrimSpace(m); m != "" {
+					builtinModels = append(builtinModels, m)
+				}
+			}
+		}
+
 		desc := tip
 		if desc == "" {
 			if defURL != "" {
@@ -67,6 +79,7 @@ func GetModelCatalogEditorOptions(c *gin.Context) {
 			AutoImported:    false,
 			ImportSourceURL: "",
 			DefaultBaseURL:  defURL,
+			BuiltinModels:   builtinModels,
 		})
 	}
 

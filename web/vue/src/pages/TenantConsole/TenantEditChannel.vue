@@ -82,8 +82,9 @@
             <a-form-item :label="t('channel.edit.models')" required>
               <a-select
                 :value="inputs.models"
-                mode="multiple"
+                mode="tags"
                 show-search
+                :token-separators="[',', ' ', '\n']"
                 :options="modelOptions"
                 :field-names="{ label: 'text', value: 'value' }"
                 option-filter-prop="text"
@@ -665,6 +666,13 @@ const onTypeChange = (value) => {
   }
   inputs.type = value;
   inputs.base_url = base_url;
+  // 切换到带内置模型的类型（高德/AiPPT/深知等）时，若模型为空则自动填入内置模型，省去手动输入
+  if (prevType !== value) {
+    const builtins = (opt?.builtin_models || []).map((m) => String(m).trim()).filter(Boolean);
+    if (builtins.length && (inputs.models || []).length === 0) {
+      onModelsChange([...new Set(builtins)]);
+    }
+  }
 };
 
 const toggleAutoBan = () => {
@@ -1021,15 +1029,26 @@ const fetchGroups = async () => {
   }
 };
 
+// 当前渠道类型的内置模型（如高德 amap、AiPPT、深知 deep-research）：仅存在于适配器，不入模型目录表
+const currentTypeBuiltinModels = computed(() =>
+  (channelTypeOptions.value.find((o) => o.value === inputs.type)?.builtin_models || [])
+    .map((m) => String(m).trim())
+    .filter(Boolean)
+);
+
 watch(
-  [originModelOptions, () => inputs.models],
+  [originModelOptions, () => inputs.models, currentTypeBuiltinModels],
   () => {
     const localModelOptions = [...originModelOptions.value];
-    (inputs.models || []).forEach((model) => {
+    const pushOption = (model) => {
+      if (!model) return;
       if (!localModelOptions.find((option) => option.key === model)) {
         localModelOptions.push({ key: model, text: model, value: model });
       }
-    });
+    };
+    // 内置模型并入下拉，保证选中类型（如高德）后 amap 可见、可选
+    currentTypeBuiltinModels.value.forEach(pushOption);
+    (inputs.models || []).forEach(pushOption);
     modelOptions.value = localModelOptions;
   },
   { immediate: true, deep: true }
