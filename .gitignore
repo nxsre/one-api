@@ -35,8 +35,11 @@ web/nacos-console/dist/*.svg
 /bench
 /kimi-search-check
 /model-verify-check
+/cmd/model-verify-check/model-verify-check
 /modelsync
 *.test
+# 生成的报告 PDF(根目录,非代码)
+/*.pdf
 # 本地缓存
 /tiktoken-cache/
 # 销售/业务文档(非代码)

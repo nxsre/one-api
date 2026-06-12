@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -21,6 +22,15 @@ type Client struct {
 
 const defaultHTTPTimeout = 180 * time.Second
 
+// Options 汇总客户端可选项，便于在不破坏既有签名的前提下扩展。
+type Options struct {
+	SkipTLSVerify bool          // 跳过 HTTPS 服务端证书校验（仅调试或内网自签证书）
+	Timeout       time.Duration // HTTP 超时；<=0 时用默认值
+	// Proxy 代理地址，支持 http/https/socks5（如 http://127.0.0.1:7890、socks5://127.0.0.1:1080）。
+	// 为空时回退到 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量（http.ProxyFromEnvironment）。
+	Proxy string
+}
+
 // New 构造客户端；baseURL 为空时用 http://127.0.0.1:3000。
 // skipTLSVerify 为 true 时跳过 HTTPS 服务端证书校验（仅调试或内网自签证书；勿在生产滥用）。
 func New(baseURL, token string, skipTLSVerify bool) *Client {
@@ -29,28 +39,53 @@ func New(baseURL, token string, skipTLSVerify bool) *Client {
 
 // NewWithTimeout 与 New 相同，但可指定 HTTP 超时。
 func NewWithTimeout(baseURL, token string, skipTLSVerify bool, timeout time.Duration) *Client {
+	cli, _ := NewWithOptions(baseURL, token, Options{SkipTLSVerify: skipTLSVerify, Timeout: timeout})
+	return cli
+}
+
+// NewWithOptions 用 Options 构造客户端；Proxy 非法时返回 error（客户端仍可用，但不会启用代理）。
+func NewWithOptions(baseURL, token string, opts Options) (*Client, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:3000"
 	}
+	timeout := opts.Timeout
 	if timeout <= 0 {
 		timeout = defaultHTTPTimeout
 	}
-	hc := &http.Client{
-		Timeout: timeout,
-	}
-	if skipTLSVerify {
-		hc.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
+
+	// 以 DefaultTransport 为基底克隆，保留连接复用/超时等默认值，再叠加代理与 TLS 设置。
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = http.ProxyFromEnvironment
+
+	var proxyErr error
+	if p := strings.TrimSpace(opts.Proxy); p != "" {
+		u, err := url.Parse(p)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			if err == nil {
+				err = fmt.Errorf("代理地址需包含 scheme 与 host，如 http://127.0.0.1:7890")
+			}
+			proxyErr = fmt.Errorf("解析代理地址 %q 失败: %w", p, err)
+		} else {
+			tr.Proxy = http.ProxyURL(u)
 		}
+	}
+	if opts.SkipTLSVerify {
+		if tr.TLSClientConfig == nil {
+			tr.TLSClientConfig = &tls.Config{}
+		}
+		tr.TLSClientConfig.InsecureSkipVerify = true
+	}
+
+	hc := &http.Client{
+		Timeout:   timeout,
+		Transport: tr,
 	}
 	return &Client{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		Token:   strings.TrimSpace(token),
 		HTTP:    hc,
-	}
+	}, proxyErr
 }
 
 // PostJSON POST JSON，path 须以 / 开头（可省略，会自动补全）。

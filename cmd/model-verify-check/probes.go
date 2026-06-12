@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -52,6 +53,8 @@ type probeDef struct {
 	MaxTokens  int
 	// OmitTemperature 为 true 时不发送 temperature 字段（与部分验真请求体一致）。
 	OmitTemperature bool
+	// System 非空时作为 Anthropic system 参数发送（用于指令覆盖类探测）。
+	System string
 }
 
 var probeCatalog = []probeDef{
@@ -153,10 +156,57 @@ func buildRequestBody(model, prompt string, def probeDef) map[string]any {
 			{"role": "user", "content": prompt},
 		},
 	}
-	if !def.OmitTemperature {
+	if bodyHasTemperature(def, model) {
 		body["temperature"] = defaultTemperature
 	}
+	if strings.TrimSpace(def.System) != "" {
+		body["system"] = def.System
+	}
 	return body
+}
+
+// bodyHasTemperature 决定请求体是否携带 temperature 字段：探测自身要求省略，
+// 或目标模型不支持 temperature 时一律不发送，避免触发
+// "temperature is deprecated for this model." 类报错。
+func bodyHasTemperature(def probeDef, model string) bool {
+	return !def.OmitTemperature && modelSupportsTemperature(model)
+}
+
+// opusVersionPattern 提取形如 claude-opus-4-8 / anthropic.claude-opus-4-7 的 Opus 次版本号。
+var opusVersionPattern = regexp.MustCompile(`opus-(\d+)-(\d+)`)
+
+// modelSupportsTemperature 按模型名判断是否接受 temperature 参数。
+// Anthropic 自 Fable 5、Opus 4.7、Opus 4.8 起移除了 temperature/top_p/top_k，
+// 传入会返回 400；Opus 4.6 及更早、Sonnet 4.6、Haiku 4.5 等仍可接受。
+func modelSupportsTemperature(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "" {
+		return true
+	}
+	// Fable 系列（含 5 及更新）不支持。
+	if strings.Contains(m, "fable") {
+		return false
+	}
+	// Opus 4.7/4.8 及更新（4.x 中 minor>=7，或大版本 >=5）不支持。
+	if sub := opusVersionPattern.FindStringSubmatch(m); sub != nil {
+		major, minor := atoiSafe(sub[1]), atoiSafe(sub[2])
+		if major > 4 || (major == 4 && minor >= 7) {
+			return false
+		}
+	}
+	return true
+}
+
+// atoiSafe 将十进制数字串转 int，非法时返回 0。
+func atoiSafe(s string) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 func probeMaxTokens(def probeDef) int {
@@ -261,6 +311,9 @@ func evaluateProbe(probeID, model, text string) evalResult {
 		return evaluateAgentProxy(text)
 
 	default:
+		if r, ok := evaluateAPICheckProbe(probeID, model, text); ok {
+			return r
+		}
 		return evalResult{Pass: false, Reason: "未知探测类型"}
 	}
 }
@@ -402,6 +455,9 @@ func probeTitle(id string) string {
 	if title, ok := names[def.ID]; ok {
 		return fmt.Sprintf("%s — %s (%s)", def.ID, title, def.Name)
 	}
+	if title, ok := apiCheckTitle(def.ID); ok {
+		return fmt.Sprintf("%s — %s (%s)", def.ID, title, def.Name)
+	}
 	return def.Name
 }
 
@@ -426,6 +482,9 @@ func probeExpectation(id string) string {
 	case probeToolCall:
 		return "round1 stop_reason=tool_use 且调用 get_weather(北京/Beijing)；round2 stop_reason=end_turn 且回复含天气信息"
 	default:
+		if exp, ok := apiCheckExpectation(id); ok {
+			return exp
+		}
 		return ""
 	}
 }

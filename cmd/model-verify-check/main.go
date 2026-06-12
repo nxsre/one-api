@@ -1,4 +1,4 @@
-// model-verify-check：复现 modelknow.com 模型验真探测请求（POST /v1/messages，A–K 题组）。
+// model-verify-check：复现 modelknow.com 模型验真探测请求（POST /v1/messages，A–K）+ api-check.com 检测补全（L–S）。
 // 全部使用 stream=true；每题完成后立即打印 request/response 的 header 与 body。
 package main
 
@@ -33,14 +33,35 @@ type probeOutcome struct {
 	Pass            bool                `json:"pass,omitempty"`
 	Reason          string              `json:"reason,omitempty"`
 	Snippet         string              `json:"snippet,omitempty"`
+	SubItems        []probeSubItem      `json:"sub_items,omitempty"`
 	Error           string              `json:"error,omitempty"`
+}
+
+// probeSubItem 表示「单项探测包含多个子题」（如推理基准 4 题、Prompt 提取 8 法、身份一致性两次）
+// 时的逐题结果。Snippet 为终端用的紧凑单行汇总，SubItems 则供 PDF 报告分行排版，避免多问答挤作一团。
+type probeSubItem struct {
+	Label string `json:"label"`           // 子题标签，如 "球与棒(=0.05)"、"回复 #1"
+	Reply string `json:"reply,omitempty"` // 模型对该子题的单行回复（已折叠空白）
+	Mark  string `json:"mark"`            // PASS | WARN | FAIL | INFO，决定报告中的标记与配色
+}
+
+const (
+	subPass = "PASS"
+	subWarn = "WARN"
+	subFail = "FAIL"
+	subInfo = "INFO"
+)
+
+// flattenReply 把模型回复折叠为单行（合并所有空白与换行），并截断到上限，供子题分行展示。
+func flattenReply(s string, max int) string {
+	return truncate(strings.Join(strings.Fields(s), " "), max)
 }
 
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), `Usage: %s -token sk-... -model claude-opus-4-20250514 [options]
 
-复现 modelknow.com 模型验真探测：对指定 Claude 型号依次发送 A–K 探测题（Anthropic Messages API，流式；K 题为工具调用往返，非流式）。
+复现 modelknow.com 模型验真探测：对指定 Claude 型号依次发送 A–S 探测题（Anthropic Messages API）。A–J 流式；K 工具调用往返、Q Token 注入为非流式；P/R/S 为多轮。
 
 `, prog)
 		flag.PrintDefaults()
@@ -57,6 +78,15 @@ func main() {
   I  model_name_zh       仅输出模型名（中文，max_tokens=64）
   J  agent_proxy_detect  Agent/CLI 代理检测（JSON，max_tokens=128）
   K  tool_call_weather   工具调用往返（get_weather，stream=false）
+  --- api-check.com 补全题组 ---
+  L  knowledge_cutoff    知识截止（特朗普 2025-03-04 关税）
+  M  fact_election_2024  事实验证（2024 美国大选获胜者）
+  N  multilingual        多语言能力（中/日/韩「你好世界」）
+  O  instruction_override 指令覆盖（system=只回复 meow）
+  P  reasoning_benchmark 推理基准（球棒/过桥/数学/逻辑，4 题）
+  Q  token_injection     Token 注入（usage.input_tokens + 条件性注入，stream=false）
+  R  prompt_extraction   Prompt 提取（8 种越狱/泄露手法）
+  S  identity_consistency 身份一致性（重复自我认知 ×2）
 
 -profile：
   strict       默认；任一 WARN 或 HTTP 失败即 exit 1
@@ -69,12 +99,17 @@ func main() {
 	model := flag.String("model", "", "目标 Claude 模型名，必填")
 	models := flag.String("models", "", "多个模型（逗号分隔），覆盖 -model")
 	insecure := flag.Bool("insecure", false, "跳过 HTTPS 证书校验")
-	all := flag.Bool("all", true, "运行全套 A–K 探测（默认 true）")
-	probe := flag.String("probe", "", "仅运行单个探测题 A–K（与 -all 互斥时优先 -probe）")
+	proxy := flag.String("proxy", getenvDefault("MODEL_VERIFY_PROXY", ""), "HTTP 代理地址（http/https/socks5，如 http://127.0.0.1:7890）；为空时回退到 HTTP_PROXY/HTTPS_PROXY 环境变量")
+	all := flag.Bool("all", true, "运行全套 A–S 探测（默认 true）")
+	probe := flag.String("probe", "", "仅运行单个探测题 A–S（与 -all 互斥时优先 -probe）")
 	profileFlag := flag.String("profile", profileStrict, "判定模式：strict（默认，含 WARN 即 exit 1）或 oauth-proxy（H/I/J 的 WARN 不计入失败，仅 HTTP 或 A–G/K 未达标才 exit 1）")
 	timeout := flag.Duration("timeout", 20*time.Second, "单次 HTTP 超时（modelknow 约 20s）")
 	jsonOut := flag.String("json", "", "将全部结果写入 JSON 文件（跑完后写入）")
+	pdfOut := flag.String("pdf", "", "将模型质量验真报告输出为 PDF 文件（可对外展示）")
+	fontPath := flag.String("font", "", "PDF 兜底字体 .ttf 路径（仿宋/Times 已内嵌；仅用于韩文等内嵌字体缺失的字形；不支持 .ttc/.otf）")
 	flag.Parse()
+
+	runStart := time.Now()
 
 	if strings.TrimSpace(*token) == "" {
 		fmt.Fprintf(os.Stderr, "%s: 必须提供 -token\n", prog)
@@ -99,7 +134,15 @@ func main() {
 		os.Exit(2)
 	}
 
-	cli := apitest.NewWithTimeout(*base, *token, *insecure, *timeout)
+	cli, err := apitest.NewWithOptions(*base, *token, apitest.Options{
+		SkipTLSVerify: *insecure,
+		Timeout:       *timeout,
+		Proxy:         *proxy,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", prog, err)
+		os.Exit(2)
+	}
 	headers := anthropicInboundHeaders(*token)
 
 	var outcomes []probeOutcome
@@ -128,14 +171,31 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s: 已写入 %s\n", prog, *jsonOut)
 	}
 
+	if *pdfOut != "" {
+		if err := generatePDFReport(*pdfOut, *fontPath, *base, profile, outcomes, runStart); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: 生成 PDF 报告失败: %v\n", prog, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "%s: 已生成 PDF 报告 %s\n", prog, *pdfOut)
+	}
+
 	if shouldExitFailure(outcomes, profile) {
 		os.Exit(1)
 	}
 }
 
 func runOneProbe(cli *apitest.Client, headers map[string]string, model string, def probeDef) probeOutcome {
-	if def.ID == probeToolCall {
+	switch def.ID {
+	case probeToolCall:
 		return runToolCallProbe(cli, headers, model)
+	case probeReasoningBench:
+		return runReasoningBenchmark(cli, headers, model)
+	case probeTokenInjection:
+		return runTokenInjection(cli, headers, model)
+	case probePromptExtraction:
+		return runPromptExtraction(cli, headers, model)
+	case probeIdentityConsistency:
+		return runIdentityConsistency(cli, headers, model)
 	}
 
 	prompt := formatProbePrompt(def, model)
@@ -152,7 +212,7 @@ func runOneProbe(cli *apitest.Client, headers map[string]string, model string, d
 		Prompt:         prompt,
 		Expected:       probeExpectation(def.ID),
 		MaxTokens:      probeMaxTokens(def),
-		HasTemperature: !def.OmitTemperature,
+		HasTemperature: bodyHasTemperature(def, model),
 		DurationMs:     duration,
 	}
 
@@ -190,7 +250,7 @@ func resolveProbeIDs(all bool, probe string) ([]string, error) {
 	probe = strings.ToUpper(strings.TrimSpace(probe))
 	if probe != "" {
 		if _, ok := probeByID(probe); !ok {
-			return nil, fmt.Errorf("未知 -probe %q，可选 A–K", probe)
+			return nil, fmt.Errorf("未知 -probe %q，可选 A–S", probe)
 		}
 		return []string{probe}, nil
 	}
