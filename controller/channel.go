@@ -96,6 +96,19 @@ func SearchChannels(c *gin.Context) {
 	return
 }
 
+// maskChannelKey 把渠道密钥脱敏为预览串（保留首尾各 4 位，中间固定 ****）。
+// 仅用于 GetChannel 这类详情展示；完整密钥须经 2FA 门禁的 GetChannelKey 获取。
+func maskChannelKey(key string) string {
+	r := []rune(key)
+	if len(r) == 0 {
+		return ""
+	}
+	if len(r) <= 8 {
+		return "****"
+	}
+	return string(r[:4]) + "****" + string(r[len(r)-4:])
+}
+
 func GetChannel(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -105,7 +118,9 @@ func GetChannel(c *gin.Context) {
 		})
 		return
 	}
-	channel, err := model.GetChannelById(id, false)
+	// 取含密钥的渠道，但仅返回脱敏后的预览串（默认脱敏显示）。
+	// root 与平台管理员可经 AdminAuth 访问本接口；查看完整密钥须走 2FA 门禁的 POST /:id/key。
+	channel, err := model.GetChannelById(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -113,6 +128,7 @@ func GetChannel(c *gin.Context) {
 		})
 		return
 	}
+	channel.Key = maskChannelKey(channel.Key)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

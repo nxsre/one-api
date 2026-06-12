@@ -1,0 +1,11 @@
+config.json
+.env
+*.log
+.DS_Store
+
+# 编译产物
+/poi-search
+/route-planning
+/travel-planner
+/bin/
+dist/

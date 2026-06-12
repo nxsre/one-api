@@ -65,12 +65,33 @@
                 v-if="!batch"
                 :label="t('channel.edit.key')"
                 class="channel-edit-upstream-field"
-                required
+                :required="!isEdit"
               >
                 <p class="channel-edit-field-hint">{{ type2secretPrompt(inputs.type) }}</p>
+                <div
+                  v-if="isEdit && keyMasked"
+                  class="channel-edit-key-preview"
+                  style="margin-bottom: 8px"
+                >
+                  <a-input readonly :value="keyRevealed ? revealedKey : keyMasked" autocomplete="off">
+                    <template #suffix>
+                      <a-tooltip :title="keyRevealed ? t('channel.edit.key_hide') : t('channel.edit.key_show')">
+                        <component
+                          :is="keyRevealed ? EyeInvisibleOutlined : EyeOutlined"
+                          style="cursor: pointer"
+                          @click="toggleRevealKey"
+                        />
+                      </a-tooltip>
+                      <a-tooltip :title="t('channel.edit.key_copy')">
+                        <CopyOutlined style="cursor: pointer; margin-left: 10px" @click="copyConfiguredKey" />
+                      </a-tooltip>
+                    </template>
+                  </a-input>
+                  <p class="channel-edit-field-hint">{{ t('channel.edit.key_masked_hint') }}</p>
+                </div>
                 <a-input
                   v-model:value="inputs.key"
-                  :placeholder="type2secretPrompt(inputs.type)"
+                  :placeholder="isEdit ? t('channel.edit.key_edit_placeholder') : type2secretPrompt(inputs.type)"
                   autocomplete="off"
                 />
               </a-form-item>
@@ -327,7 +348,7 @@
           <a-alert v-if="isEdit && !batch" type="info" style="margin-bottom: 12px">
             <template #description>
               <p>{{ t('channel.edit.load_key_hint') }}</p>
-              <a-button size="small" @click="openLoadKeyModal">
+              <a-button size="small" @click="openLoadKeyModal('edit')">
                 {{ t('channel.edit.load_key_button') }}
               </a-button>
             </template>
@@ -395,6 +416,7 @@ import {
   fetchChannelKeyAfterVerify,
   renderChannelTip,
 } from '@/helpers';
+import { EyeOutlined, EyeInvisibleOutlined, CopyOutlined } from '@ant-design/icons-vue';
 import { setChannelTypeOptionsCache } from '@/helpers/helper';
 import { fetchModelCatalogModelIds } from '@/helpers/modelCatalog';
 import {
@@ -491,6 +513,10 @@ const batch = ref(false);
 const loadKeyOpen = ref(false);
 const loadKeyCode = ref('');
 const loadKeyBusy = ref(false);
+const loadKeyIntent = ref('edit'); // 'edit' 载入输入框 | 'reveal' 查看 | 'copy' 复制
+const keyMasked = ref(''); // 后端返回的脱敏预览串
+const keyRevealed = ref(false); // 当前是否显示完整密钥
+const revealedKey = ref(''); // 经 2FA 取回并缓存的完整密钥
 const fetchUpstreamBusy = ref(false);
 const fillCatalogOpen = ref(false);
 const fillAllBusy = ref(false);
@@ -639,7 +665,7 @@ async function loadChannel() {
     if (data.model_mapping !== '') {
       data.model_mapping = JSON.stringify(JSON.parse(data.model_mapping), null, 2);
     }
-    const { other: _legacyOther, ...channelData } = data;
+    const { other: _legacyOther, key: maskedKey, ...channelData } = data;
     if (channelData.auto_ban === undefined || channelData.auto_ban === null) {
       channelData.auto_ban = 1;
     }
@@ -654,6 +680,11 @@ async function loadChannel() {
     channelData.settings = channelData.settings ?? '';
     channelData.other_info = channelData.other_info ?? '';
     Object.assign(inputs, defaultChannelInputs(), channelData);
+    // 编辑时密钥字段始终留空（留空=不修改）；脱敏串只用于只读预览，绝不回填到可提交的输入框
+    inputs.key = '';
+    keyMasked.value = maskedKey || '';
+    revealedKey.value = '';
+    keyRevealed.value = false;
     if (data.config !== '' && data.config != null) {
       const cfg = JSON.parse(data.config);
       Object.assign(config, DEFAULT_CHANNEL_CONFIG, cfg);
@@ -1071,13 +1102,14 @@ function clearInvalidModels() {
   showSuccess(t('channel.edit.messages.clear_failed_done', { count: failed.length }));
 }
 
-async function openLoadKeyModal() {
+async function openLoadKeyModal(intent = 'edit') {
   try {
     const res = await API.get('/api/user/2fa/status');
     if (!res.data?.success || !res.data?.data?.enabled) {
       showInfo(t('channel.edit.load_key_need_2fa'));
       return;
     }
+    loadKeyIntent.value = intent;
     loadKeyCode.value = '';
     loadKeyOpen.value = true;
   } catch (e) {
@@ -1094,15 +1126,48 @@ async function submitLoadKey() {
   try {
     await verifyStepUp2FA(loadKeyCode.value);
     const key = await fetchChannelKeyAfterVerify(channelId);
-    inputs.key = key;
+    if (loadKeyIntent.value === 'reveal') {
+      revealedKey.value = key;
+      keyRevealed.value = true;
+      showSuccess(t('channel.edit.key_reveal_success'));
+    } else if (loadKeyIntent.value === 'copy') {
+      revealedKey.value = key;
+      const ok = await copy(key);
+      ok ? showSuccess(t('channel.edit.key_copy_success')) : showError(t('channel.edit.key_copy_fail'));
+    } else {
+      inputs.key = key;
+      showSuccess(t('channel.edit.load_key_success'));
+    }
     loadKeyOpen.value = false;
     loadKeyCode.value = '';
-    showSuccess(t('channel.edit.load_key_success'));
   } catch (e) {
     showError(e.message || '加载失败');
   } finally {
     loadKeyBusy.value = false;
   }
+}
+
+// 查看完整密钥：已缓存则直接切换显隐，否则走 2FA 取回
+async function toggleRevealKey() {
+  if (keyRevealed.value) {
+    keyRevealed.value = false;
+    return;
+  }
+  if (revealedKey.value) {
+    keyRevealed.value = true;
+    return;
+  }
+  await openLoadKeyModal('reveal');
+}
+
+// 复制完整密钥：已缓存则直接复制，否则走 2FA 取回后复制
+async function copyConfiguredKey() {
+  if (revealedKey.value) {
+    const ok = await copy(revealedKey.value);
+    ok ? showSuccess(t('channel.edit.key_copy_success')) : showError(t('channel.edit.key_copy_fail'));
+    return;
+  }
+  await openLoadKeyModal('copy');
 }
 
 function onFillCatalogConfirm(ids) {

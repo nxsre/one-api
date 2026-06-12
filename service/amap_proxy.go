@@ -18,12 +18,13 @@ type UpstreamHTTPSnap func(req *http.Request, resp *http.Response)
 const amapRESTBase = "https://restapi.amap.com"
 
 // 允许通过 one-api 代理的高德 REST 路径前缀（客户端令牌鉴权后由服务端注入 Key）。
-// 涵盖：路径规划 v3/v4、路径规划 2.0（v5/direction）、POI 2.0（v5/place）。
+// 涵盖：路径规划 v3/v4、路径规划 2.0（v5/direction）、POI 2.0（v5/place）、地理编码/逆地理编码（v3/geocode）。
 var amapRelayPathPrefixes = []string{
 	"/v3/direction/",
 	"/v4/direction/",
 	"/v5/direction/",
 	"/v5/place/",
+	"/v3/geocode/",
 }
 
 // NormalizeAmapRelayPath 规范化客户端传入的路径（必须为绝对路径，禁止逃逸）。

@@ -4,14 +4,13 @@
 
 ## 功能特性
 
-- ✅ 自动管理高德 Web Service Key
-- ✅ POI 搜索功能
-- ✅ 路径规划（步行、驾车、骑行、公交）
+- ✅ POI 搜索（经 one-api `POST /amap`，客户端只需用户令牌）
+- ✅ 路径规划（步行、驾车、骑行、公交，直连高德 Web Service）
 - ✅ 智能旅游规划助手
 - ✅ 地图可视化链接生成
 - ✅ 热力图数据可视化
 - ✅ 支持命令行脚本执行
-- ✅ 配置本地持久化
+- ✅ 配置本地持久化（环境变量 → `config.json`）
 
 ## 安装依赖
 
@@ -215,16 +214,17 @@ function mapLinkExample() {
 ## 项目结构
 
 ```
-jsapi-skills/
+amap-lbs-skill/
 ├── index.js                    # 主入口文件，包含核心功能
 ├── scripts/
-│   ├── poi-search.js           # POI 搜索脚本
+│   ├── poi-search.js           # POI 搜索脚本（经 one-api）
 │   ├── route-planning.js       # 路径规划脚本
 │   └── travel-planner.js       # 智能旅游规划脚本
-├── config.json                 # 配置文件（自动生成，不要提交）
+├── config.json                 # 配置文件（不提交，已在 .gitignore）
 ├── config.example.json         # 配置示例
 ├── package.json                # 依赖配置
 ├── .gitignore                  # Git 忽略配置
+├── LICENSE                     # MIT 许可证
 ├── SKILL.md                    # OpenClaw Skill 描述文件
 └── README.md                   # 本文件
 ```

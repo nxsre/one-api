@@ -26,6 +26,8 @@ func TestIsAllowedAmapRelayPath(t *testing.T) {
 		"/v5/direction/electrobike",
 		"/v5/direction/transit/integrated",
 		"/v5/place/text",
+		"/v3/geocode/geo",
+		"/v3/geocode/regeo",
 	}
 	for _, p := range ok {
 		if !IsAllowedAmapRelayPath(p) {
@@ -35,7 +37,6 @@ func TestIsAllowedAmapRelayPath(t *testing.T) {
 	bad := []string{
 		"",
 		"/",
-		"/v3/geocode/geo",
 		"/v5/inputtips/inputtips",
 		"https://evil.com/v5/place/text",
 	}

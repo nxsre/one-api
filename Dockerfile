@@ -85,7 +85,7 @@ RUN shopt -s nullglob && \
 # -----------------------------------------------------------------------------
 # Stage 3 — Go 后端（合并 embed 产物）
 # -----------------------------------------------------------------------------
-FROM golang:alpine AS builder-backend
+FROM golang:1.26-trixie AS builder-backend
 
 # 纯 Go 构建（CGO_ENABLED=0）：sqlite 走 glebarez（纯 Go），生产二进制无需 cgo，
 # 故无需 gcc/musl-dev 等工具链，避免受限网络下 apk 联网失败。

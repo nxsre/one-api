@@ -25,8 +25,8 @@ const amapProxyAuditModel = "amap"
 // amapProxyRequest one-api 高德 REST 代理：**POST /amap**（与 OpenAI `/v1` 无关）。
 // 客户端 Bearer 为用户令牌；服务端注入高德 Web Key 并转发至 https://restapi.amap.com 。
 //
-// 允许的 path 前缀：/v3/direction/、/v4/direction/、/v5/direction/、/v5/place/
-//（涵盖路径规划 v3/v4、路径规划 2.0（v5）、POI 2.0（v5））。
+// 允许的 path 前缀：/v3/direction/、/v4/direction/、/v5/direction/、/v5/place/、/v3/geocode/
+// （涵盖路径规划 v3/v4、路径规划 2.0（v5）、POI 2.0（v5）、地理编码/逆地理编码（v3））。
 //
 // 文档：
 // - 路径规划 v3/v4：https://lbs.amap.com/api/webservice/guide/api/direction
@@ -82,7 +82,7 @@ func RelayAmapProxy(c *gin.Context) {
 	}
 	pathNorm := service.NormalizeAmapRelayPath(req.Path)
 	if pathNorm == "" || !service.IsAllowedAmapRelayPath(req.Path) {
-		msg := "path 无效或不在允许列表内（允许前缀: /v3/direction/、/v4/direction/、/v5/direction/、/v5/place/）"
+		msg := "path 无效或不在允许列表内（允许前缀: /v3/direction/、/v4/direction/、/v5/direction/、/v5/place/、/v3/geocode/）"
 		recordAmapProxyConsume(c, startAt, msg)
 		requestaudit.FinalizeHTTPResult(c, amapProxyAuditModel, http.StatusBadRequest, false, msg, 0)
 		abortAmapAPIError(c, http.StatusBadRequest, msg)
