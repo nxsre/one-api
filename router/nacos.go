@@ -119,4 +119,11 @@ func SetNacosRegistryRouter(router *gin.Engine) {
 
 	nacosUI := router.Group("/nacos-ui")
 	mountNacosRegistryV1V3(nacosUI)
+
+	// ClawHub 兼容端点:车队 edge 设 clawhub.registry_url=https://<host>/nacos/clawhub
+	// 从本 one-api 的 Nacos AI skill 注册表拉 skills(经 /nacos* 已被 caddy 反代;
+	// NacosFeatureGate 在 Nacos 启用时放行)。slug=skill name(扁平,无 /)。
+	clawhub := router.Group("/nacos/clawhub/api/v1")
+	clawhub.GET("/skills/:slug", controller.ClawHubCompatSkillDetail)
+	clawhub.GET("/download", controller.ClawHubCompatDownload)
 }
