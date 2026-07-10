@@ -128,14 +128,32 @@ export function getFooterHTML() {
 }
 
 export async function copy(text) {
-  let okay = true;
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (e) {
-    okay = false;
-    console.error(e);
+  if (text == null) return false;
+  const value = String(text);
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (e) {
+      console.error(e);
+    }
   }
-  return okay;
+  // HTTP 等非安全上下文下 Clipboard API 不可用，降级为 execCommand。
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
 
 export function isMobile() {

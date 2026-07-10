@@ -1,19 +1,8 @@
 <template>
   <a-config-provider :locale="antdLocale" :theme="antdTheme">
-    <div class="app-root-fill">
-      <SidebarLayout>
-        <router-view />
-      </SidebarLayout>
-
-      <a-modal
-        :open="force2FAOpen"
-        :closable="false"
-        :mask-closable="false"
-        :keyboard="false"
-        :footer="null"
-        width="520px"
-        :title="t('auth.force_2fa.modal_title')"
-      >
+    <div v-if="showForce2FASetup" class="force-2fa-page">
+      <div class="force-2fa-card">
+        <h2 class="force-2fa-card__title">{{ t('auth.force_2fa.modal_title') }}</h2>
         <a-alert type="warning" :message="t('auth.force_2fa.modal_hint')" class="mb-3" />
         <TwoFASetting
           force-mode
@@ -22,19 +11,19 @@
           @enabled="updateLocalForce2FAUser(false)"
           @cancel-login="cancelForce2FAAndReturnToLogin"
         />
-        <div class="mt-3 text-right">
-          <a-button :loading="force2FACancelBusy" :disabled="force2FACancelBusy" @click="cancelForce2FAAndReturnToLogin">
-            {{ t('auth.force_2fa.cancel_login') }}
-          </a-button>
-        </div>
-      </a-modal>
+      </div>
+    </div>
+
+    <div v-else class="app-root-fill">
+      <SidebarLayout>
+        <router-view />
+      </SidebarLayout>
     </div>
   </a-config-provider>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { theme as antdThemeApi } from 'ant-design-vue';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
@@ -49,8 +38,6 @@ import { API, getLogo, getSystemName } from './helpers';
 import { currentLocale } from './i18n';
 
 const { t } = useI18n();
-const route = useRoute();
-const router = useRouter();
 const userStore = useUserStore();
 const statusStore = useStatusStore();
 const { user } = storeToRefs(userStore);
@@ -63,7 +50,6 @@ const antdTheme = computed(() => ({
   algorithm: isDark.value ? antdThemeApi.darkAlgorithm : antdThemeApi.defaultAlgorithm,
 }));
 
-const force2FAOpen = ref(false);
 const force2FACancelBusy = ref(false);
 
 function isPublicAuthPath() {
@@ -74,27 +60,29 @@ function isPublicAuthPath() {
   );
 }
 
+const showForce2FASetup = computed(
+  () => !!user.value?.require_force_2fa_setup && !isPublicAuthPath()
+);
+
 function updateLocalForce2FAUser(required) {
   const raw = localStorage.getItem('user');
   if (!raw) {
-    force2FAOpen.value = false;
     return;
   }
   const data = JSON.parse(raw);
   const next = { ...data, require_force_2fa_setup: required };
   userStore.login(next);
-  force2FAOpen.value = !!required;
 }
 
 async function cancelForce2FAAndReturnToLogin() {
+  if (force2FACancelBusy.value) return;
   force2FACancelBusy.value = true;
   try {
     try {
       await API.get('/api/user/logout');
     } catch { /* clear local session regardless */ }
     userStore.logout();
-    force2FAOpen.value = false;
-    router.push('/login');
+    window.location.assign('/login');
   } finally {
     force2FACancelBusy.value = false;
   }
@@ -103,15 +91,12 @@ async function cancelForce2FAAndReturnToLogin() {
 onMounted(() => {
   userStore.loadFromStorage();
   statusStore.loadFromStorage();
-  if (user.value) {
-    force2FAOpen.value = !!user.value.require_force_2fa_setup && !isPublicAuthPath();
-  }
   statusStore.loadStatus();
 });
 
 // Session change → drop the cached /api/status payload and refetch.
 watch(
-  () => user.value?.id,
+  () => user.value?.id ?? user.value?.user_id,
   () => {
     statusStore.reload();
   }
@@ -130,11 +115,31 @@ watch(
   },
   { deep: true }
 );
-
-watch(
-  () => user.value?.require_force_2fa_setup,
-  (v) => {
-    force2FAOpen.value = !!v && !isPublicAuthPath();
-  }
-);
 </script>
+
+<style scoped>
+.force-2fa-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f0f2f5;
+}
+
+.force-2fa-card {
+  width: 100%;
+  max-width: 560px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.force-2fa-card__title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+}
+</style>

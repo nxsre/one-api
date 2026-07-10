@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { showError } from './utils';
 import { getTenantConsoleActingTenantId } from './tenantConsoleImpersonation';
+import { useUserStore } from '../stores/user';
 
 export const API = axios.create({
   baseURL: import.meta.env.VITE_SERVER ? import.meta.env.VITE_SERVER : '',
@@ -30,18 +31,7 @@ API.interceptors.request.use((config) => {
 });
 
 function markForce2FARequired() {
-  const raw = localStorage.getItem('user');
-  if (raw) {
-    try {
-      const user = JSON.parse(raw);
-      localStorage.setItem(
-        'user',
-        JSON.stringify({ ...user, require_force_2fa_setup: true })
-      );
-    } catch {
-      /* ignore invalid local data */
-    }
-  }
+  useUserStore().markForce2FASetupRequired();
   if (window.location.pathname !== '/setting') {
     window.location.href = '/setting';
   }

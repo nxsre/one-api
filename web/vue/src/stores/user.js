@@ -36,5 +36,18 @@ export const useUserStore = defineStore('user', () => {
     clearNacosEmbeddedConsoleLocalSession();
   }
 
-  return { user, loadFromStorage, login, logout };
+  function markForce2FASetupRequired() {
+    try {
+      const raw = localStorage.getItem('user');
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (data.require_force_2fa_setup) return true;
+      login({ ...data, require_force_2fa_setup: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return { user, loadFromStorage, login, logout, markForce2FASetupRequired };
 });

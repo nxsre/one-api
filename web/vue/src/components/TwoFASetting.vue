@@ -1,41 +1,45 @@
 <template>
   <div style="margin-top: 8px">
-    <a-alert
-      type="info"
-      show-icon
-      class="mb-3"
-      message="使用 TOTP 认证器（如 Google Authenticator）扫描二维码后，按提示输入 6 位验证码完成绑定。登录时可在验证码与备用码之间二选一。"
-    />
-    <a-alert
-      v-if="forceMode"
-      type="warning"
-      show-icon
-      class="mb-3"
-      message="管理员已开启全员 MFA。完成两步验证配置前，你无法继续使用控制台或 API。"
-    />
+    <template v-if="!forceMode">
+      <a-alert
+        type="info"
+        show-icon
+        class="mb-3"
+        message="使用 TOTP 认证器（如 Google Authenticator）扫描二维码后，按提示输入 6 位验证码完成绑定。登录时可在验证码与备用码之间二选一。"
+      />
 
-    <p>
-      状态：<strong>{{ status.enabled ? '已启用' : '未启用' }}</strong>
-      <span v-if="status.enabled && status.backup_codes_remaining != null" style="margin-left: 12px">
-        剩余备用码：<strong>{{ status.backup_codes_remaining }}</strong>
-      </span>
-    </p>
+      <p>
+        状态：<strong>{{ status.enabled ? '已启用' : '未启用' }}</strong>
+        <span v-if="status.enabled && status.backup_codes_remaining != null" style="margin-left: 12px">
+          剩余备用码：<strong>{{ status.backup_codes_remaining }}</strong>
+        </span>
+      </p>
 
-    <a-alert
-      v-if="status.locked"
-      type="error"
-      show-icon
-      message="两步验证已锁定，请联系管理员处理。"
-    />
-    <template v-else-if="!status.enabled">
-      <a-button v-if="forceMode" type="primary" :loading="loading" disabled>
-        正在打开两步验证配置
-      </a-button>
-      <a-button v-else type="primary" :loading="loading" @click="startSetup">
+      <a-alert
+        v-if="status.locked"
+        type="error"
+        show-icon
+        message="两步验证已锁定，请联系管理员处理。"
+      />
+      <a-button
+        v-else-if="!status.enabled"
+        type="primary"
+        :loading="loading"
+        @click="startSetup"
+      >
         启用两步验证
       </a-button>
     </template>
-    <template v-else>
+
+    <div
+      v-else-if="forceMode && loading && !setupOpen && !enableOpen"
+      class="twofa-force-loading"
+    >
+      <a-spin />
+      <span style="margin-left: 8px">正在准备两步验证...</span>
+    </div>
+
+    <template v-else-if="!forceMode && status.enabled">
       <a-button
         v-if="!forceMode"
         danger
@@ -51,8 +55,66 @@
       </a-button>
     </template>
 
-    <!-- Setup modal -->
+    <!-- forceMode: inline panel (avoid nested modals that swallow clicks) -->
+    <div v-if="forceMode && setupOpen" class="twofa-force-panel">
+      <h4 class="twofa-force-panel__title">设置两步验证</h4>
+      <template v-if="setupData">
+        <p>请使用认证器扫描以下二维码（或手动输入密钥）：</p>
+        <div class="text-center">
+          <img :src="qrImgUrl(setupData.qr_code_data)" alt="2FA QR" style="max-width: 220px; margin: 0 auto" />
+        </div>
+        <a-alert class="mt-3" type="info" show-icon>
+          <template #message>
+            <div style="word-break: break-all">
+              <strong>密钥（勿泄露）：</strong> {{ setupData.secret }}
+            </div>
+          </template>
+        </a-alert>
+        <a-alert class="mt-3" type="warning" show-icon>
+          <template #message>
+            <h5 style="margin: 0 0 6px">备用码（仅显示一次，请保存）</h5>
+            <pre style="white-space: pre-wrap">{{ (setupData.backup_codes || []).join('\n') }}</pre>
+            <a-button size="small" @click="copy((setupData.backup_codes || []).join('\n'))">
+              复制备用码
+            </a-button>
+          </template>
+        </a-alert>
+      </template>
+      <div class="text-right mt-3">
+        <a-button :loading="cancelLoginBusy" :disabled="cancelLoginBusy || loading" @click="emitCancelLogin">
+          {{ cancelLoginLabel }}
+        </a-button>
+        <a-button
+          v-if="setupData"
+          type="primary"
+          style="margin-left: 8px"
+          @click="goToEnableStep"
+        >
+          下一步：输入验证码启用
+        </a-button>
+      </div>
+    </div>
+
+    <div v-else-if="forceMode && enableOpen" class="twofa-force-panel">
+      <h4 class="twofa-force-panel__title">确认启用</h4>
+      <a-form layout="vertical">
+        <a-form-item label="认证器 6 位验证码">
+          <a-input v-model:value="code" placeholder="123456" @pressEnter="enable2fa" />
+        </a-form-item>
+      </a-form>
+      <div class="text-right mt-3">
+        <a-button :loading="cancelLoginBusy" :disabled="cancelLoginBusy || loading" @click="emitCancelLogin">
+          {{ cancelLoginLabel }}
+        </a-button>
+        <a-button type="primary" style="margin-left: 8px" :loading="loading" @click="enable2fa">
+          启用
+        </a-button>
+      </div>
+    </div>
+
+    <!-- Setup modal (non-force settings page) -->
     <a-modal
+      v-else
       v-model:open="setupOpen"
       title="设置两步验证"
       width="520px"
@@ -84,29 +146,23 @@
         </a-alert>
       </template>
       <div class="text-right mt-3">
-        <a-button v-if="showForceCancel" :loading="cancelLoginBusy" :disabled="cancelLoginBusy || loading" @click="emitCancelLogin">
-          {{ cancelLoginLabel }}
-        </a-button>
         <a-button
           v-if="setupData"
           type="primary"
-          style="margin-left: 8px"
-          @click="() => { setupOpen = false; enableOpen = true; code = ''; }"
+          @click="goToEnableStep"
         >
           下一步：输入验证码启用
         </a-button>
       </div>
     </a-modal>
 
-    <!-- Enable modal -->
+    <!-- Enable modal (non-force settings page) -->
     <a-modal
+      v-if="!forceMode"
       v-model:open="enableOpen"
       title="确认启用"
       width="416px"
       :footer="null"
-      :closable="!forceMode"
-      :mask-closable="!forceMode"
-      :keyboard="!forceMode"
     >
       <a-form layout="vertical">
         <a-form-item label="认证器 6 位验证码">
@@ -114,10 +170,7 @@
         </a-form-item>
       </a-form>
       <div class="text-right mt-3">
-        <a-button v-if="showForceCancel" :loading="cancelLoginBusy" :disabled="cancelLoginBusy || loading" @click="emitCancelLogin">
-          {{ cancelLoginLabel }}
-        </a-button>
-        <a-button v-else @click="enableOpen = false">取消</a-button>
+        <a-button @click="enableOpen = false">取消</a-button>
         <a-button type="primary" style="margin-left: 8px" :loading="loading" @click="enable2fa">
           启用
         </a-button>
@@ -208,7 +261,11 @@ const loading = ref(false);
 const statusLoaded = ref(false);
 let autoSetupStarted = false;
 
-const showForceCancel = computed(() => props.forceMode);
+function goToEnableStep() {
+  setupOpen.value = false;
+  enableOpen.value = true;
+  code.value = '';
+}
 
 function setStatus(data) {
   status.enabled = !!data.enabled;
@@ -355,6 +412,25 @@ async function copyBackups() {
 }
 
 function emitCancelLogin() {
+  setupOpen.value = false;
+  enableOpen.value = false;
+  setupData.value = null;
+  code.value = '';
   emit('cancel-login');
 }
 </script>
+
+<style scoped>
+.twofa-force-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.twofa-force-panel__title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+</style>
