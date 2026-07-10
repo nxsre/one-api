@@ -1,32 +1,38 @@
-// Package agentdetect 识别 LLM 请求来自哪个 agent 客户端（如 Claude Code、openclaw、hermes）。
+// Package agentdetect 识别 LLM 请求来自哪个 agent 客户端
+// （Claude Code、Codex CLI、Gemini CLI、openclaw、hermes、Cursor、Cline 等）。
 //
-// 单靠 User-Agent 不可靠（易伪造、CLI 常走官方 SDK 默认 UA），因此采用多信号分层识别：
-// 头部信号（User-Agent / x-app / anthropic-beta）优先快速命中，命中不确定时再看请求体的
-// system prompt 前缀与工具集（functional content，几乎不可伪造）。
+// 单靠 User-Agent 不可靠（易伪造、很多 agent 直接用官方 SDK 默认 UA），
+// 因此采用多信号分层识别：先看低开销的头部信号（UA / x-app / anthropic-beta /
+// originator / 厂商专有头），头部不确定时再看请求体（system prompt 品牌句、
+// metadata.user_id 形态、工具集指纹）二次确认。
 //
-// 规则表 rules 是数据驱动的：新增 agent 只需补一条规则。openclaw / hermes 的精确指纹
-// 建议先用真实日志（logs.other.client_request_headers）确认后再细化 UASub。
+// 规则表 rules 是数据驱动的，且必须与 CLIProxyAPI/internal/agentdetect/detect.go
+// 保持一致（相同指纹、相同优先级）。
+//
+// Result.Client 为空表示未识别。Version 可能为空：仅当版本号紧跟在命中的 UA
+// 产品名之后才提取，避免把通用 SDK 版本误报成 agent 版本。
 package agentdetect
 
 import (
 	"encoding/json"
 	"net/http"
-	"slices"
+	"regexp"
 	"strings"
 )
 
 // Result 为识别结果。Client 为空表示未识别。Via 标记命中来源（header/body），用于审计置信度。
 type Result struct {
-	Client string `json:"client"`
-	Via    string `json:"via,omitempty"`
+	Client  string `json:"client"`
+	Version string `json:"version,omitempty"`
+	Via     string `json:"via,omitempty"`
 }
 
-// rule 描述一个 agent 客户端的指纹。各字段为"任一命中"语义（ToolsAll 除外）。
+// rule 描述一个 agent 客户端的指纹。各字段为"任一命中"语义（toolsAll 与 userIDRe 除外）。
 type rule struct {
 	client string
 	// uaSub: User-Agent 的小写子串
 	uaSub []string
-	// xApp: x-app 头的小写精确值
+	// xApp: x-app 头的小写精确值（Anthropic 系客户端）
 	xApp []string
 	// betaSub: anthropic-beta 头的小写子串
 	betaSub []string
@@ -34,64 +40,174 @@ type rule struct {
 	originatorSub []string
 	// headerPresent: 只要其中任一头存在（非空）即命中（如 Codex 的 x-codex-* 专有头）
 	headerPresent []string
-	// systemSub: system prompt 的小写子串
+	// systemSub: system prompt / instructions 的小写子串。
+	// 只用品牌句（"you are <name>"），不要用裸产品名，否则 prompt 里提到别家
+	// agent 的名字就会误判。
 	systemSub []string
-	// toolsAll: 必须同时出现的工具名（区分大小写）；用于体内二次确认
+	// toolsAll: 必须同时出现的工具名（区分大小写；大小写本身就是信号，
+	// 如 Claude Code 的 "Bash" vs opencode 的 "bash"）
 	toolsAll []string
+	// userIDRe: 匹配请求体 metadata.user_id（Claude Code 形态）
+	userIDRe *regexp.Regexp
 }
 
-// rules 按优先级排序，靠前者先匹配。
+// claudeUserIDRe 匹配 Claude Code 的 metadata.user_id：
+// user_<64 hex>_account_<uuid>_session_<uuid>
+var claudeUserIDRe = regexp.MustCompile(`^user_[a-fA-F0-9]{64}_account_[0-9a-f-]{36}_session_[0-9a-f-]{36}$`)
+
+// rules 按优先级排序，靠前者先匹配。品牌 fork 必须排在其上游之前
+// （qwen-code 在 gemini-cli 之前）；品牌 system prompt 先于共享工具集匹配（见 Detect）。
 var rules = []rule{
 	{
+		// Claude Code（Anthropic 官方 CLI）。实测指纹：
+		// UA "claude-cli/1.0.44 (external, cli)"、头 "x-app: cli"、
+		// "anthropic-beta: claude-code-20250219,..."、system prompt 开头
+		// "You are Claude Code, Anthropic's official CLI for Claude."、
+		// metadata.user_id "user_<64hex>_account_<uuid>_session_<uuid>"、
+		// 首字母大写工具集（Bash/Read/Edit/Glob/Grep/Write/TodoWrite）。
 		client:    "claude-code",
-		uaSub:     []string{"claude-cli"},
+		uaSub:     []string{"claude-cli", "claude-code", "claudecode"},
 		xApp:      []string{"cli"},
 		betaSub:   []string{"claude-code"},
-		systemSub: []string{"you are claude code"},
+		systemSub: []string{"you are claude code", "anthropic's official cli for claude"},
 		toolsAll:  []string{"Bash", "Read", "Edit"},
+		userIDRe:  claudeUserIDRe,
 	},
 	{
-		// openclaw：实测其出站请求 UA 为通用 OpenAI Node SDK（"OpenAI/JS x.y" + x-stainless-* 头），
-		// 无法靠 UA 区分；可靠指纹在请求体——system prompt 含 "running inside OpenClaw"，
-		// 以及其专有工具集（exec / web_fetch / sessions_spawn 等）。uaSub 仅作自定义 UA 的兜底。
-		client:    "openclaw",
-		uaSub:     []string{"openclaw"},
-		systemSub: []string{"running inside openclaw", "you are openclaw"},
-		// 共享工具集兜底(hermes 与 openclaw 同源，工具集相同)：仅当 system prompt 品牌标识缺失
-		// (如自定义了 identity)时才命中，此时归类到 openclaw（同一代码家族）。
-		toolsAll: []string{"exec", "web_fetch", "sessions_spawn"},
-	},
-	{
-		// hermes(NousResearch/hermes-agent)：与 openclaw 同源代码，出站 UA 同为通用 OpenAI SDK。
-		// 实测源码默认 identity："You are Hermes Agent ... created by Nous Research" / "You run on Hermes Agent"。
-		// 两遍匹配下，品牌 system prompt 先于共享工具集，故能与 openclaw 区分。
-		client:    "hermes",
-		uaSub:     []string{"hermes"},
-		systemSub: []string{"you are hermes agent", "you run on hermes agent", "created by nous research"},
-	},
-	{
-		// codex(OpenAI Codex CLI, Rust)：实测——交互 TUI 用 UA/originator "codex_cli_rs"，
-		// 而 headless `codex exec` 用 "codex_exec"(UA 形如 "codex_exec/<ver> (...)")；
-		// 二者都带 originator 头(含 "codex")与专有 x-codex-* 头(x-codex-turn-metadata 等)。
-		// 走 OpenAI Responses API,system 提示在 body 的 instructions 里("running in the Codex CLI")。
+		// OpenAI Codex CLI（Rust）。实测：交互 TUI 的 UA/originator 为
+		// "codex_cli_rs"，headless exec 为 "codex_exec"，IDE 为 "codex_vscode"；
+		// 带专有 x-codex-* 头；走 Responses API 时提示词在 body 的
+		// instructions 里（"running in the Codex CLI"）。
 		client:        "codex",
-		uaSub:         []string{"codex_cli_rs", "codex_exec", "codex_vscode"},
+		uaSub:         []string{"codex_cli_rs", "codex_exec", "codex_vscode", "codex_ide"},
 		originatorSub: []string{"codex"},
 		headerPresent: []string{"x-codex-turn-metadata", "x-codex-window-id"},
 		systemSub:     []string{"running in the codex cli", "codex cli, a terminal-based"},
 	},
 	{
-		// gemini-cli(google-gemini/gemini-cli)：实测 v0.45 出站 UA 形如
-		// "GeminiCLI-tui/<ver>/<model> (linux; arm64; terminal)"(也有 "GeminiCLI/..."、
-		// VS Code 代理路径含 "proxy_client=geminicli")，并带专有头 x-gemini-api-privileged-user-id；
-		// 走 Gemini 原生 API(/v1beta/...:generateContent)。system prompt 含 "Gemini CLI"。
+		// Qwen Code（阿里的 gemini-cli fork）。必须排在 gemini-cli 之前，
+		// 使其品牌句优先于共用的 fork prompt / 工具集。
+		client:    "qwen-code",
+		uaSub:     []string{"qwencode", "qwen-code"},
+		systemSub: []string{"you are qwen code"},
+	},
+	{
+		// Google Gemini CLI。实测：UA "GeminiCLI/<ver>/<model> (...)" 或
+		// "GeminiCLI-tui/<ver>/..."，VS Code 代理路径 UA 含
+		// "proxy_client=geminicli"；带专有头 x-gemini-api-privileged-user-id；
+		// snake_case 工具集（run_shell_command/replace/read_many_files）。
 		client:        "gemini-cli",
-		uaSub:         []string{"geminicli", "google-gemini-cli"},
+		uaSub:         []string{"geminicli", "google-gemini-cli", "gemini-cli"},
 		headerPresent: []string{"x-gemini-api-privileged-user-id"},
-		systemSub:     []string{"you are gemini cli", "this is the gemini cli"},
-		toolsAll:      []string{"run_shell_command", "replace", "read_many_files"},
+		systemSub: []string{
+			"you are gemini cli",
+			"this is the gemini cli",
+			"you are an interactive cli agent specializing in software engineering",
+		},
+		toolsAll: []string{"run_shell_command", "replace", "read_many_files"},
+	},
+	{
+		// openclaw：实测其出站请求 UA 为通用 OpenAI Node SDK
+		// （"OpenAI/JS x.y" + x-stainless-* 头），无法靠 UA 区分；
+		// 可靠指纹在请求体——system prompt 含 "running inside OpenClaw"，
+		// 以及其专有工具集（exec / web_fetch / sessions_spawn）。
+		client:    "openclaw",
+		uaSub:     []string{"openclaw"},
+		systemSub: []string{"running inside openclaw", "you are openclaw"},
+		// 共享工具集兜底（hermes 与 openclaw 同源，工具集相同）：仅当 system
+		// prompt 品牌标识缺失（如自定义了 identity）时才命中，此时归类到
+		// openclaw（同一代码家族）。品牌句一遍先跑，见 Detect。
+		toolsAll: []string{"exec", "web_fetch", "sessions_spawn"},
+	},
+	{
+		// hermes（NousResearch/hermes-agent）：与 openclaw 同源、工具集相同，
+		// 出站 UA 同为通用 OpenAI SDK，只能靠品牌 identity prompt 区分。
+		// UA 子串收窄（裸 "hermes" 太泛，无关软件也在用）。
+		client:    "hermes",
+		uaSub:     []string{"hermes-agent", "hermes_agent"},
+		systemSub: []string{"you are hermes agent", "you run on hermes agent", "created by nous research"},
+	},
+	{
+		// Cursor（IDE agent / cursor-agent CLI）。品牌句 "You operate in Cursor"。
+		client:    "cursor",
+		uaSub:     []string{"cursor-agent", "cursorai", "cursor/"},
+		systemSub: []string{"you operate in cursor", "powered by cursor"},
+	},
+	{
+		// GitHub Copilot（chat / CLI）。copilot-integration-id 为专有头。
+		client:        "copilot",
+		uaSub:         []string{"githubcopilot", "github-copilot", "copilot-cli"},
+		headerPresent: []string{"copilot-integration-id"},
+		systemSub:     []string{"you are github copilot"},
+	},
+	{
+		// Cline（VS Code 扩展）。identity prompt："You are Cline, ..."。
+		client:    "cline",
+		uaSub:     []string{"cline/"},
+		systemSub: []string{"you are cline"},
+	},
+	{
+		// Roo Code（Cline fork）。identity prompt："You are Roo, ..." / "You are Roo Code"。
+		client:    "roo-code",
+		uaSub:     []string{"roo-code", "roocode"},
+		systemSub: []string{"you are roo,", "you are roo code"},
+	},
+	{
+		// Kilo Code（Roo/Cline fork）。
+		client:    "kilo-code",
+		uaSub:     []string{"kilo-code", "kilocode"},
+		systemSub: []string{"you are kilo code"},
+	},
+	{
+		// Windsurf / Cascade（Codeium）。identity prompt："You are Cascade, ...
+		// designed by the Codeium engineering team"。
+		client:    "windsurf",
+		uaSub:     []string{"windsurf"},
+		systemSub: []string{"you are cascade", "codeium engineering team"},
+	},
+	{
+		// Aider。主 prompt 以 "Act as an expert software developer" 开头。
+		client:    "aider",
+		uaSub:     []string{"aider/"},
+		systemSub: []string{"act as an expert software developer"},
+	},
+	{
+		// opencode（sst/opencode）。小写工具名可与 Claude Code 的大写集区分。
+		client:    "opencode",
+		uaSub:     []string{"opencode"},
+		systemSub: []string{"you are opencode"},
+	},
+	{
+		// Crush（charmbracelet/crush）。
+		client:    "crush",
+		uaSub:     []string{"crush/"},
+		systemSub: []string{"you are crush"},
+	},
+	{
+		// Goose（block/goose）。identity prompt："a general-purpose AI agent called Goose"。
+		// UA 子串收窄：裸 "goose/" 会误命中如 "Mongoose/x"。
+		client:    "goose",
+		uaSub:     []string{"goose-cli", "goose_cli", "block-goose"},
+		systemSub: []string{"you are goose", "called goose"},
+	},
+	{
+		// Droid（Factory AI）。identity prompt："You are Droid, ... built by Factory"。
+		// UA 子串收窄：裸 "droid/" 会误命中 Android UA。
+		client:    "droid",
+		uaSub:     []string{"factory-droid", "factorydroid", "droid-cli"},
+		systemSub: []string{"you are droid", "built by factory"},
+	},
+	{
+		// Amp（Sourcegraph）。UA 子串收窄；裸 "amp/" 太泛。
+		client:    "amp",
+		uaSub:     []string{"ampcode", "amp-cli"},
+		systemSub: []string{"you are amp, a", "built by sourcegraph"},
 	},
 }
+
+// uaVersionAfterToken 提取紧跟在命中的 UA 产品名之后的版本号，
+// 如 "claude-cli/1.0.44"、"geminicli-tui/0.45"。
+var uaVersionAfterToken = regexp.MustCompile(`^[a-z0-9_-]*[/\s]*v?([0-9][0-9a-zA-Z_.-]*)`)
 
 // KnownClients 返回所有可识别的客户端类型标识（按规则表顺序，去重），供后台配置白名单时展示。
 func KnownClients() []string {
@@ -122,14 +238,18 @@ func DetectHeader(h http.Header) Result {
 			containsAny(beta, r.betaSub) ||
 			containsAny(originator, r.originatorSub) ||
 			anyHeaderPresent(h, r.headerPresent) {
-			return Result{Client: r.client, Via: "header"}
+			return Result{Client: r.client, Version: extractVersion(ua, r), Via: "header"}
 		}
 	}
 	return Result{}
 }
 
-// Detect 在头部识别基础上，未命中时再解析请求体的 system / tools 做二次确认。
-// body 可为 nil（退化为 DetectHeader）。兼容 Anthropic 与 OpenAI 两种请求体形态。
+// Detect 在头部识别基础上，未命中时再解析请求体做二次确认。body 可为 nil（退化为 DetectHeader）。
+//
+// 体内匹配按特异性从高到低跑三遍：
+//  1. 品牌 system prompt（可区分同源 fork，如 hermes vs openclaw）
+//  2. metadata.user_id 形态（Claude Code）
+//  3. 共享工具集兜底
 func Detect(h http.Header, body []byte) Result {
 	if res := DetectHeader(h); res.Client != "" {
 		return res
@@ -137,28 +257,35 @@ func Detect(h http.Header, body []byte) Result {
 	if len(body) == 0 {
 		return Result{}
 	}
-	sys, tools := probeBody(body)
-	if sys == "" && len(tools) == 0 {
+	sys, tools, userID := probeBody(body)
+	if sys == "" && len(tools) == 0 && userID == "" {
 		return Result{}
 	}
+	ua := strings.ToLower(h.Get("User-Agent"))
 	lowSys := strings.ToLower(sys)
-	// 两遍匹配：先按 system prompt 的品牌标识(可区分同源 fork，如 hermes vs openclaw)，
-	// 再退回到共享工具集。否则同源家族共用的工具集会让先列出的规则抢先误判。
 	for _, r := range rules {
 		if containsAny(lowSys, r.systemSub) {
-			return Result{Client: r.client, Via: "body"}
+			return Result{Client: r.client, Version: extractVersion(ua, r), Via: "body"}
+		}
+	}
+	if userID != "" {
+		for _, r := range rules {
+			if r.userIDRe != nil && r.userIDRe.MatchString(userID) {
+				return Result{Client: r.client, Version: extractVersion(ua, r), Via: "body"}
+			}
 		}
 	}
 	for _, r := range rules {
 		if len(r.toolsAll) > 0 && hasAllTools(tools, r.toolsAll) {
-			return Result{Client: r.client, Via: "body"}
+			return Result{Client: r.client, Version: extractVersion(ua, r), Via: "body"}
 		}
 	}
 	return Result{}
 }
 
-// probeBody 宽松解析请求体，提取 system 文本与工具名集合，兼容 Anthropic / OpenAI 两种结构。
-func probeBody(body []byte) (system string, tools map[string]struct{}) {
+// probeBody 宽松解析请求体，提取 system 文本、工具名集合与 metadata.user_id，
+// 兼容 Anthropic（system/messages）、OpenAI chat（messages）、OpenAI Responses（instructions）三种结构。
+func probeBody(body []byte) (system string, tools map[string]struct{}, userID string) {
 	var p struct {
 		System       json.RawMessage `json:"system"`       // anthropic: string 或 content block 数组
 		Instructions json.RawMessage `json:"instructions"` // openai Responses API（Codex 等）
@@ -172,9 +299,12 @@ func probeBody(body []byte) (system string, tools map[string]struct{}) {
 				Name string `json:"name"` // openai chat
 			} `json:"function"`
 		} `json:"tools"`
+		Metadata struct {
+			UserID string `json:"user_id"`
+		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
-		return "", nil
+		return "", nil, ""
 	}
 	system = rawTextOrBlocks(p.System)
 	if system == "" {
@@ -203,7 +333,7 @@ func probeBody(body []byte) (system string, tools map[string]struct{}) {
 			}
 		}
 	}
-	return system, tools
+	return system, tools, strings.TrimSpace(p.Metadata.UserID)
 }
 
 // rawTextOrBlocks 解析既可能是字符串、也可能是 content block 数组（[{type,text}]）的字段。
@@ -233,6 +363,22 @@ func rawTextOrBlocks(raw json.RawMessage) string {
 	return ""
 }
 
+// extractVersion 提取紧跟在规则 UA 产品名之后的版本号；UA 中不含产品名时返回空，
+// 避免把无关的 "name/version"（通常是 SDK 版本）误报为 agent 版本。
+func extractVersion(lowerUA string, r rule) string {
+	for _, sub := range r.uaSub {
+		idx := strings.Index(lowerUA, sub)
+		if idx < 0 {
+			continue
+		}
+		rest := lowerUA[idx+len(sub):]
+		if m := uaVersionAfterToken.FindStringSubmatch(rest); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return ""
+}
+
 func containsAny(s string, subs []string) bool {
 	if s == "" {
 		return false
@@ -249,7 +395,12 @@ func equalsAny(s string, vals []string) bool {
 	if s == "" {
 		return false
 	}
-	return slices.Contains(vals, s)
+	for _, v := range vals {
+		if v != "" && s == v {
+			return true
+		}
+	}
+	return false
 }
 
 func anyHeaderPresent(h http.Header, names []string) bool {

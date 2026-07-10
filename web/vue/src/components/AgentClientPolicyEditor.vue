@@ -66,7 +66,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { API, showError } from '@/helpers';
+import { API } from '@/helpers';
 
 const props = defineProps({
   // 当前策略对象（与后端 agentpolicy.Policy 同构）或 null。
@@ -125,14 +125,12 @@ function emitChange() {
 const loadMeta = async () => {
   try {
     const res = await API.get('/api/agent_policy/meta');
-    const { success, data, message } = res.data;
+    const { success, data } = res.data;
     if (success) {
       knownClients.value = Array.isArray(data.known_clients) ? data.known_clients : [];
       otherClient.value = data.other_client || 'other';
-    } else if (message) {
-      showError(message);
     }
-  } catch (e) {
+  } catch {
     // meta 拉取失败不阻断表单，仅无下拉候选。
   }
 };
