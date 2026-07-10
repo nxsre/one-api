@@ -96,11 +96,9 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.PUT("/", controller.UpdateOption)
 		}
 		// agent 客户端策略元信息（已知类型清单 + 当前全局策略），供令牌/用户/租户/全局配置页使用。
+		// 普通用户编辑自己的令牌时也需要读取 known_clients 下拉选项。
 		agentPolicyRoute := apiRouter.Group("/agent_policy")
-		agentPolicyRoute.Use(middleware.AdminAuth())
-		{
-			agentPolicyRoute.GET("/meta", controller.GetAgentPolicyMeta)
-		}
+		agentPolicyRoute.GET("/meta", middleware.UserAuth(), controller.GetAgentPolicyMeta)
 		paymentAccessRoute := apiRouter.Group("/payment/access")
 		paymentAccessRoute.Use(middleware.SuperAdminAuth())
 		{

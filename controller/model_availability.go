@@ -15,8 +15,10 @@ func collectRelayAvailableModels(c *gin.Context) ([]OpenAIModels, error) {
 	userGroup, _ := model.CacheGetUserGroup(userId)
 	var availableModels []string
 	var err error
-	if c.GetString(ctxkey.AvailableModels) != "" {
-		availableModels = strings.Split(c.GetString(ctxkey.AvailableModels), ",")
+	if raw := strings.TrimSpace(c.GetString(ctxkey.AvailableModels)); raw != "" {
+		for _, ent := range model.ParseTokenModelAllowlist(raw) {
+			availableModels = append(availableModels, ent.Model)
+		}
 	} else {
 		availableModels, err = model.CacheGetGroupModels(ctx, userGroup)
 		if err != nil {

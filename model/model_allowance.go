@@ -3,12 +3,97 @@ package model
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/songquanpeng/one-api/common"
 )
+
+// TokenModelAllowEntry is one token allowlist entry. ChannelID > 0 means route only via that channel.
+type TokenModelAllowEntry struct {
+	ChannelID int
+	Model     string
+	Raw       string
+}
+
+// ParseTokenModelAllowEntry parses "model" or "#<channelId>:<model>".
+func ParseTokenModelAllowEntry(s string) TokenModelAllowEntry {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return TokenModelAllowEntry{}
+	}
+	if strings.HasPrefix(s, "#") {
+		rest := strings.TrimPrefix(s, "#")
+		if i := strings.IndexByte(rest, ':'); i > 0 {
+			cidStr := strings.TrimSpace(rest[:i])
+			model := strings.TrimSpace(rest[i+1:])
+			if cid, err := strconv.Atoi(cidStr); err == nil && cid > 0 && model != "" {
+				return TokenModelAllowEntry{ChannelID: cid, Model: model, Raw: s}
+			}
+		}
+	}
+	return TokenModelAllowEntry{Model: s, Raw: s}
+}
+
+// ParseTokenModelAllowlist splits a comma-separated allowlist into entries.
+func ParseTokenModelAllowlist(allowlistCSV string) []TokenModelAllowEntry {
+	parts := strings.Split(allowlistCSV, ",")
+	out := make([]TokenModelAllowEntry, 0, len(parts))
+	for _, part := range parts {
+		ent := ParseTokenModelAllowEntry(part)
+		if ent.Model != "" {
+			out = append(out, ent)
+		}
+	}
+	return out
+}
+
+// TokenAllowlistRoutingChannelIDs returns channel IDs allowed for requestModel when the token
+// allowlist uses channel-scoped entries only. nil means no extra restriction from the token.
+func TokenAllowlistRoutingChannelIDs(allowlistCSV, requestModel string, mappings []map[string]string) map[int]struct{} {
+	req := strings.TrimSpace(requestModel)
+	if req == "" || strings.TrimSpace(allowlistCSV) == "" {
+		return nil
+	}
+	entries := ParseTokenModelAllowlist(allowlistCSV)
+	allowed := make(map[int]struct{})
+	anyChannel := false
+	matched := false
+	for _, ent := range entries {
+		if !AllowanceMatchRequestModel(req, ent.Model, mappings) {
+			continue
+		}
+		matched = true
+		if ent.ChannelID > 0 {
+			allowed[ent.ChannelID] = struct{}{}
+		} else {
+			anyChannel = true
+		}
+	}
+	if !matched || anyChannel {
+		return nil
+	}
+	return allowed
+}
+
+// IntersectChannelIDSets intersects two channel ID sets. nil on either side means "no restriction".
+func IntersectChannelIDSets(a, b map[int]struct{}) map[int]struct{} {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	out := make(map[int]struct{})
+	for id := range a {
+		if _, ok := b[id]; ok {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
 
 // ClientFacingModelName 返回客户端应使用的模型名：若 channel 的 model_mapping 将某请求名映射到 channelModel（上游/渠道模型名），则返回该请求名；否则返回 channelModel。
 func ClientFacingModelName(channelModel string, mapping map[string]string) string {
@@ -54,8 +139,8 @@ func IsRequestModelInAllowlist(ctx context.Context, userID int, requestModel, al
 		return false
 	}
 	mappings, _ := cacheGetRelayModelMappings(ctx, userID)
-	for _, part := range strings.Split(allowlistCSV, ",") {
-		if AllowanceMatchRequestModel(requestModel, part, mappings) {
+	for _, ent := range ParseTokenModelAllowlist(allowlistCSV) {
+		if AllowanceMatchRequestModel(requestModel, ent.Model, mappings) {
 			return true
 		}
 	}
@@ -74,7 +159,8 @@ func IsRequestModelInAllowlistSlice(ctx context.Context, userID int, requestMode
 	}
 	mappings, _ := cacheGetRelayModelMappings(ctx, userID)
 	for _, part := range allowlist {
-		if AllowanceMatchRequestModel(requestModel, part, mappings) {
+		ent := ParseTokenModelAllowEntry(part)
+		if AllowanceMatchRequestModel(requestModel, ent.Model, mappings) {
 			return true
 		}
 	}

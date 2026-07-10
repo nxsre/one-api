@@ -16,9 +16,10 @@ import (
 func RoutingPrep() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		userId := c.GetInt(ctxkey.Id)
-		userGroup, _ := model.CacheGetUserGroup(userId)
-		if g := strings.TrimSpace(c.GetString(ctxkey.TokenBoundGroup)); g != "" {
-			userGroup = g
+		userGroup, err := model.ResolveRelayUserGroup(userId, c.GetString(ctxkey.TokenBoundGroup))
+		if err != nil {
+			abortWithMessage(c, 500, "用户信息加载失败")
+			return
 		}
 		c.Set(ctxkey.Group, userGroup)
 

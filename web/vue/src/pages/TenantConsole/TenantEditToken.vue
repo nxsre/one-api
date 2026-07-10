@@ -114,6 +114,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute } from 'vue-router';
 import {
   API,
+  applyBulkChannelsToModels,
   buildTokenModelOptionsFromDetail,
   distinctChannelsFromModelDetailItems,
   showError,
@@ -191,12 +192,11 @@ const onQuotaInput = (e) => {
 };
 
 const applyBulkChannels = () => {
-  const ids = new Set(bulkChannelIds.value || []);
-  const next = new Set(inputs.models || []);
-  for (const row of modelDetailItems.value) {
-    if (ids.has(row.channel_id)) next.add(row.model);
-  }
-  inputs.models = Array.from(next).sort((a, b) => String(a).localeCompare(String(b)));
+  inputs.models = applyBulkChannelsToModels(
+    modelDetailItems.value,
+    bulkChannelIds.value,
+    inputs.models
+  );
 };
 
 const loadModelsAndToken = async () => {

@@ -34,3 +34,47 @@ func TestClientFacingModelName(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestParseTokenModelAllowEntry(t *testing.T) {
+	ent := ParseTokenModelAllowEntry("#8:claude-haiku")
+	if ent.ChannelID != 8 || ent.Model != "claude-haiku" {
+		t.Fatalf("got %+v", ent)
+	}
+	ent = ParseTokenModelAllowEntry("gpt-4")
+	if ent.ChannelID != 0 || ent.Model != "gpt-4" {
+		t.Fatalf("got %+v", ent)
+	}
+}
+
+func TestTokenAllowlistRoutingChannelIDs_ScopedOnly(t *testing.T) {
+	csv := "#8:claude-haiku,#5:claude-haiku"
+	ch := TokenAllowlistRoutingChannelIDs(csv, "claude-haiku", nil)
+	if len(ch) != 2 {
+		t.Fatalf("expected 2 channels, got %v", ch)
+	}
+	if _, ok := ch[8]; !ok {
+		t.Fatal("missing channel 8")
+	}
+	if _, ok := ch[5]; !ok {
+		t.Fatal("missing channel 5")
+	}
+}
+
+func TestTokenAllowlistRoutingChannelIDs_PlainEntry(t *testing.T) {
+	csv := "claude-haiku,#8:claude-haiku"
+	if ch := TokenAllowlistRoutingChannelIDs(csv, "claude-haiku", nil); ch != nil {
+		t.Fatalf("plain entry should not restrict channels, got %v", ch)
+	}
+}
+
+func TestIntersectChannelIDSets(t *testing.T) {
+	a := map[int]struct{}{3: {}, 5: {}, 8: {}}
+	b := map[int]struct{}{8: {}}
+	out := IntersectChannelIDSets(a, b)
+	if len(out) != 1 {
+		t.Fatalf("got %v", out)
+	}
+	if _, ok := out[8]; !ok {
+		t.Fatal("expected channel 8")
+	}
+}

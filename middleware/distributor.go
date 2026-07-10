@@ -37,12 +37,12 @@ func Distribute() func(c *gin.Context) {
 		ctx := relayctx.WithClientIP(c.Request.Context(), c.ClientIP())
 		c.Request = c.Request.WithContext(ctx)
 		userId := c.GetInt(ctxkey.Id)
-		userGroup := c.GetString(ctxkey.Group)
-		if strings.TrimSpace(userGroup) == "" {
-			userGroup, _ = model.CacheGetUserGroup(userId)
-			if g := strings.TrimSpace(c.GetString(ctxkey.TokenBoundGroup)); g != "" {
-				userGroup = g
-			}
+		userGroup, errGroup := model.ResolveRelayUserGroup(userId, c.GetString(ctxkey.TokenBoundGroup))
+		if errGroup != nil {
+			abortWithMessage(c, http.StatusInternalServerError, "用户信息加载失败")
+			return
+		}
+		if strings.TrimSpace(c.GetString(ctxkey.Group)) == "" || strings.TrimSpace(c.GetString(ctxkey.Group)) != userGroup {
 			c.Set(ctxkey.Group, userGroup)
 		}
 		c.Set(ctxkey.UserGroup, userGroup)
@@ -87,12 +87,19 @@ func Distribute() func(c *gin.Context) {
 		} else {
 			var err error
 			requestModel = c.GetString(ctxkey.RequestModel)
+			allowedChannelIDs := RelayAllowedChannelIDs(c)
+			if raw := strings.TrimSpace(c.GetString(ctxkey.AvailableModels)); raw != "" && requestModel != "" {
+				mappings, _ := model.CollectGroupModelMappingsForUser(c.Request.Context(), userId)
+				if tokenChannels := model.TokenAllowlistRoutingChannelIDs(raw, requestModel, mappings); tokenChannels != nil {
+					allowedChannelIDs = model.IntersectChannelIDSets(allowedChannelIDs, tokenChannels)
+				}
+			}
 			opts := routing.SelectOpts{
 				StickyKey:           c.GetString(ctxkey.RoutingStickyKey),
 				ExcludeChannelIDs:   nil,
 				SkipCircuitDisabled: routing.CurrentRoutingPolicy().CircuitFailThreshold > 0,
 				UserTenantID:        c.GetInt(ctxkey.UserTenantID),
-				AllowedChannelIDs:   RelayAllowedChannelIDs(c),
+				AllowedChannelIDs:   allowedChannelIDs,
 			}
 			channel, err = routing.SelectChannel(userGroup, requestModel, false, opts)
 			if err != nil {

@@ -363,6 +363,9 @@ func (user *User) Update(updatePassword bool) error {
 		blacklist.UnbanUser(user.Id)
 	}
 	err = DB.Model(user).Updates(user).Error
+	if err == nil {
+		CacheInvalidateUserGroup(user.Id)
+	}
 	return err
 }
 

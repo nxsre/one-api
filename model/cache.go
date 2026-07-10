@@ -96,6 +96,33 @@ func CacheGetUserGroup(id int) (group string, err error) {
 	return group, err
 }
 
+// CacheInvalidateUserGroup 删除 Redis 中的用户分组缓存；更新用户分组后必须调用。
+func CacheInvalidateUserGroup(id int) {
+	if !common.RedisEnabled || id <= 0 {
+		return
+	}
+	if err := common.RedisDel(fmt.Sprintf("user_group:%d", id)); err != nil {
+		logger.SysError("Redis del user group cache error: " + err.Error())
+	}
+}
+
+// ResolveRelayUserGroup 返回中继选路使用的分组：优先令牌绑定分组，但忽略占位值 default（跟随用户当前分组）。
+func ResolveRelayUserGroup(userID int, tokenBoundGroup string) (string, error) {
+	userGroup, err := CacheGetUserGroup(userID)
+	if err != nil {
+		return "", err
+	}
+	userGroup = strings.TrimSpace(userGroup)
+	if userGroup == "" {
+		userGroup = "default"
+	}
+	bound := strings.TrimSpace(tokenBoundGroup)
+	if bound == "" || strings.EqualFold(bound, "default") {
+		return userGroup, nil
+	}
+	return bound, nil
+}
+
 func fetchAndUpdateUserQuota(ctx context.Context, id int) (quota int64, err error) {
 	quota, err = GetUserQuota(id)
 	if err != nil {
