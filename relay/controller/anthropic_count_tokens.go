@@ -41,6 +41,7 @@ func RelayAnthropicCountTokensOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 
 	routeModel := req.Model
+	originModel := req.Model
 	if base, variant := anthropic.SplitClientModelVariant(req.Model); variant != "" {
 		c.Set(ctxkey.AnthropicModelVariant, variant)
 		routeModel = base
@@ -49,7 +50,7 @@ func RelayAnthropicCountTokensOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	req.Model = mapped
 
 	if channelUsesAnthropicNativePassthrough(m) {
-		outBody, err := json.Marshal(&req)
+		outBody, err := buildAnthropicNativeOutBody(body, originModel, mapped, "")
 		if err != nil {
 			return openai.ErrorWrapper(err, "marshal_request_failed", http.StatusInternalServerError)
 		}

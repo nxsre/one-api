@@ -68,6 +68,32 @@ func TestToolResultContent_array(t *testing.T) {
 	}
 }
 
+func TestThinkingContentBlock_roundTrip(t *testing.T) {
+	body := `{"model":"claude-opus-4-8","max_tokens":1024,"thinking":{"type":"adaptive"},"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"plan steps","signature":"sig123"}]}]}`
+	var req Request
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatal(err)
+	}
+	blk := req.Messages[0].Content[0]
+	if blk.Thinking != "plan steps" || blk.Signature != "sig123" {
+		t.Fatalf("thinking block: %+v", blk)
+	}
+	if len(req.Thinking) == 0 {
+		t.Fatal("top-level thinking config lost")
+	}
+	out, err := json.Marshal(&req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if !contains(s, `"thinking":"plan steps"`) || !contains(s, `"signature":"sig123"`) {
+		t.Fatalf("remarshal lost thinking fields: %s", s)
+	}
+	if !contains(s, `"type":"adaptive"`) {
+		t.Fatalf("top-level thinking config lost: %s", s)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (func() bool {
 		for i := 0; i+len(sub) <= len(s); i++ {

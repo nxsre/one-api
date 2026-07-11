@@ -56,23 +56,24 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *me
 		anthropicVersion = "2023-06-01"
 	}
 	req.Header.Set("anthropic-version", anthropicVersion)
-	req.Header.Set("anthropic-beta", "messages-2023-12-15")
-
+	anthropicBeta := strings.TrimSpace(c.Request.Header.Get("anthropic-beta"))
+	if anthropicBeta == "" {
+		anthropicBeta = "messages-2023-12-15"
+	}
 	// https://x.com/alexalbert__/status/1812921642143900036
 	// claude-3-5-sonnet can support 8k context
 	if strings.HasPrefix(meta.ActualModelName, "claude-3-5-sonnet") {
-		req.Header.Set("anthropic-beta", "max-tokens-3-5-sonnet-2024-07-15")
-	}
-	if v, ok := c.Get(ctxkey.AnthropicModelVariant); ok {
-		if beta := BetaForClientVariant(v.(string)); beta != "" {
-			cur := strings.TrimSpace(req.Header.Get("anthropic-beta"))
-			if cur == "" {
-				req.Header.Set("anthropic-beta", beta)
-			} else if !strings.Contains(cur, beta) {
-				req.Header.Set("anthropic-beta", cur+","+beta)
-			}
+		beta := "max-tokens-3-5-sonnet-2024-07-15"
+		if !strings.Contains(anthropicBeta, beta) {
+			anthropicBeta = beta + "," + anthropicBeta
 		}
 	}
+	if v, ok := c.Get(ctxkey.AnthropicModelVariant); ok {
+		if beta := BetaForClientVariant(v.(string)); beta != "" && !strings.Contains(anthropicBeta, beta) {
+			anthropicBeta = anthropicBeta + "," + beta
+		}
+	}
+	req.Header.Set("anthropic-beta", anthropicBeta)
 
 	return nil
 }

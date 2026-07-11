@@ -1,5 +1,7 @@
 package anthropic
 
+import "encoding/json"
+
 // https://docs.anthropic.com/claude/reference/messages_post
 
 type Metadata struct {
@@ -22,6 +24,10 @@ type Content struct {
 	Input     any                `json:"input,omitempty"`
 	Content   *ToolResultContent `json:"content,omitempty"`
 	ToolUseId string             `json:"tool_use_id,omitempty"`
+	// Claude Code / extended thinking 内容块（type=thinking / redacted_thinking）
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	Data      string `json:"data,omitempty"`
 }
 
 type Message struct {
@@ -53,7 +59,12 @@ type Request struct {
 	TopK          int          `json:"top_k,omitempty"`
 	Tools         []Tool       `json:"tools,omitempty"`
 	ToolChoice    any          `json:"tool_choice,omitempty"`
-	//Metadata    `json:"metadata,omitempty"`
+	// Claude Code 扩展字段：用 RawMessage 原样透传，避免解析/重序列化丢字段。
+	Thinking          json.RawMessage `json:"thinking,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
+	OutputConfig      json.RawMessage `json:"output_config,omitempty"`
+	ContextManagement json.RawMessage `json:"context_management,omitempty"`
+	ServiceTier       string          `json:"service_tier,omitempty"`
 }
 
 type Usage struct {

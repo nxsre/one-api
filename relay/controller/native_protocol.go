@@ -409,9 +409,12 @@ func RelayAnthropicNativeOnce(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 	adaptor.Init(m)
 
-	outBody, err := json.Marshal(&req)
+	outBody, err := buildAnthropicNativeOutBody(body, originModel, mapped, m.ForcedSystemPrompt)
 	if err != nil {
 		billing.ReturnPreConsumedQuota(ctx, preConsumed, m.TokenId)
+		if strings.Contains(err.Error(), "model is required") || strings.Contains(err.Error(), "messages is required") {
+			return openai.ErrorWrapper(err, "invalid_request", http.StatusBadRequest)
+		}
 		return openai.ErrorWrapper(err, "marshal_request_failed", http.StatusInternalServerError)
 	}
 
